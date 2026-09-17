@@ -41,6 +41,27 @@ extern CTcdStats g_Stats;
 
 extern CConfigure g_Conf;
 
+static std::string GetUsbSerialForDevnode(const std::string &devnode)
+{
+	size_t pos = devnode.find_last_of('/');
+	std::string tty = (pos==std::string::npos) ? devnode : devnode.substr(pos+1);
+	const std::vector<std::string> candidates = {
+		std::string("/sys/class/tty/") + tty + "/device/../serial",
+		std::string("/sys/class/tty/") + tty + "/device/../../serial",
+		std::string("/sys/class/tty/") + tty + "/device/../../../serial"
+	};
+	for (const auto &p : candidates)
+	{
+		std::ifstream f(p);
+		if (!f.is_open()) continue;
+		std::string s;
+		std::getline(f, s);
+		while (!s.empty() && (s.back()=='\n' || s.back()=='\r')) s.pop_back();
+		if (!s.empty()) return s;
+	}
+	return std::string();
+}
+
 int32_t CController::calcNumerator(int32_t db) const
 {
 	float num = 256.0f * powf(10.0f, (float(db)/20.0f));
@@ -151,43 +172,30 @@ void CController::Stop()
 
 void CController::ListDevices()
 {
-	int iNbDevices = 0;
-	auto status = FT_CreateDeviceInfoList((LPDWORD)&iNbDevices);
-	if (FT_OK != status)
-	{
-		std::cerr << "Could not create FTDI device list" << std::endl;
+	const std::string byid = "/dev/serial/by-id";
+	DIR *dir = opendir(byid.c_str());
+	if (!dir) {
+		std::cerr << "No /dev/serial/by-id found; check drivers" << std::endl;
 		return;
 	}
 
-	if (0 == iNbDevices)
-	{
-		std::cout << "No USB-FTDI devices detected." << std::endl;
-		std::cout << "Tip: If ftdi_sio is loaded, devices may show empty descriptions." << std::endl;
-		std::cout << "     The tcd will unbind ftdi_sio automatically at startup." << std::endl;
-		return;
+	std::cout << "Detected serial devices in /dev/serial/by-id:" << std::endl;
+	struct dirent *entry;
+	int idx = 0;
+	while ((entry = readdir(dir)) != nullptr) {
+		if (entry->d_name[0] == '.') continue;
+		std::string link = byid + "/" + entry->d_name;
+		char target[PATH_MAX];
+		ssize_t len = readlink(link.c_str(), target, sizeof(target)-1);
+		if (len <= 0) continue;
+		target[len] = '\0';
+		std::string devnode = std::string("/dev/") + basename(const_cast<char*>(target));
+		std::string serial = GetUsbSerialForDevnode(devnode);
+		std::cout << "  [" << idx++ << "] Description: " << entry->d_name << " -> " << target << "  Serial: " << (serial.empty()?"(unknown)":serial) << std::endl;
 	}
-
-	FT_DEVICE_LIST_INFO_NODE *list = new FT_DEVICE_LIST_INFO_NODE[iNbDevices];
-	status = FT_GetDeviceInfoList(list, (LPDWORD)&iNbDevices);
-	if (FT_OK != status)
-	{
-		std::cerr << "Could not get FTDI device list" << std::endl;
-		delete[] list;
-		return;
-	}
-
-	std::cout << "Detected " << iNbDevices << " USB-FTDI device(s):" << std::endl;
-	for (int i = 0; i < iNbDevices; i++)
-	{
-		std::cout << "  [" << i << "] Description: " << list[i].Description
-		          << "  Serial: " << list[i].SerialNumber
-		          << "  USB-ID: " << std::hex << list[i].ID << std::dec
-		          << (list[i].Flags & 0x1 ? "  (in use)" : "") << std::endl;
-	}
+	closedir(dir);
 	std::cout << std::endl;
-	std::cout << "Use 'DeviceSerial = <serial>' in tcd.ini to select your AMBE device." << std::endl;
-
-	delete[] list;
+	std::cout << "Use 'DeviceSerial = <device-node-or-id>' in tcd.ini to select your AMBE device." << std::endl;
 }
 
 bool CController::IsAmbeDevice(const std::string &desc)
@@ -198,7 +206,7 @@ bool CController::IsAmbeDevice(const std::string &desc)
 	static const std::vector<std::string> known = {
 		"ThumbDV", "DVstick-30", "DVstick-33",
 		"USB-3000", "USB-3003", "USB-3006", "USB-3012",
-		"FT232R USB UART", "FT230X Basic UART",
+		"FT232R_USB_UART", "FT230X_Basic_UART",
 		"DF2ET"
 	};
 	// Devices with empty description are not AMBE devices
@@ -214,47 +222,11 @@ bool CController::IsAmbeDevice(const std::string &desc)
 
 void CController::UnbindAllFtdiSio()
 {
-	// Unbind ftdi_sio only for whitelisted AMBE devices (by serial number).
-	// Other FTDI devices (USB-serial adapters etc.) are left alone.
-	const auto &serials = g_Conf.GetDeviceSerials();
-	const std::string driverpath = "/sys/bus/usb/drivers/ftdi_sio/";
-	DIR *dir = opendir(driverpath.c_str());
-	if (!dir) return;
-
-	struct dirent *entry;
-	while ((entry = readdir(dir)) != nullptr)
-	{
-		if (!strchr(entry->d_name, ':'))
-			continue;
-
-		// Read serial number via sysfs
-		std::string serialpath = driverpath + entry->d_name + "/../serial";
-		std::ifstream sf(serialpath);
-		if (!sf.is_open())
-			continue;
-
-		std::string serial;
-		std::getline(sf, serial);
-		while (!serial.empty() && (serial.back() == '\n' || serial.back() == '\r'))
-			serial.pop_back();
-
-		bool is_whitelisted = serials.empty(); // no whitelist = unbind all (legacy behavior)
-		for (const auto &ws : serials)
-		{
-			if (serial == ws) { is_whitelisted = true; break; }
-		}
-
-		if (is_whitelisted)
-		{
-			std::ofstream uf(driverpath + "unbind");
-			if (uf.is_open())
-			{
-				uf << entry->d_name;
-				std::cout << "Unbound ftdi_sio from " << entry->d_name << " (SN=" << serial << ")" << std::endl;
-			}
-		}
-	}
-	closedir(dir);
+	// POSIX-only mode: do not unbind the kernel ftdi_sio driver.
+	// Historically we unbound ftdi_sio so libftd2xx could access devices.
+	// With the POSIX backend we must not touch kernel drivers; leave devices bound.
+	(void)g_Conf; // silence unused variable warnings when present
+	return;
 }
 
 bool CController::DiscoverFtdiDevices(std::list<std::pair<std::string, std::string>> &found)
@@ -262,74 +234,55 @@ bool CController::DiscoverFtdiDevices(std::list<std::pair<std::string, std::stri
 	// Unbind ftdi_sio first so libftd2xx can see device details
 	UnbindAllFtdiSio();
 	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	const std::string byid = "/dev/serial/by-id";
+	DIR *dir = opendir(byid.c_str());
+	if (!dir) return true;
 
-	int iNbDevices = 0;
-	auto status = FT_CreateDeviceInfoList((LPDWORD)&iNbDevices);
-	if (FT_OK != status)
-	{
-		std::cerr << "Could not create FTDI device list" << std::endl;
-		return true;
-	}
+	const auto &whitelist = g_Conf.GetDeviceSerials();
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != nullptr) {
+		if (entry->d_name[0] == '.') continue;
+		std::string link = byid + "/" + entry->d_name;
+		char target[PATH_MAX];
+		ssize_t len = readlink(link.c_str(), target, sizeof(target)-1);
+		if (len <= 0) continue;
+		target[len] = '\0';
+		std::string devnode = std::string("/dev/") + basename(const_cast<char*>(target));
 
-	std::cout << "Detected " << iNbDevices << " USB-FTDI devices" << std::endl;
-	if ( iNbDevices > 0 )
-	{
-		FT_DEVICE_LIST_INFO_NODE *list = new FT_DEVICE_LIST_INFO_NODE[iNbDevices];
-		if (nullptr == list)
+		const std::string desc(entry->d_name);
+		std::string serial = GetUsbSerialForDevnode(devnode);
+
+		if (whitelist.empty())
 		{
-			std::cerr << "Could not create new device list" << std::endl;
-			return true;
-		}
-
-		status = FT_GetDeviceInfoList(list, (LPDWORD)&iNbDevices);
-		if (FT_OK != status)
-		{
-			std::cerr << "Could not get FTDI device list" << std::endl;
-			return true;
-		}
-
-		const auto &whitelist = g_Conf.GetDeviceSerials();
-		for ( int i = 0; i < iNbDevices; i++ )
-		{
-			const std::string desc(list[i].Description);
-			const std::string sn(list[i].SerialNumber);
-
-			if (whitelist.empty())
+			if (IsAmbeDevice(desc))
 			{
-				// No whitelist configured — accept all AMBE devices by name
-				if (IsAmbeDevice(desc))
-				{
-					std::cout << "Found AMBE device: " << desc << ", SN=" << sn << std::endl;
-					found.emplace_back(std::pair<std::string, std::string>(sn, desc));
-				}
-				else
-				{
-					std::cout << "Skipping non-AMBE FTDI device: " << desc << ", SN=" << sn << std::endl;
-				}
+				std::cout << "Found AMBE device: " << desc << " (serial=" << (serial.empty()?"(unknown)":serial) << ") -> " << devnode << std::endl;
+				found.emplace_back(std::make_pair(devnode, desc));
 			}
 			else
 			{
-				// Whitelist configured — only accept matching serial numbers
-				bool whitelisted = false;
-				for (const auto &ws : whitelist)
-				{
-					if (sn == ws) { whitelisted = true; break; }
-				}
-				if (whitelisted)
-				{
-					std::cout << "Found AMBE device: " << desc << ", SN=" << sn << " (whitelisted)" << std::endl;
-					found.emplace_back(std::pair<std::string, std::string>(sn, desc));
-				}
-				else
-				{
-					std::cout << "Skipping FTDI device: " << desc << ", SN=" << sn << " (not whitelisted)" << std::endl;
-				}
+				std::cout << "Skipping non-AMBE serial device: " << desc << std::endl;
 			}
 		}
-
-		delete[] list;
+		else
+		{
+			bool whitelisted = false;
+			for (const auto &ws : whitelist)
+			{
+				if ((!serial.empty() && serial.find(ws) != std::string::npos) || desc.find(ws) != std::string::npos || devnode.find(ws) != std::string::npos) { whitelisted = true; break; }
+			}
+			if (whitelisted)
+			{
+				std::cout << "Found AMBE device (whitelisted): " << desc << " (serial=" << (serial.empty()?"(unknown)":serial) << ") -> " << devnode << std::endl;
+				found.emplace_back(std::make_pair(devnode, desc));
+			}
+			else
+			{
+				std::cout << "Skipping serial device (not whitelisted): " << desc << " (serial=" << (serial.empty()?"(unknown)":serial) << ")" << std::endl;
+			}
+		}
 	}
-
+	closedir(dir);
 	return false;
 }
 
@@ -370,8 +323,8 @@ bool CController::InitVocoders()
 	for (const auto &dev : deviceset)
 	{
 		const auto &desc = dev.second;
-		if (0==desc.compare("ThumbDV") || 0==desc.compare("DVstick-30") || 0==desc.compare("USB-3000")
-			|| 0==desc.compare("FT230X Basic UART") || 0==desc.compare("FT232R USB UART"))
+		if (desc.find("ThumbDV") != std::string::npos || desc.find("DVstick-30") != std::string::npos || desc.find("USB-3000") != std::string::npos
+			|| desc.find("FT230X_Basic_UART") != std::string::npos || desc.find("FT232R_USB_UART") != std::string::npos)
 			dv3000_dev = dev;
 		else
 			dv3003_dev = dev;
@@ -422,8 +375,8 @@ bool CController::InitVocoders()
 	{
 		const auto &desc = deviceset.front().second;
 		Edvtype dvtype = Edvtype::dv3003;
-		if (0==desc.compare("ThumbDV") || 0==desc.compare("DVstick-30") || 0==desc.compare("USB-3000")
-			|| 0==desc.compare("FT230X Basic UART") || 0==desc.compare("FT232R USB UART"))
+		if (desc.find("ThumbDV") != std::string::npos || desc.find("DVstick-30") != std::string::npos || desc.find("USB-3000") != std::string::npos
+			|| desc.find("FT230X_Basic_UART") != std::string::npos || desc.find("FT232R_USB_UART") != std::string::npos)
 			dvtype = Edvtype::dv3000;
 
 		if (Edvtype::dv3000 == dvtype) {
@@ -455,8 +408,8 @@ bool CController::InitVocoders()
 		std::cout << "Using one DVSI device and md380_vocoder" << std::endl;
 		const auto &dev = deviceset.front();
 		Edvtype dvtype = Edvtype::dv3003;
-		if (0==dev.second.compare("ThumbDV") || 0==dev.second.compare("DVstick-30") || 0==dev.second.compare("USB-3000")
-			|| 0==dev.second.compare("FT230X Basic UART") || 0==dev.second.compare("FT232R USB UART"))
+		if (dev.second.find("ThumbDV") != std::string::npos || dev.second.find("DVstick-30") != std::string::npos || dev.second.find("USB-3000") != std::string::npos
+			|| dev.second.find("FT230X_Basic_UART") != std::string::npos || dev.second.find("FT232R_USB_UART") != std::string::npos)
 			dvtype = Edvtype::dv3000;
 
 		if (Edvtype::dv3000 == dvtype)
