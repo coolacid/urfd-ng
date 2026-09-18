@@ -191,11 +191,11 @@ void CController::ListDevices()
 		target[len] = '\0';
 		std::string devnode = std::string("/dev/") + basename(const_cast<char*>(target));
 		std::string serial = GetUsbSerialForDevnode(devnode);
-		std::cout << "  [" << idx++ << "] Description: " << entry->d_name << " -> " << target << "  Serial: " << (serial.empty()?"(unknown)":serial) << std::endl;
+		std::cout << "  [" << idx++ << "] " << (serial.empty()?"(unknown)":serial) << std::endl;
 	}
 	closedir(dir);
 	std::cout << std::endl;
-	std::cout << "Use 'DeviceSerial = <device-node-or-id>' in tcd.ini to select your AMBE device." << std::endl;
+	std::cout << "Use 'DeviceSerial = <usb-serial>' in tcd.ini to select your AMBE device." << std::endl;
 }
 
 bool CController::IsAmbeDevice(const std::string &desc)
