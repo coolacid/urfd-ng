@@ -29,8 +29,10 @@ struct SJsonKeys {
 	dextra { "DExtraPort", "DExtraEnable" },
 	dmrplus { "DMRPlusPort", "DMRPlusEnable" },
 	dplus { "DPlusPort", "DPlusEnable" },
-	m17 { "M17Port", "M17Enable" },
-	urf { "URFPort", "URFEnable" };
+	m17 { "M17Port", "M17Enable" };
+
+	struct URF { const std::string port, enable, interlinkversion; }
+	urf { "URFPort", "URFEnable", "URFInterlinkVersion" };
 
 	struct G3 { const std::string enable; }
 	g3 { "G3Enable" };

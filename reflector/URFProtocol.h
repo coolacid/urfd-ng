@@ -29,6 +29,9 @@ class CPeer;
 class CURFProtocol : public CSEProtocol
 {
 public:
+	// interlink major we announce: 4 carries the M17 extension, 3 is legacy
+	static uint8_t InterlinkMajor(void);
+
 	// initialization
 	bool Initialize(const char *type, const EProtocol ptype, const uint16_t port, const bool has_ipv4, const bool has_ipv6);
 

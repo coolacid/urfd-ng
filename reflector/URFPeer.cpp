@@ -22,6 +22,7 @@
 #include "Reflector.h"
 #include "URFPeer.h"
 #include "URFClient.h"
+#include "URFProtocol.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor
@@ -57,7 +58,7 @@ bool CURFPeer::IsAlive(void) const
 ////////////////////////////////////////////////////////////////////////////////////////
 // revision helper
 
-EProtoRev CURFPeer::GetProtocolRevision(const CVersion &/*version*/)
+EProtoRev CURFPeer::GetProtocolRevision(const CVersion &version)
 {
-	return EProtoRev::original;
+	return ((version.GetMajor() >= 4) && (CURFProtocol::InterlinkMajor() >= 4)) ? EProtoRev::revised : EProtoRev::original;
 }

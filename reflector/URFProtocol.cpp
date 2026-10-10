@@ -97,19 +97,10 @@ void CURFProtocol::Task(void)
 			// callsign authorized?
 			if ( g_GateKeeper.MayLink(Callsign, Ip, EProtocol::urf, Modules) )
 			{
-				// acknowledge connecting request
-				// following is version dependent
-				if (EProtoRev::original == CURFPeer::GetProtocolRevision(Version))
-				{
-					// acknowledge the request
-					EncodeConnectAckPacket(&Buffer, Modules);
-					Send(Buffer, Ip);
-				}
-				else
-				{
-					EncodeConnectNackPacket(&Buffer);
-					Send(Buffer, Ip);
-				}
+				// acknowledge connecting request, both interlink majors are served:
+				// a legacy (3) peer just never gets the M17 extension
+				EncodeConnectAckPacket(&Buffer, Modules);
+				Send(Buffer, Ip);
 			}
 			else
 			{
@@ -132,6 +123,8 @@ void CURFProtocol::Task(void)
 					// create the new peer
 					// this also create one client per module
 					std::shared_ptr<CPeer>peer = std::make_shared<CURFPeer>(Callsign, Ip, Modules, Version);
+					std::cout << "URF peer " << Callsign << " linked with interlink "
+					          << ((EProtoRev::revised == CURFPeer::GetProtocolRevision(Version)) ? "4 (M17 extension)" : "3 (legacy)") << std::endl;
 
 					// append the peer to reflector peer list
 					// this also add all new clients to reflector client list
@@ -214,6 +207,11 @@ void CURFProtocol::HandleQueue(void)
 			CBuffer buffer;
 			if ( EncodeDvPacket(*packet, buffer) )
 			{
+				// interlink 4 peers get the header with the M17 extension
+				CBuffer extended(buffer);
+				if ( packet->IsDvHeader() )
+					static_cast<const CDvHeaderPacket &>(*packet).EncodeM17Extension(extended);
+
 				// and push it to all our clients linked to the module and who are not streaming in
 				CClients *clients = g_Reflector.GetClients();
 				auto it = clients->begin();
@@ -228,6 +226,10 @@ void CURFProtocol::HandleQueue(void)
 						if (EProtoRev::original == client->GetProtocolRevision())
 						{
 							Send(buffer, client->GetIp());
+						}
+						else if (EProtoRev::revised == client->GetProtocolRevision())
+						{
+							Send(extended, client->GetIp());
 						}
 					}
 				}
@@ -512,7 +514,7 @@ bool CURFProtocol::IsValidNackPacket(const CBuffer &Buffer, CCallsign *callsign)
 bool CURFProtocol::IsValidDvHeaderPacket(const CBuffer &Buffer, std::unique_ptr<CDvHeaderPacket> &header)
 {
 	uint8_t magic[] = { 'U', 'R', 'F', 'H' };
-	if (Buffer.size()==CDvHeaderPacket::GetNetworkSize() && 0==Buffer.Compare(magic, 4))
+	if ((Buffer.size()==CDvHeaderPacket::GetNetworkSize() || Buffer.size()==CDvHeaderPacket::GetM17NetworkSize()) && 0==Buffer.Compare(magic, 4))
 	{
 		header = std::unique_ptr<CDvHeaderPacket>(new CDvHeaderPacket(Buffer));
 		if (header)
@@ -541,6 +543,16 @@ bool CURFProtocol::IsValidDvFramePacket(const CBuffer &Buffer, std::unique_ptr<C
 		}
 	}
 	return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+// interlink version
+
+uint8_t CURFProtocol::InterlinkMajor(void)
+{
+	if (g_Configure.Contains(g_Keys.urf.interlinkversion) && 3 == g_Configure.GetUnsigned(g_Keys.urf.interlinkversion))
+		return 3;
+	return uint8_t(g_Version.GetMajor());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -574,7 +586,7 @@ void CURFProtocol::EncodeConnectPacket(CBuffer *Buffer, const char *Modules)
 	g_Reflector.GetCallsign().CodeOut(Buffer->data()+4);
 	// our version
 	Buffer->ReplaceAt(10, (uint8_t *)Modules, strlen(Modules));
-	Buffer->Append((uint8_t)g_Version.GetMajor());
+	Buffer->Append(InterlinkMajor());
 	Buffer->Append((uint8_t)g_Version.GetMinor());
 	Buffer->Append((uint8_t)g_Version.GetRevision());
 }
@@ -596,7 +608,7 @@ void CURFProtocol::EncodeConnectAckPacket(CBuffer *Buffer, const char *Modules)
 	// the shared modules
 	Buffer->ReplaceAt(10, (uint8_t *)Modules, strlen(Modules));
 	// our version
-	Buffer->Append((uint8_t)g_Version.GetMajor());
+	Buffer->Append(InterlinkMajor());
 	Buffer->Append((uint8_t)g_Version.GetMinor());
 	Buffer->Append((uint8_t)g_Version.GetRevision());
 }

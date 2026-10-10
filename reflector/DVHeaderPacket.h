@@ -65,6 +65,9 @@ public:
 	CDvHeaderPacket(const CBuffer &buf);
 	static unsigned int GetNetworkSize();
 	void EncodeInterlinkPacket(CBuffer &buf) const;
+	// interlink major 4: the legacy header followed by the M17 META type and CAN
+	static unsigned int GetM17NetworkSize()         { return GetNetworkSize() + 2; }
+	void EncodeM17Extension(CBuffer &buf) const;
 
 	// identity
 	std::unique_ptr<CPacket> Copy(void);

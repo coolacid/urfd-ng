@@ -53,6 +53,12 @@ CDvHeaderPacket::CDvHeaderPacket(const CBuffer &buf) : CPacket(buf)
 		m_csMY.SetCallsign(data+o, CALLSIGN_LEN);
 		o += CALLSIGN_LEN;
 		m_uiCrc = data[o] * 0x100u + data[o+1];
+		o += 2;
+		if (buf.size() >= GetM17NetworkSize() && data[o] <= uint8_t(EM17Meta::ecd))
+		{
+			m_M17Meta = EM17Meta(data[o]);
+			m_uiM17Can = 0xFU & data[o+1];
+		}
 	}
 	else
 	{
@@ -79,6 +85,12 @@ void CDvHeaderPacket::EncodeInterlinkPacket(CBuffer &buf) const
 	m_csMY.GetCallsign(data+off);	off += CALLSIGN_LEN;
 	data[off++] = (m_uiCrc / 0x100u) & 0xffu;
 	data[off]   = m_uiCrc & 0xffu;
+}
+
+void CDvHeaderPacket::EncodeM17Extension(CBuffer &buf) const
+{
+	buf.Append(uint8_t(m_M17Meta));
+	buf.Append(uint8_t(m_uiM17Can));
 }
 
 // dstar constructor

@@ -475,6 +475,8 @@ bool CConfigure::ReadData(const std::string &path)
 					data[g_Keys.urf.port] = getUnsigned(value, "URF Port", 1024, 65535, 10017);
 				else if (0 == key.compare(JENABLE))
 					data[g_Keys.urf.enable] = IS_TRUE(value[0]);
+				else if (0 == key.compare("InterlinkVersion"))
+					data[g_Keys.urf.interlinkversion] = getUnsigned(value, "URF InterlinkVersion", 3, 4, 4);
 				else
 					badParam(key);
 				break;
