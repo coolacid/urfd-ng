@@ -113,6 +113,7 @@ enum class EProtocol { any, none, dextra, dplus, dcs, g3, xlxpeer, urf, dmrplus,
 // M17
 #define M17_KEEPALIVE_PERIOD			3
 #define M17_KEEPALIVE_TIMEOUT           (M17_KEEPALIVE_PERIOD*10)
+#define M17_RECONNECT_PERIOD            5                                   // in seconds, mrefd interlinks
 
 // P25
 #define P25_KEEPALIVE_PERIOD            3                                   // in seconds

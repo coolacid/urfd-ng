@@ -407,6 +407,16 @@ bool CConfigure::ReadData(const std::string &path)
 					data[g_Keys.m17.port] = getUnsigned(value, "M17 Port", 1024, 65535, 17000);
 				else if (0 == key.compare(JENABLE))
 					data[g_Keys.m17.enable] = IS_TRUE(value[0]);
+				else if (0 == key.compare(JCALLSIGN))
+				{
+					// M17 designator used to interlink with mrefd reflectors
+					std::string cs(value);
+					for (auto &c : cs) c = toupper(c);
+					if (7 == cs.size() && 0 == cs.compare(0, 4, "M17-"))
+						data[g_Keys.m17.callsign] = cs;
+					else
+						std::cerr << "ERROR: [M17] Callsign '" << value << "' is not an M17 reflector designator like M17-XXX, M17 interlinking stays off" << std::endl;
+				}
 				else
 					badParam(key);
 				break;

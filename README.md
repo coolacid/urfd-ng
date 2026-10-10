@@ -2,7 +2,7 @@
 
 Fork of [urfd](https://github.com/nostar/urfd) with extended features for the URF363 reflector project.
 
-**Version 4.0.1-dht** | Dashboard v2.7.0
+**Version 4.1.0-dht** | Dashboard v2.7.0
 
 ## What's New in This Fork
 
@@ -405,6 +405,7 @@ M17 listen-only clients (LSTN packets) are accepted and registered on the reques
 - **TYPE field**: Voice frames are recognised in both the legacy and the V#3 TYPE layout of the M17 specification; encrypted streams are dropped in both.
 - **Packet mode**: `M17P` packets (e.g. SMS) are checked against both CRCs and forwarded unchanged to the other M17 clients on the sender's module.
 - **URF interlink 4**: The stream header to URF peers carries the M17 META type and CAN, so GNSS stays GNSS across linked reflectors. The interlink version is negotiated per peer: only peers announcing major 4 get the 2 extra bytes, peers announcing 3 (other urfd forks) get the unchanged legacy header. `[URF] InterlinkVersion = 3` forces legacy mode, announcing 3 and never sending the extension.
+- **mrefd interlink**: Modules can be shared with mrefd reflectors, listed as `M17-XXX <address> <modules> [port]` in `urfd.interlink` (a trailing `L`, `M17-XXXL`, for a legacy mrefd < 1.0). urfd links under the M17 designator set in `[M17] Callsign = M17-XXX`; without it M17 interlinking is off. Link, keepalive, voice and packet mode data follow mrefd: data to an mrefd >= 1.0 carries the module as an extra byte, a legacy one is addressed as `M17-XXX <module>` and gets no packet mode data. As in mrefd, a stream from one mrefd is not passed on to another one. Interlinked mrefds show up as M17 peers.
 - **Relinking**: A `CONN`/`LSTN` replaces any earlier link of the same callsign and IP, so switching modules does not leave a stale entry behind.
 - **META**: The META bytes reach other M17 clients with a TYPE that says what they carry (text, GNSS or ECD) and the source's CAN, so a GNSS position is no longer shown as text. A GNSS position is decoded into a Maidenhead locator, shown in the last-heard list (linked to OpenStreetMap) and in `/json/stations`.
 
@@ -780,6 +781,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 ### Infrastructure
 - **Echo module**: Built-in parrot with enable/disable flag
 - **M17 LSTN support**: Listen-only M17 clients for monitoring services, which may not transmit
+- **mrefd interlink**: Share modules with M17 reflectors (`M17-XXX` in `urfd.interlink`, `[M17] Callsign`), including legacy mrefd
 - **URF interlink 4**: M17 META type and CAN in the URF stream header, negotiated per peer with fallback to 3; `[URF] InterlinkVersion = 3` for legacy mode
 - **M17 compatibility**: V#3 TYPE field, packet mode (SMS) forwarding, `PARROT`/`ECHO` destination to the echo module, relinking replaces the old link, META type and CAN kept, GNSS position as locator
 - **Transcoder resilience**: TCP keepalive, non-blocking poll, queue drain on disconnect, automatic reconnect after network outages

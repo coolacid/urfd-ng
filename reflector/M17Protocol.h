@@ -38,6 +38,7 @@ public:
 
 	CDvHeaderPacket m_dvHeader;
 	uint32_t        m_iSeqCounter;
+	bool            m_bFromPeer = false;   // from an interlinked mrefd, not sent to other ones
 };
 
 class CM17Protocol : public CProtocol
@@ -56,8 +57,21 @@ protected:
 	// keepalive helpers
 	void HandleKeepalives(void);
 
+	// mrefd interlink helpers, PEER_DROP marks peer data for no shared module
+	static constexpr char PEER_DROP = '!';
+	static std::string Designator(const CCallsign &);
+	void HandlePeerLinks(void);
+	char StripPeerModule(CBuffer &, const CIp &);
+	void OnInterlinkConnectIn(const CCallsign &, const char *, const CIp &);
+	void OnInterlinkAckIn(const CCallsign &, const char *, const CIp &);
+	bool RemovePeer(const CIp &);
+	bool IsPeer(const CIp &);
+	bool IsPeerMastering(char);
+	bool IsInterlinkListed(const CCallsign &, const CIp &, const char *, bool &) const;
+	void SendToPeerClient(const SM17Frame &, const CClient &, char);
+
 	// stream helpers
-	void OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &, const CIp &);
+	void OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &, const CIp &, char peerModule = ' ');
 
 	// client helpers
 	bool IsListenOnlyClient(const CIp &);
@@ -70,7 +84,7 @@ protected:
 	bool IsEchoPlaybackFor(const CClient &, char) const;
 
 	// packet mode helpers
-	void OnPacketModePacketIn(const CBuffer &, const CIp &);
+	void OnPacketModePacketIn(const CBuffer &, const CIp &, char peerModule = ' ');
 
 	// packet decoding helpers
 	bool IsValidConnectPacket(const CBuffer &, CCallsign &, char &);
@@ -79,14 +93,22 @@ protected:
 	bool IsValidKeepAlivePacket(const CBuffer &, CCallsign &);
 	bool IsValidDvPacket(const CBuffer &, std::unique_ptr<CDvHeaderPacket> &, std::unique_ptr<CDvFramePacket> &);
 	bool IsValidPacketModePacket(const CBuffer &) const;
+	bool IsValidInterlinkPacket(const CBuffer &, const char *, CCallsign &, char *) const;
 
 	// packet encoding helpers
 	void EncodeKeepAlivePacket(CBuffer &);
+	void EncodeInterlinkPacket(CBuffer &, const char *tag, const char *modules) const;
+	void EncodeInterlinkShortPacket(CBuffer &, const char *) const;
 	void EncodeM17Packet(SM17Frame &, const CDvHeaderPacket &, const CDvFramePacket *, uint32_t) const;
 
 protected:
 	// for keep alive
 	CTimer m_LastKeepaliveTime;
+
+	// mrefd interlinks
+	CTimer    m_LastPeersLinkTime;
+	CCallsign m_InterlinkCallsign;
+	bool      m_bInterlink = false;
 
 	// for queue header caches
 	std::unordered_map<char, CM17StreamCacheItem> m_StreamsCache;

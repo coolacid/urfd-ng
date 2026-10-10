@@ -202,7 +202,8 @@ void CCallsign::SetCallsign(const std::string &s_in, bool updateids)
 	
 	// Heuristic: Truncate suffix if > 3 chars after last digit (e.g. KK7MFEP -> KK7MFE)
 	// We only apply this if there is no explicit separator like '/'
-	if (s.find('/') == std::string::npos) {
+	// and never to M17 reflector designators like M17-QQQ
+	if (s.find('/') == std::string::npos && 0 != s.compare(0, 4, "M17-")) {
 		long lastDigitIdx = -1;
 		for (long i = (long)s.size() - 1; i >= 0; i--) {
 			if (isdigit(s[i])) {

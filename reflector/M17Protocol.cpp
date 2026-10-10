@@ -18,7 +18,9 @@
 
 
 #include <string.h>
+#include <algorithm>
 #include "M17Client.h"
+#include "M17Peer.h"
 #include "M17Protocol.h"
 #include "M17Packet.h"
 #include "Global.h"
@@ -34,6 +36,15 @@ bool CM17Protocol::Initialize(const char *type, const EProtocol ptype, const uin
 
 	// update time
 	m_LastKeepaliveTime.start();
+	m_LastPeersLinkTime.start();
+
+	// the M17 designator for interlinks with mrefd reflectors, none disables them
+	if ( g_Configure.Contains(g_Keys.m17.callsign) )
+	{
+		m_InterlinkCallsign.SetCallsign(g_Configure.GetString(g_Keys.m17.callsign), false);
+		m_bInterlink = true;
+		std::cout << "M17 interlinks as " << m_InterlinkCallsign << std::endl;
+	}
 
 	// done
 	return true;
@@ -50,6 +61,7 @@ void CM17Protocol::Task(void)
 	CIp       Ip;
 	CCallsign Callsign;
 	char      ToLinkModule;
+	char      Modules[27];
 	std::unique_ptr<CDvHeaderPacket> Header;
 	std::unique_ptr<CDvFramePacket>  Frame;
 
@@ -64,13 +76,21 @@ void CM17Protocol::Task(void)
 	if ( Receive4(Buffer, Ip, 20) )
 #endif
 	{
+		// data from an interlinked mrefd has one more byte, telling the module
+		const char PeerModule = StripPeerModule(Buffer, Ip);
+
 		// crack the packet
-		if ( IsValidDvPacket(Buffer, Header, Frame) )
+		if ( PEER_DROP == PeerModule )
 		{
-			MapEchoDestination(*Header);
+			// from an interlinked mrefd, but for no module it shares
+		}
+		else if ( IsValidDvPacket(Buffer, Header, Frame) )
+		{
+			if ( ' ' == PeerModule )
+				MapEchoDestination(*Header);
 
 			// listen-only clients may not transmit
-			if ( IsListenOnlyClient(Ip) )
+			if ( (' ' == PeerModule) && IsListenOnlyClient(Ip) )
 			{
 				if ( Frame->IsLastPacket() )
 					std::cout << "M17 listen-only client at " << Ip << " transmitted as " << Header->GetMyCallsign() << ", ignored" << std::endl;
@@ -83,7 +103,7 @@ void CM17Protocol::Task(void)
 				const bool gnss = (EM17Meta::gnss == Header->GetM17Meta()) && (0 == (0x7FFFU & Frame->M17FrameNumber()) % 25);
 				const CCallsign my(Header->GetMyCallsign());
 
-				OnDvHeaderPacketIn(Header, Ip);
+				OnDvHeaderPacketIn(Header, Ip, PeerModule);
 
 				if ( gnss )
 					OnGnssIn(my, Frame->GetNonce());
@@ -126,7 +146,7 @@ void CM17Protocol::Task(void)
 						clients->RemoveClient(c);
 
 					// create the client and append
-					clients->AddClient(std::make_shared<CM17Client>(Callsign, Ip, ToLinkModule, isListen));
+					clients->AddClient(std::make_shared<CM17Client>(Callsign, Ip, ToLinkModule, isListen ? EM17ClientType::listenonly : EM17ClientType::simple));
 					g_Reflector.ReleaseClients();
 				}
 				else
@@ -144,21 +164,38 @@ void CM17Protocol::Task(void)
 			}
 
 		}
+		else if ( IsValidInterlinkPacket(Buffer, "CONN", Callsign, Modules) )
+		{
+			OnInterlinkConnectIn(Callsign, Modules, Ip);
+		}
+		else if ( IsValidInterlinkPacket(Buffer, "ACKN", Callsign, Modules) )
+		{
+			OnInterlinkAckIn(Callsign, Modules, Ip);
+		}
 		else if ( IsValidDisconnectPacket(Buffer, Callsign) )
 		{
-			std::cout << "M17 disconnect packet from " << Callsign << " at " << Ip << std::endl;
-
-			// find client
-			CClients *clients = g_Reflector.GetClients();
-			std::shared_ptr<CClient>client = clients->FindClient(Ip, EProtocol::m17);
-			if ( client != nullptr )
+			if ( IsPeer(Ip) )
 			{
-				// remove it
-				clients->RemoveClient(client);
-				// and acknowledge the disconnect
-				Send("DISC", Ip);
+				// an interlinked mrefd unlinks
+				std::cout << "M17 disconnect packet from peer " << Callsign << " at " << Ip << std::endl;
+				RemovePeer(Ip);
 			}
-			g_Reflector.ReleaseClients();
+			else
+			{
+				std::cout << "M17 disconnect packet from " << Callsign << " at " << Ip << std::endl;
+
+				// find client
+				CClients *clients = g_Reflector.GetClients();
+				std::shared_ptr<CClient>client = clients->FindClient(Ip, EProtocol::m17);
+				if ( client != nullptr )
+				{
+					// remove it
+					clients->RemoveClient(client);
+					// and acknowledge the disconnect
+					Send("DISC", Ip);
+				}
+				g_Reflector.ReleaseClients();
+			}
 		}
 		else if ( IsValidKeepAlivePacket(Buffer, Callsign) )
 		{
@@ -171,10 +208,17 @@ void CM17Protocol::Task(void)
 				client->Alive();
 			}
 			g_Reflector.ReleaseClients();
+
+			// and an interlinked reflector as a whole
+			CPeers *peers = g_Reflector.GetPeers();
+			std::shared_ptr<CPeer>peer = peers->FindPeer(Ip, EProtocol::m17);
+			if ( peer != nullptr )
+				peer->Alive();
+			g_Reflector.ReleasePeers();
 		}
 		else if ( IsValidPacketModePacket(Buffer) )
 		{
-			OnPacketModePacketIn(Buffer, Ip);
+			OnPacketModePacketIn(Buffer, Ip, PeerModule);
 		}
 		else
 		{
@@ -200,12 +244,19 @@ void CM17Protocol::Task(void)
 		// update time
 		m_LastKeepaliveTime.start();
 	}
+
+	// link the mrefd reflectors listed in the interlink file
+	if ( m_LastPeersLinkTime.time() > M17_RECONNECT_PERIOD )
+	{
+		HandlePeerLinks();
+		m_LastPeersLinkTime.start();
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // streams helpers
 
-void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, const CIp &Ip)
+void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, const CIp &Ip, char peerModule)
 {
 	// find the stream
 	auto stream = GetStream(Header->GetStreamId(), &Ip);
@@ -223,8 +274,10 @@ void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, 
 		CCallsign rpt1(Header->GetRpt1Callsign());
 		CCallsign rpt2(Header->GetRpt2Callsign());
 
-		// find this client
-		std::shared_ptr<CClient>client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17);
+		// find this client, for an interlinked reflector the one of the module
+		std::shared_ptr<CClient>client = (' ' == peerModule)
+			? g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17)
+			: g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17, peerModule);
 		if ( client )
 		{
 			// get client callsign
@@ -265,6 +318,7 @@ void CM17Protocol::HandleQueue(void)
 			// m_StreamsCache[module] will be created if it doesn't exist
 			m_StreamsCache[module].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
 			m_StreamsCache[module].m_iSeqCounter = 0;
+			m_StreamsCache[module].m_bFromPeer = IsPeerMastering(module);
 		}
 		else if (packet->IsDvFrame())
 		{
@@ -281,8 +335,14 @@ void CM17Protocol::HandleQueue(void)
 				std::shared_ptr<CClient>client = nullptr;
 				while ( (client = clients->FindNextClient(EProtocol::m17, it)) != nullptr )
 				{
+					// an interlinked reflector gets streams from here, but none from another one (as mrefd)
+					if ( std::static_pointer_cast<CM17Client>(client)->IsReflector() )
+					{
+						if ( !client->IsAMaster() && (client->GetReflectorModule() == module) && !m_StreamsCache[module].m_bFromPeer )
+							SendToPeerClient(frame, *client, module);
+					}
 					// is this client busy ?
-					if ( !client->IsAMaster() && ((client->GetReflectorModule() == module) || IsEchoPlaybackFor(*client, module)) )
+					else if ( !client->IsAMaster() && ((client->GetReflectorModule() == module) || IsEchoPlaybackFor(*client, module)) )
 					{
 						// set the destination
 						client->GetCallsign().CodeOut(frame.lich.addr_dst);
@@ -298,6 +358,257 @@ void CM17Protocol::HandleQueue(void)
 			m_StreamsCache[module].m_iSeqCounter++;
 		}
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+// mrefd interlink helpers
+//
+// Interlinked mrefd reflectors (M17-XXX in the interlink file) link with a 37 byte
+// CONN/ACKN carrying the shared modules. Their stream and packet data carry one more
+// byte: an mrefd >= 1.0 appends the module, a legacy one appends 1 and addresses the
+// module in the destination ("M17-XXX B").
+
+// the M17-XXX designator of a reflector, empty for anything else; GetBase() would
+// stop at the '-'
+std::string CM17Protocol::Designator(const CCallsign &cs)
+{
+	std::string s = cs.GetCS().substr(0, CALLSIGN_LEN - 1);
+	s.erase(s.find_last_not_of(' ') + 1);
+	return (0 == s.compare(0, 4, "M17-")) ? s : std::string();
+}
+
+// for data from an interlinked reflector: drop the extra byte and return the module,
+// or PEER_DROP for peer data that can't be placed on a shared module
+char CM17Protocol::StripPeerModule(CBuffer &Buffer, const CIp &Ip)
+{
+	const bool voice = (0 == Buffer.Compare((uint8_t *)"M17 ", 4));
+	const bool data = (0 == Buffer.Compare((uint8_t *)"M17P", 4));
+	if ( !m_bInterlink || !(voice || data) )
+		return ' ';
+
+	char module = ' ';
+	CPeers *peers = g_Reflector.GetPeers();
+	auto peer = peers->FindPeer(Ip, EProtocol::m17);
+	if ( peer != nullptr )
+	{
+		module = PEER_DROP;
+		if ( (voice && (sizeof(SM17Frame) + 1 != Buffer.size())) || (data && (Buffer.size() < 38)) )
+		{
+			g_Reflector.ReleasePeers();
+			return module;
+		}
+
+		if ( std::static_pointer_cast<CM17Peer>(peer)->IsLegacy() )
+		{
+			// legacy reflectors send no packet mode data
+			if ( voice )
+			{
+				CCallsign dst;
+				dst.CodeIn(Buffer.data() + 6);
+				module = dst.GetCSModule();
+			}
+		}
+		else
+		{
+			module = char(Buffer.data()[Buffer.size() - 1]);
+		}
+
+		// only a module this peer shares
+		bool shared = false;
+		for ( auto it = peer->cbegin(); it != peer->cend(); it++ )
+			shared = shared || ((*it)->GetReflectorModule() == module);
+		if ( shared )
+		{
+			Buffer.resize(Buffer.size() - 1);
+			// the destination is @ALL or M17-XXX x, neither makes a valid header
+			// callsign, so address the frame to this reflector's module instead
+			if ( voice )
+			{
+				CCallsign dst(g_Reflector.GetCallsign());
+				dst.SetCSModule(module);
+				dst.CodeOut(Buffer.data() + 6);
+			}
+		}
+		else
+			module = PEER_DROP;
+	}
+	g_Reflector.ReleasePeers();
+	return module;
+}
+
+// listed in the interlink file as an M17 reflector with this IP and exactly these modules?
+bool CM17Protocol::IsInterlinkListed(const CCallsign &cs, const CIp &Ip, const char *modules, bool &legacy) const
+{
+	bool ok = false;
+	auto ilmap = g_GateKeeper.GetInterlinkMap();
+	auto item = ilmap->FindMapItem(Designator(cs));
+	if ( item && ((item->GetProtocol() == "M17") || (item->GetProtocol() == "M17L")) )
+	{
+		legacy = (item->GetProtocol() == "M17L");
+		std::string a(item->GetModules()), b(modules);
+		std::sort(a.begin(), a.end());
+		std::sort(b.begin(), b.end());
+		if ( !item->HasSameIp(Ip) )
+			std::cout << "M17 interlink from " << cs << " at " << Ip << " is not from the IP in the interlink file" << std::endl;
+		else if ( a != b )
+			std::cout << "M17 interlink from " << cs << " is for modules '" << modules << "' but the interlink file says '" << item->GetModules() << "'" << std::endl;
+		else
+			ok = true;
+	}
+	else
+	{
+		std::cout << "M17 interlink from " << cs << " at " << Ip << " is not in the interlink file" << std::endl;
+	}
+	g_GateKeeper.ReleaseInterlinkMap();
+	return ok;
+}
+
+void CM17Protocol::OnInterlinkConnectIn(const CCallsign &cs, const char *modules, const CIp &Ip)
+{
+	std::cout << "M17 interlink connect from " << cs << " at " << Ip << " for modules " << modules << std::endl;
+
+	bool legacy;
+	CBuffer reply;
+	if ( m_bInterlink && IsInterlinkListed(cs, Ip, modules, legacy) )
+		EncodeInterlinkPacket(reply, "ACKN", modules);
+	else
+		EncodeInterlinkShortPacket(reply, "NACK");
+	Send(reply, Ip);
+}
+
+void CM17Protocol::OnInterlinkAckIn(const CCallsign &cs, const char *modules, const CIp &Ip)
+{
+	bool legacy;
+	if ( !m_bInterlink || !IsInterlinkListed(cs, Ip, modules, legacy) )
+		return;
+
+	for ( const char *m = modules; *m; m++ )
+	{
+		if ( !g_Reflector.IsValidModule(*m) )
+		{
+			std::cerr << "This reflector has no module '" << *m << "', so it can't interlink with " << cs << std::endl;
+			return;
+		}
+	}
+
+	CPeers *peers = g_Reflector.GetPeers();
+	if ( peers->FindPeer(cs, Ip, EProtocol::m17) == nullptr )
+	{
+		std::cout << "M17 interlink with " << cs << " at " << Ip << " on modules " << modules << (legacy ? " (legacy)" : "") << std::endl;
+		peers->AddPeer(std::make_shared<CM17Peer>(cs, Ip, modules, legacy));
+	}
+	g_Reflector.ReleasePeers();
+}
+
+// is the stream on this module coming in from an interlinked mrefd?
+bool CM17Protocol::IsPeerMastering(char module)
+{
+	bool fromPeer = false;
+	CClients *clients = g_Reflector.GetClients();
+	auto it = clients->begin();
+	std::shared_ptr<CClient>client = nullptr;
+	while ( (client = clients->FindNextClient(EProtocol::m17, it)) != nullptr )
+	{
+		if ( client->IsAMaster() && (client->GetReflectorModule() == module) && std::static_pointer_cast<CM17Client>(client)->IsReflector() )
+			fromPeer = true;
+	}
+	g_Reflector.ReleaseClients();
+	return fromPeer;
+}
+
+bool CM17Protocol::IsPeer(const CIp &Ip)
+{
+	const bool found = (nullptr != g_Reflector.GetPeers()->FindPeer(Ip, EProtocol::m17));
+	g_Reflector.ReleasePeers();
+	return found;
+}
+
+// CPeers keeps a peer while it is talking, true only if it is gone
+bool CM17Protocol::RemovePeer(const CIp &Ip)
+{
+	CPeers *peers = g_Reflector.GetPeers();
+	auto peer = peers->FindPeer(Ip, EProtocol::m17);
+	if ( peer != nullptr )
+		peers->RemovePeer(peer);
+	const bool removed = (nullptr == peers->FindPeer(Ip, EProtocol::m17));
+	g_Reflector.ReleasePeers();
+	if ( !removed )
+		std::cout << "M17 peer at " << Ip << " is talking, it is removed once its stream ends" << std::endl;
+	return removed;
+}
+
+// connect the M17 reflectors of the interlink file, drop those no longer listed
+void CM17Protocol::HandlePeerLinks(void)
+{
+	if ( !m_bInterlink )
+		return;
+
+	CBuffer buffer;
+	auto ilmap = g_GateKeeper.GetInterlinkMap();
+	CPeers *peers = g_Reflector.GetPeers();
+
+	auto pit = peers->begin();
+	std::shared_ptr<CPeer>peer = nullptr;
+	while ( (peer = peers->FindNextPeer(EProtocol::m17, pit)) != nullptr )
+	{
+		// no longer listed, or listed with other modules, address or legacy flag
+		auto item = ilmap->FindMapItem(Designator(peer->GetCallsign()));
+		bool changed = (nullptr == item);
+		if ( item )
+		{
+			std::string a(item->GetModules()), b(peer->GetReflectorModules());
+			std::sort(a.begin(), a.end());
+			std::sort(b.begin(), b.end());
+			changed = (a != b) || !item->HasSameIp(peer->GetIp())
+				|| ((item->GetProtocol() == "M17L") != std::static_pointer_cast<CM17Peer>(peer)->IsLegacy());
+		}
+		if ( changed && !peer->IsAMaster() )
+		{
+			EncodeInterlinkShortPacket(buffer, "DISC");
+			Send(buffer, peer->GetIp());
+			std::cout << "Sending disconnect packet to M17 peer " << peer->GetCallsign() << ", its interlink entry changed" << std::endl;
+			peers->RemovePeer(peer);
+		}
+	}
+
+	for ( auto it = ilmap->begin(); it != ilmap->end(); it++ )
+	{
+		if ( (it->second.GetProtocol() != "M17") && (it->second.GetProtocol() != "M17L") )
+			continue;
+		CCallsign cs;
+		cs.SetCallsign(it->first, false);
+		if ( it->second.GetIp().IsSet() && (nullptr == peers->FindPeer(cs, EProtocol::m17)) )
+		{
+			EncodeInterlinkPacket(buffer, "CONN", it->second.GetModules().c_str());
+			Send(buffer, it->second.GetIp());
+			std::cout << "Sent connect packet to M17 peer " << it->first << " @ " << it->second.GetIp() << " for modules " << it->second.GetModules() << std::endl;
+		}
+	}
+
+	g_Reflector.ReleasePeers();
+	g_GateKeeper.ReleaseInterlinkMap();
+}
+
+// stream data to an interlinked reflector, see above for the extra byte
+void CM17Protocol::SendToPeerClient(const SM17Frame &frame, const CClient &client, char module)
+{
+	SM17Frame peerFrame(frame);
+	if ( EM17ClientType::legacy == static_cast<const CM17Client &>(client).GetType() )
+	{
+		CCallsign dst(client.GetCallsign());
+		dst.SetCSModule(module);
+		dst.CodeOut(peerFrame.lich.addr_dst);
+	}
+	else
+	{
+		// broadcast, @ALL
+		memset(peerFrame.lich.addr_dst, 0xFF, 6);
+	}
+	peerFrame.crc = htons(m17crc.CalcCRC(peerFrame.magic, sizeof(SM17Frame)-2));
+
+	CBuffer buffer((uint8_t *)&peerFrame, sizeof(SM17Frame));
+	buffer.Append(uint8_t((EM17ClientType::legacy == static_cast<const CM17Client &>(client).GetType()) ? 1 : module));
+	Send(buffer, client.GetIp());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -357,13 +668,13 @@ bool CM17Protocol::IsEchoPlaybackFor(const CClient &client, char module) const
 ////////////////////////////////////////////////////////////////////////////////////////
 // packet mode helpers
 
-void CM17Protocol::OnPacketModePacketIn(const CBuffer &Buffer, const CIp &Ip)
+void CM17Protocol::OnPacketModePacketIn(const CBuffer &Buffer, const CIp &Ip, char peerModule)
 {
 	CCallsign src;
 	src.CodeIn(Buffer.data() + 10);
 
 	CClients *clients = g_Reflector.GetClients();
-	std::shared_ptr<CClient>sender = clients->FindClient(Ip, EProtocol::m17);
+	std::shared_ptr<CClient>sender = (' ' == peerModule) ? clients->FindClient(Ip, EProtocol::m17) : clients->FindClient(Ip, EProtocol::m17, peerModule);
 	if ( (sender != nullptr) && std::static_pointer_cast<CM17Client>(sender)->IsListenOnly() )
 	{
 		std::cout << "M17 listen-only client " << sender->GetCallsign() << " sent packet mode data, ignored" << std::endl;
@@ -384,13 +695,29 @@ void CM17Protocol::OnPacketModePacketIn(const CBuffer &Buffer, const CIp &Ip)
 			}
 			std::cout << std::endl;
 
-			// forward it unchanged to all other M17 clients linked to the module
+			// forward it unchanged to all other M17 clients linked to the module, and from
+			// a local client also to interlinked reflectors (not legacy ones), as mrefd does
+			const bool fromPeer = std::static_pointer_cast<CM17Client>(sender)->IsReflector();
 			auto it = clients->begin();
 			std::shared_ptr<CClient>client = nullptr;
 			while ( (client = clients->FindNextClient(EProtocol::m17, it)) != nullptr )
 			{
-				if ( (client != sender) && !client->IsAMaster() && (client->GetReflectorModule() == module) )
+				if ( (client == sender) || client->IsAMaster() || (client->GetReflectorModule() != module) )
+					continue;
+				const auto type = std::static_pointer_cast<CM17Client>(client)->GetType();
+				if ( EM17ClientType::reflector == type )
+				{
+					if ( !fromPeer )
+					{
+						CBuffer withModule(Buffer);
+						withModule.Append(uint8_t(module));
+						Send(withModule, client->GetIp());
+					}
+				}
+				else if ( EM17ClientType::legacy != type )
+				{
 					Send(Buffer, client->GetIp());
+				}
 			}
 		}
 	}
@@ -414,6 +741,10 @@ void CM17Protocol::HandleKeepalives(void)
 	std::shared_ptr<CClient>client = nullptr;
 	while ( (client = clients->FindNextClient(EProtocol::m17, it)) != nullptr )
 	{
+		// interlinked reflectors are handled per peer below
+		if ( std::static_pointer_cast<CM17Client>(client)->IsReflector() )
+			continue;
+
 		// send keepalive
 		Send(keepalive, client->GetIp());
 
@@ -436,6 +767,34 @@ void CM17Protocol::HandleKeepalives(void)
 
 	}
 	g_Reflector.ReleaseClients();
+
+	// interlinked reflectors, keepalive with our M17 designator
+	if ( m_bInterlink )
+	{
+		CBuffer peerKeepalive;
+		EncodeInterlinkShortPacket(peerKeepalive, "PING");
+
+		CPeers *peers = g_Reflector.GetPeers();
+		auto pit = peers->begin();
+		std::shared_ptr<CPeer>peer = nullptr;
+		while ( (peer = peers->FindNextPeer(EProtocol::m17, pit)) != nullptr )
+		{
+			Send(peerKeepalive, peer->GetIp());
+			if ( peer->IsAMaster() )
+			{
+				peer->Alive();
+			}
+			else if ( !peer->IsAlive() )
+			{
+				CBuffer disconnect;
+				EncodeInterlinkShortPacket(disconnect, "DISC");
+				Send(disconnect, peer->GetIp());
+				std::cout << "M17 peer " << peer->GetCallsign() << " keepalive timeout" << std::endl;
+				peers->RemovePeer(peer);
+			}
+		}
+		g_Reflector.ReleasePeers();
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -474,19 +833,21 @@ bool CM17Protocol::IsValidDisconnectPacket(const CBuffer &Buffer, CCallsign &cal
 	if ((Buffer.size() == 10) && (0 == Buffer.Compare(tag, 4)))
 	{
 		callsign.CodeIn(Buffer.data() + 4);
-		valid = callsign.IsValid();
+		// or an interlinked mrefd, whose M17-XXX is no valid callsign
+		valid = callsign.IsValid() || !Designator(callsign).empty();
 	}
 	return valid;
 }
 
 bool CM17Protocol::IsValidKeepAlivePacket(const CBuffer &Buffer, CCallsign &callsign)
 {
-	uint8_t tag[] = { 'P', 'O', 'N', 'G' };
 	bool valid = false;
-	if ( (Buffer.size() == 10) || (0 == Buffer.Compare(tag, 4)) )
+	// clients answer with PONG, interlinked reflectors send PING
+	if ( (Buffer.size() == 10) && ((0 == Buffer.Compare((uint8_t *)"PONG", 4)) || (0 == Buffer.Compare((uint8_t *)"PING", 4))) )
 	{
 		callsign.CodeIn(Buffer.data() + 4);
-		valid = callsign.IsValid();
+		// or an interlinked mrefd, whose M17-XXX is no valid callsign
+		valid = callsign.IsValid() || !Designator(callsign).empty();
 	}
 	return valid;
 }
@@ -532,8 +893,36 @@ bool CM17Protocol::IsValidPacketModePacket(const CBuffer &Buffer) const
 	       (m17crc.CalcCRC(p + 34, len - 36) == ((p[len - 2] << 8) | p[len - 1]));
 }
 
+// CONN or ACKN between reflectors: tag, M17-XXX designator, null terminated modules
+bool CM17Protocol::IsValidInterlinkPacket(const CBuffer &Buffer, const char *tag, CCallsign &cs, char *modules) const
+{
+	if ( (37 != Buffer.size()) || (0 != Buffer.Compare((uint8_t *)tag, 4)) )
+		return false;
+	cs.CodeIn(Buffer.data() + 4);
+	memcpy(modules, Buffer.data() + 10, 27);
+	return (0 == modules[26]) && (0 != modules[0]) && !Designator(cs).empty();
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // packet encoding helpers
+
+// CONN or ACKN to an mrefd: tag, our M17 designator and the null terminated modules
+void CM17Protocol::EncodeInterlinkPacket(CBuffer &Buffer, const char *tag, const char *modules) const
+{
+	Buffer.Set(tag);
+	Buffer.resize(37);
+	memset(Buffer.data() + 4, 0, 33);
+	m_InterlinkCallsign.CodeOut(Buffer.data() + 4);
+	memcpy(Buffer.data() + 10, modules, std::min(strlen(modules), size_t(26)));
+}
+
+// NACK, PING or DISC to an mrefd: tag and our M17 designator
+void CM17Protocol::EncodeInterlinkShortPacket(CBuffer &Buffer, const char *tag) const
+{
+	Buffer.Set(tag);
+	Buffer.resize(10);
+	m_InterlinkCallsign.CodeOut(Buffer.data() + 4);
+}
 
 void CM17Protocol::EncodeKeepAlivePacket(CBuffer &Buffer)
 {

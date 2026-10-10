@@ -24,4 +24,13 @@
 #    Add "XLX" to use XLX peering instead (requires [XLXPeer] Enable = true).
 #    The protocol field is only supported for DCS entries.
 #
+#  M17 Peering with mrefd reflectors (port 17000, requires [M17] Callsign):
+#    M17-QQQ m17-qqq.example.com AB             # mrefd >= 1.0
+#    M17-QQQ m17-qqq.example.com AB 17001       # on a custom port
+#    M17-QQQL m17-qqq.example.com AB            # legacy mrefd < 1.0 (trailing L)
+#
+#    An address is required, M17 interlinks do not use the DHT. The modules
+#    must be the same on both sides, and the mrefd must list this reflector's
+#    [M17] Callsign with the same modules in its mrefd.interlink.
+#
 #############################################################################

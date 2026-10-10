@@ -28,8 +28,10 @@ struct SJsonKeys {
 	struct PORTENABLE { const std::string port, enable; }
 	dextra { "DExtraPort", "DExtraEnable" },
 	dmrplus { "DMRPlusPort", "DMRPlusEnable" },
-	dplus { "DPlusPort", "DPlusEnable" },
-	m17 { "M17Port", "M17Enable" };
+	dplus { "DPlusPort", "DPlusEnable" };
+
+	struct M17 { const std::string port, enable, callsign; }
+	m17 { "M17Port", "M17Enable", "M17Callsign" };
 
 	struct URF { const std::string port, enable, interlinkversion; }
 	urf { "URFPort", "URFEnable", "URFInterlinkVersion" };

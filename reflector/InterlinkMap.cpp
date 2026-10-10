@@ -63,7 +63,16 @@ bool CInterlinkMap::LoadFromFile(const std::string &filename)
 				// 1st token is callsign
 				if ( (token[0] = strtok(token[0], delim)) != nullptr )
 				{
-					if (strcmp(token[0], g_Configure.GetString(g_Keys.names.callsign).c_str()))
+					// mrefd marks a legacy (< 1.0) M17 reflector with a trailing L: M17-QQQL
+					bool m17legacy = false;
+					if (8 == strlen(token[0]) && 0 == memcmp(token[0], "M17-", 4) && 'L' == token[0][7])
+					{
+						token[0][7] = 0;
+						m17legacy = true;
+					}
+
+					const bool ownM17 = g_Configure.Contains(g_Keys.m17.callsign) && 0 == g_Configure.GetString(g_Keys.m17.callsign).compare(token[0]);
+					if (strcmp(token[0], g_Configure.GetString(g_Keys.names.callsign).c_str()) && !ownM17)
 					{
 						// default port and protocol depend on callsign prefix
 						int default_port;
@@ -74,6 +83,9 @@ bool CInterlinkMap::LoadFromFile(const std::string &filename)
 						} else if (0 == memcmp(token[0], "DCS", 3)) {
 							default_port = 30051;
 							default_proto = "DCS";
+						} else if (0 == memcmp(token[0], "M17-", 4)) {
+							default_port = 17000;
+							default_proto = m17legacy ? "M17L" : "M17";
 						} else {
 							default_port = 10002;
 							default_proto = "XLX";
@@ -115,6 +127,10 @@ bool CInterlinkMap::LoadFromFile(const std::string &filename)
 								}
 								auto &item = m_InterlinkMap[token[0]] = CInterlinkMapItem(token[1], token[2], (uint16_t)port);
 								item.SetProtocol(proto);
+							}
+							else if (token[1] && 0 == memcmp(token[0], "M17-", 4))
+							{
+								std::cout << token[0] << " needs an IP address, M17 interlinks do not use the DHT" << std::endl;
 							}
 #ifndef NO_DHT
 							else if (token[1])
