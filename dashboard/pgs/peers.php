@@ -40,11 +40,12 @@ for ($i=0;$i<$Reflector->PeerCount();$i++) {
 
 	for ($j=1;$j<count($Reflectors);$j++) {
 		if ($Name === $XML->GetElement($Reflectors[$j], "name")) {
-			$URL  = $XML->GetElement($Reflectors[$j], "dashboardurl");
+			$URL  = trim(html_entity_decode((string)$XML->GetElement($Reflectors[$j], "dashboardurl"), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 		}
 	}
-	if ($Result && (trim($URL) != "")) {
-		echo '<td><a href="'.$URL.'" target="_blank" class="listinglink" title="Visit the Dashboard of&nbsp;'.$Name.'" style="text-decoration:none;color:#000000;">'.$Name.'</a></td>';
+	$Name = htmlspecialchars($Name, ENT_QUOTES, 'UTF-8');
+	if ($Result && preg_match('#^https?://#i', $URL)) {
+		echo '<td><a href="'.htmlspecialchars($URL, ENT_QUOTES, 'UTF-8').'" target="_blank" rel="noopener noreferrer" class="listinglink" title="Visit the Dashboard of&nbsp;'.$Name.'" style="text-decoration:none;color:#000000;">'.$Name.'</a></td>';
 	} else {
 		echo '<td>'.$Name.'</td>';
 	}
@@ -69,7 +70,8 @@ for ($i=0;$i<$Reflector->PeerCount();$i++) {
 					echo $MC.'.'.$Bytes[1].'.'.$Bytes[2].'.'.$Bytes[3];
 					break;
 				default:
-					echo '<a href="http://'.$Reflector->Peers[$i]->GetIP().'" target="_blank" style="text-decoration:none;color:#000000;">'.$Reflector->Peers[$i]->GetIP().'</a>';
+					$PeerIP = htmlspecialchars($Reflector->Peers[$i]->GetIP(), ENT_QUOTES, 'UTF-8');
+					echo '<a href="http://'.$PeerIP.'" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:#000000;">'.$PeerIP.'</a>';
 			}
 		} else {
 			$ipstr = $Reflector->Peers[$i]->GetIP();

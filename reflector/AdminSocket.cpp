@@ -26,6 +26,7 @@
 
 #define ADMIN_TOKEN_TTL_SECONDS   3600   // 1 hour session
 #define ADMIN_MAX_MSG_SIZE        8192
+#define ADMIN_AUTH_FAIL_DELAY     2      // seconds without logins after a wrong password
 
 static const std::map<std::string, EProtocol> s_NameToProto = {
 	{"MMDVMClient", EProtocol::mmdvmclient}, {"SvxReflector", EProtocol::svxreflector}, {"SVX", EProtocol::svx},
@@ -195,6 +196,13 @@ void CAdminSocket::ClientThread(int clientFd, const std::string &clientAddr)
 				std::string respStr = err.dump() + "\n";
 				send(clientFd, respStr.c_str(), respStr.size(), MSG_NOSIGNAL);
 			}
+			catch (const std::exception &e)
+			{
+				// this thread is detached, an exception leaving it would end urfd
+				nlohmann::json err = {{"status", "error"}, {"message", std::string("command failed: ") + e.what()}};
+				std::string respStr = err.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
+				send(clientFd, respStr.c_str(), respStr.size(), MSG_NOSIGNAL);
+			}
 		}
 	}
 
@@ -304,8 +312,29 @@ nlohmann::json CAdminSocket::CmdAuth(const nlohmann::json &cmd)
 		return {{"status", "error"}, {"message", "missing password"}};
 
 	std::string pw = cmd["password"];
-	if (pw != m_Password)
+
+	// after a wrong password, refuse every attempt for a while, so that
+	// passwords can't be guessed through the dashboard at any speed
+	const auto now = std::chrono::steady_clock::now();
 	{
+		std::lock_guard<std::mutex> lock(m_TokenMutex);
+		if (now - m_LastAuthFailure < std::chrono::seconds(ADMIN_AUTH_FAIL_DELAY))
+			return {{"status", "error"}, {"message", "too many attempts, try again in a few seconds"}};
+	}
+
+	// compare in constant time
+	bool match = !m_Password.empty() && (pw.size() == m_Password.size());
+	if (match)
+	{
+		unsigned char diff = 0;
+		for (size_t i = 0; i < pw.size(); i++)
+			diff |= (unsigned char)pw[i] ^ (unsigned char)m_Password[i];
+		match = (0 == diff);
+	}
+	if (!match)
+	{
+		std::lock_guard<std::mutex> lock(m_TokenMutex);
+		m_LastAuthFailure = now;
 		std::cerr << "Admin: authentication failed" << std::endl;
 		return {{"status", "error"}, {"message", "invalid password"}};
 	}
@@ -339,15 +368,14 @@ bool CAdminSocket::ValidateToken(const std::string &token) const
 	return std::chrono::steady_clock::now() < it->second;
 }
 
+// 128 bits straight from the system's random source
 std::string CAdminSocket::GenerateToken(void)
 {
 	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::uniform_int_distribution<uint64_t> dis;
 	std::ostringstream oss;
-	oss << std::hex << std::setfill('0')
-	    << std::setw(16) << dis(gen)
-	    << std::setw(16) << dis(gen);
+	oss << std::hex << std::setfill('0');
+	for (int i = 0; i < 4; i++)
+		oss << std::setw(8) << rd();
 	return oss.str();
 }
 
@@ -1596,7 +1624,7 @@ nlohmann::json CAdminSocket::CmdMmdvmPeerList(void)
 	if (proto)
 	{
 		auto *mmdvm = static_cast<CDmrmmdvmProtocol *>(proto);
-		const auto &peerInfoMap = mmdvm->GetPeerInfo();
+		const auto peerInfoMap = mmdvm->GetPeerInfo();
 
 		// Iterate clients for this protocol
 		auto *clients = g_Reflector.GetClients();

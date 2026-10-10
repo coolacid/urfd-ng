@@ -31,16 +31,23 @@ $XML = new ParseXML();
 
 for ($i=0;$i<count($Reflectors);$i++) {
 
-   $NAME          = $XML->GetElement($Reflectors[$i], "name");
-   $COUNTRY       = $XML->GetElement($Reflectors[$i], "country");
-   $LASTCONTACT   = $XML->GetElement($Reflectors[$i], "lastcontact");
-   $COMMENT       = $XML->GetElement($Reflectors[$i], "comment");
-   $DASHBOARDURL  = $XML->GetElement($Reflectors[$i], "dashboardurl");
+   // every reflector in the world writes these, so they are escaped
+   $NAME          = DirectoryText($XML->GetElement($Reflectors[$i], "name"));
+   $COUNTRY       = DirectoryText($XML->GetElement($Reflectors[$i], "country"));
+   $LASTCONTACT   = (int)$XML->GetElement($Reflectors[$i], "lastcontact");
+   $COMMENT       = DirectoryText($XML->GetElement($Reflectors[$i], "comment"));
+   $DASHBOARDURL  = trim(html_entity_decode((string)$XML->GetElement($Reflectors[$i], "dashboardurl"), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 
    echo '
  <tr class="table-center">
    <td class="row-num">'.($i+1).'</td>
-   <td><a href="'.$DASHBOARDURL.'" target="_blank" class="listinglink" title="Visit the Dashboard of&nbsp;'.$NAME.'">'.$NAME.'</a></td>
+   <td>';
+   if (preg_match('#^https?://#i', $DASHBOARDURL)) {
+      echo '<a href="'.htmlspecialchars($DASHBOARDURL, ENT_QUOTES, 'UTF-8').'" target="_blank" rel="noopener noreferrer" class="listinglink" title="Visit the Dashboard of&nbsp;'.$NAME.'">'.$NAME.'</a>';
+   } else {
+      echo $NAME;
+   }
+   echo '</td>
    <td>'.$COUNTRY.'</td>
    <td><span class="status-dot '; if ($LASTCONTACT<(time()-600)) { echo 'status-down'; } ELSE { echo 'status-up'; } echo '"></span></td>
    <td>'.$COMMENT.'</td>

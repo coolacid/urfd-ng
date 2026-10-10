@@ -2,11 +2,24 @@
 var adminApiUrl = './api/admin.php';
 var isAuthenticated = false;
 
+// everything shown here may come from outside (hotspot config, node info,
+// host names), so it goes into the page escaped
+function esc(v) {
+    return String(v === undefined || v === null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// a value as a quoted JavaScript argument inside an onclick="..." attribute
+function jsArg(v) {
+    return esc(JSON.stringify(String(v === undefined || v === null ? '' : v)));
+}
+
 function adminPost(data, callback) {
     $.ajax({
         url: adminApiUrl,
         type: 'POST',
         contentType: 'application/json',
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
         data: JSON.stringify(data),
         success: function(resp) {
             if (typeof resp === 'string') resp = JSON.parse(resp);
@@ -94,18 +107,18 @@ function refreshTGList() {
                     '<span class="label label-default">' + formatSeconds(m.remaining) + '</span>';
                 var actions = '';
                 if (!m['static']) {
-                    actions += '<button class="btn btn-xs btn-danger" onclick="removeTG(\'' + m.protocol + '\',' + m.tg + ')">Remove</button> ';
+                    actions += '<button class="btn btn-xs btn-danger" onclick="removeTG(' + jsArg(m.protocol) + ',' + parseInt(m.tg, 10) + ')">Remove</button> ';
                 }
                 if (m.protocol === 'mmdvmclient' && !m['static']) {
-                    actions += '<button class="btn btn-xs btn-info" onclick="doKerchunk(' + m.tg + ')" title="Send kerchunk to BrandMeister">Kerchunk</button>';
+                    actions += '<button class="btn btn-xs btn-info" onclick="doKerchunk(' + parseInt(m.tg, 10) + ')" title="Send kerchunk to BrandMeister">Kerchunk</button>';
                 }
                 var dirStr = m['primary'] ? 'TX/RX' : 'RX';
                 tbody.append(
                     '<tr>' +
-                    '<td>' + ({mmdvmclient:'MMDVMClient',svxreflector:'SvxReflector',svx:'SVX'}[m.protocol] || m.protocol) + '</td>' +
-                    '<td>' + m.tg + '</td>' +
-                    '<td>' + m.module + '</td>' +
-                    '<td>' + (m.ts || '-') + '</td>' +
+                    '<td>' + esc({mmdvmclient:'MMDVMClient',svxreflector:'SvxReflector',svx:'SVX'}[m.protocol] || m.protocol) + '</td>' +
+                    '<td>' + esc(m.tg) + '</td>' +
+                    '<td>' + esc(m.module) + '</td>' +
+                    '<td>' + esc(m.ts || '-') + '</td>' +
                     '<td>' + typeLabel + '</td>' +
                     '<td>' + dirStr + '</td>' +
                     '<td>' + timeoutStr + '</td>' +
@@ -171,12 +184,12 @@ function refreshDcsMapList() {
                 '<span class="label label-danger">disconnected</span>';
             tbody.append(
                 '<tr>' +
-                '<td>' + m.proto + '</td>' +
-                '<td>' + m.host + ':' + m.port + '</td>' +
-                '<td>' + m.remote_module + '</td>' +
-                '<td>' + m.local_module + '</td>' +
+                '<td>' + esc(m.proto) + '</td>' +
+                '<td>' + esc(m.host) + ':' + esc(m.port) + '</td>' +
+                '<td>' + esc(m.remote_module) + '</td>' +
+                '<td>' + esc(m.local_module) + '</td>' +
                 '<td>' + connLabel + '</td>' +
-                '<td><button class="btn btn-xs btn-danger" onclick="removeDstarMap(\'' + m.proto_key + '\',\'' + m.local_module + '\')">Remove</button></td>' +
+                '<td><button class="btn btn-xs btn-danger" onclick="removeDstarMap(' + jsArg(m.proto_key) + ',' + jsArg(m.local_module) + ')">Remove</button></td>' +
                 '</tr>'
             );
         });
@@ -236,11 +249,11 @@ function refreshYsfMapList() {
                 var dgidLabel = m.dgid > 0 ? m.dgid : '-';
                 tbody.append(
                     '<tr>' +
-                    '<td>' + m.host + ':' + m.port + '</td>' +
-                    '<td>' + m.local_module + '</td>' +
-                    '<td>' + dgidLabel + '</td>' +
+                    '<td>' + esc(m.host) + ':' + esc(m.port) + '</td>' +
+                    '<td>' + esc(m.local_module) + '</td>' +
+                    '<td>' + esc(dgidLabel) + '</td>' +
                     '<td>' + connLabel + '</td>' +
-                    '<td><button class="btn btn-xs btn-danger" onclick="removeYsfMap(\'' + m.local_module + '\')">Remove</button></td>' +
+                    '<td><button class="btn btn-xs btn-danger" onclick="removeYsfMap(' + jsArg(m.local_module) + ')">Remove</button></td>' +
                     '</tr>'
                 );
             });
@@ -280,8 +293,8 @@ function refreshSvxsUserList() {
             resp.users.forEach(function(u) {
                 tbody.append(
                     '<tr>' +
-                    '<td>' + u + '</td>' +
-                    '<td><button class="btn btn-xs btn-danger" onclick="removeSvxsUser(\'' + u + '\')">Remove</button></td>' +
+                    '<td>' + esc(u) + '</td>' +
+                    '<td><button class="btn btn-xs btn-danger" onclick="removeSvxsUser(' + jsArg(u) + ')">Remove</button></td>' +
                     '</tr>'
                 );
             });
@@ -323,9 +336,9 @@ function refreshMmdvmUserList() {
             resp.users.forEach(function(u) {
                 tbody.append(
                     '<tr>' +
-                    '<td>' + u.dmrid + '</td>' +
-                    '<td>' + (u.callsign || '') + '</td>' +
-                    '<td><button class="btn btn-xs btn-danger" onclick="removeMmdvmUser(' + u.dmrid + ')">Remove</button></td>' +
+                    '<td>' + esc(u.dmrid) + '</td>' +
+                    '<td>' + esc(u.callsign) + '</td>' +
+                    '<td><button class="btn btn-xs btn-danger" onclick="removeMmdvmUser(' + parseInt(u.dmrid, 10) + ')">Remove</button></td>' +
                     '</tr>'
                 );
             });
@@ -379,13 +392,13 @@ function refreshMmdvmPeerList() {
                 var cs    = (p.callsign || '').trim();
                 tbody.append(
                     '<tr>' +
-                    '<td>' + cs + '</td>' +
-                    '<td>' + dmrid + '</td>' +
-                    '<td>' + freq + '</td>' +
-                    '<td>' + loc + '</td>' +
-                    '<td>' + sw + '</td>' +
-                    '<td>' + (p.module && p.module !== ' ' ? p.module : '') + '</td>' +
-                    '<td>' + since + '</td>' +
+                    '<td>' + esc(cs) + '</td>' +
+                    '<td>' + esc(dmrid) + '</td>' +
+                    '<td>' + esc(freq) + '</td>' +
+                    '<td>' + esc(loc) + '</td>' +
+                    '<td>' + esc(sw) + '</td>' +
+                    '<td>' + esc(p.module && p.module !== ' ' ? p.module : '') + '</td>' +
+                    '<td>' + esc(since) + '</td>' +
                     '</tr>'
                 );
             });
@@ -407,11 +420,11 @@ function refreshSvxsPeerList() {
                 var since = p.connected_since ? new Date(p.connected_since * 1000).toLocaleString() : '';
                 tbody.append(
                     '<tr>' +
-                    '<td>' + (p.callsign || '').trim() + '</td>' +
-                    '<td>' + tgs + '</td>' +
-                    '<td>' + sw + '</td>' +
-                    '<td>' + udp + '</td>' +
-                    '<td>' + since + '</td>' +
+                    '<td>' + esc((p.callsign || '').trim()) + '</td>' +
+                    '<td>' + esc(tgs) + '</td>' +
+                    '<td>' + esc(sw) + '</td>' +
+                    '<td>' + esc(udp) + '</td>' +
+                    '<td>' + esc(since) + '</td>' +
                     '</tr>'
                 );
             });
@@ -467,7 +480,7 @@ function refreshStatus() {
                 sel.empty();
                 for (var i = 0; i < resp.modules.length; i++) {
                     var m = resp.modules[i];
-                    sel.append('<option value="' + m + '">' + m + '</option>');
+                    sel.append('<option value="' + esc(m) + '">' + esc(m) + '</option>');
                 }
                 if (current) sel.val(current);
 
@@ -476,7 +489,7 @@ function refreshStatus() {
                     var $s = $(sel), cur = $s.val();
                     $s.empty();
                     for (var i = 0; i < resp.modules.length; i++)
-                        $s.append('<option value="' + resp.modules[i] + '">' + resp.modules[i] + '</option>');
+                        $s.append('<option value="' + esc(resp.modules[i]) + '">' + esc(resp.modules[i]) + '</option>');
                     if (cur) $s.val(cur);
                 });
             }
@@ -513,9 +526,9 @@ function refreshStatus() {
                 for (var k in blockedPairs) {
                     var parts = k.split('|');
                     html += '<span class="label label-danger" style="margin-right:4px;cursor:pointer;" '
-                        + 'onclick="doToggleBlock(\'unblock\',\'' + parts[0] + '\',\'' + parts[1] + '\')" '
+                        + 'onclick="doToggleBlock(\'unblock\',' + jsArg(parts[0]) + ',' + jsArg(parts[1]) + ')" '
                         + 'title="Click to unblock">'
-                        + parts[0] + ' &#8596; ' + parts[1] + ' &#10005;</span> ';
+                        + esc(parts[0]) + ' &#8596; ' + esc(parts[1]) + ' &#10005;</span> ';
                 }
                 $('#block-rules').html(html);
             } else {
@@ -528,8 +541,8 @@ function refreshStatus() {
                 var curA = selA.val(), curB = selB.val();
                 selA.empty(); selB.empty();
                 resp.active_protocols.sort().forEach(function(p) {
-                    selA.append('<option value="' + p + '">' + p + '</option>');
-                    selB.append('<option value="' + p + '">' + p + '</option>');
+                    selA.append('<option value="' + esc(p) + '">' + esc(p) + '</option>');
+                    selB.append('<option value="' + esc(p) + '">' + esc(p) + '</option>');
                 });
                 if (curA) selA.val(curA);
                 if (curB) selB.val(curB);
@@ -566,13 +579,13 @@ function refreshTCStats() {
                 }
                 tbody.append(
                     '<tr>' +
-                    '<td>' + m.module + '</td>' +
+                    '<td>' + esc(m.module) + '</td>' +
                     '<td>' + connLabel + '</td>' +
                     '<td>' + streamLabel + '</td>' +
-                    '<td>' + codec + '</td>' +
-                    '<td>' + packets + '</td>' +
-                    '<td>' + mismatches + '</td>' +
-                    '<td>' + rtt + '</td>' +
+                    '<td>' + esc(codec) + '</td>' +
+                    '<td>' + esc(packets) + '</td>' +
+                    '<td>' + esc(mismatches) + '</td>' +
+                    '<td>' + esc(rtt) + '</td>' +
                     '</tr>'
                 );
             });
@@ -588,7 +601,7 @@ function showAlert(resp, target) {
     var msg = resp.message || resp.status;
     var html = '<div class="alert ' + cls + ' alert-dismissible">' +
         '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
-        msg + '</div>';
+        esc(msg) + '</div>';
     $(target || '#admin-alerts').html(html);
 }
 

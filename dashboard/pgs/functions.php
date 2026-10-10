@@ -1,5 +1,26 @@
 <?php
 
+// The admin session: a cookie that scripts can't read and other sites can't send
+function AdminSessionStart() {
+   if (session_status() === PHP_SESSION_ACTIVE) return;
+   $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+      || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+   ini_set('session.use_strict_mode', '1');
+   session_set_cookie_params([
+      'lifetime' => 0,
+      'path'     => '/',
+      'secure'   => $https,
+      'httponly' => true,
+      'samesite' => 'Strict',
+   ]);
+   session_start();
+}
+
+// text from the XLX directory, which hands out < > & raw or as entities, made safe for HTML
+function DirectoryText($s) {
+   return htmlspecialchars(html_entity_decode((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+}
+
 function GetSystemUptime() {
    $out = exec("uptime");
    return substr($out, 0, strpos($out, ","));

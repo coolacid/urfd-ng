@@ -120,8 +120,10 @@ private:
 	uint8_t         m_uiId[4];         // DMR ID as big-endian 4 bytes
 	std::string     m_Password;
 	std::string     m_Callsign;
+	std::string     m_MasterAddress;   // host name or address from the config
 	CIp             m_MasterIp;
 	uint16_t        m_MasterPort;
+	void            ResolveMaster(void);
 	CBrandMeisterApi m_BmApi;
 	bool             m_BmSynced = false;
 	void SyncBrandMeisterTGs();

@@ -1754,7 +1754,16 @@ void CDmrmmdvmProtocol::ParseConfigPacket(const CBuffer &Buffer, const CIp &Ip)
 	info.packageId = extractField(262, 40);
 	info.populated = true;
 
-	m_PeerInfoMap[Ip.GetAddress()] = info;
+	// anyone can send an RPTC, keep it only for a logged in hotspot
+	const bool loggedIn = (nullptr != g_Reflector.GetClients()->FindClient(Ip, EProtocol::dmrmmdvm));
+	g_Reflector.ReleaseClients();
+	if (!loggedIn)
+		return;
+
+	{
+		std::lock_guard<std::mutex> lock(m_PeerInfoMutex);
+		m_PeerInfoMap[Ip.GetAddress()] = info;
+	}
 
 	std::cout << "MMDVM: config from " << info.callsign << ": " << info.softwareId
 	          << " @ " << info.location << " (" << info.rxFreq << "/" << info.txFreq << " Hz)" << std::endl;

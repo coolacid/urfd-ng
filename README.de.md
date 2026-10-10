@@ -4,7 +4,7 @@
 
 Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
-**urfd 4.3.2-dht** | tcd 0.2.1 | Dashboard v2.8.0
+**urfd 4.3.3-dht** | tcd 0.2.1 | Dashboard v2.8.1
 
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
@@ -497,8 +497,8 @@ Modulnamen werden einmal in `urfd.ini` eingetragen und stehen automatisch im Das
 
 Der JSON-Report enthält außerdem ein Array `DynamicTGs` mit Protokoll, TG, Modul und Restlaufzeit aller aktiven dynamischen Zuordnungen.
 
-### Dashboard v2.8.0
-Komplett neu gestaltet mit dunklem Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0).
+### Dashboard v2.8.1
+Komplett neu gestaltet mit dunklem Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0), Sicherheitskorrekturen (v2.8.1).
 
 **Neue Seiten:**
 - **Active Users**: Verbundene Knoten pro Modul als Karten
@@ -740,7 +740,7 @@ Exit-Code 0 = OK, 1 = Fehler gefunden. Warnungen (fehlende optionale Felder) fü
 
 ## Kopplung / Peering
 
-In `urfd.interlink` werden vier Arten der Kopplung unterstützt:
+In `urfd.interlink` werden vier Arten der Kopplung unterstützt. Koppeln dürfen nur die dort eingetragenen Reflektoren; ohne Einträge keiner (bis 4.3.2 durfte bei leerer Datei jeder Reflektor koppeln).
 
 | Art | Präfix | Standard-Port | Protokoll | Voraussetzung |
 |-----|--------|---------------|-----------|---------------|
@@ -817,6 +817,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Dashboard v2.6.0**: Neugestaltung im dunklen Design, Admin-Panel, Modulübersicht mit TG-Zuordnungen und NXDN-RAN, Spalten ausgeschalteter Protokolle ausgeblendet, Protokollliste, QuadNet-Live-Proxy, Reflektorliste mit Suche und Seitenaufteilung
 - **Dashboard v2.6.1**: Übersteht einen Ausfall des XLX-Verzeichnisses. Feste Timeouts bei jeder ausgehenden Anfrage, CallingHome-Fehler werden ins Log geschrieben, statt die Seite abzubrechen, Reflektor- und Peer-Listen aus einem Cache auf der Platte, Admin-API nicht mehr hinter der PHP-Session-Sperre aufgereiht
 - **Dashboard v2.7.0**: Locator-Spalte für Stationen, die eine M17-GPS-Position senden, auch in `/json/stations`
+- **Dashboard v2.8.1**: Alles, was von außen kommt, wird escapet (der Parameter `show`, die Reflektorliste aus dem XLX-Verzeichnis, Hotspot- und Knotendaten auf der Admin-Seite, Rufzeichen und Filter); die Admin-API nimmt nur Anfragen der eigenen Seite an (JSON und `X-Requested-With`, kein CORS), ihr Session-Cookie ist `HttpOnly` und `SameSite=Strict` und wird beim Anmelden erneuert
 - **Dashboard v2.8.0**: Kein CallingHome mehr, der Reflektor trägt sich selbst ein; die Reflektorliste liest `$Directory` (mit Rückfall auf alte `$CallingHome`-Einstellungen); `/json/metadata` nimmt die Dashboard-URL aus dem XML des Reflektors
 - **Erweitertes XML/JSON**: Modul-Zuordnungen (statisch und dynamisch mit Laufzeit), Reflektor-Angaben, Protokollliste, Protokoll pro Nutzer, Array der dynamischen TGs
 - **Anzeige der Protokoll-Sperren**: Aktive Sperren als anklickbare Markierungen im Admin-Panel
@@ -828,6 +829,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **Sicherheitskorrekturen (4.3.3)**: Koppeln dürfen nur die in `urfd.interlink` eingetragenen Reflektoren (bei leerer Datei durfte jeder über URF und XLX koppeln); der MMDVM-Client nimmt Pakete nur noch von seinem Master an und löst dessen Adresse bei jeder Anmeldung neu auf (vorher lenkte jedes beliebige Paket die BrandMeister-Anbindung um, samt dem Passwort-Hash der nächsten Anmeldung); Hotspot-Angaben werden nur für angemeldete Hotspots gespeichert und unter einer Sperre gelesen; der Admin-Socket lehnt nach einem falschen Passwort 2 s lang alle Anmeldungen ab, erzeugt 128-Bit-Token und stürzt bei einem fehlschlagenden Befehl nicht mehr ab; keine irreführende `MMDVMPort`-Fehlermeldung beim Start ohne `[MMDVM]`
 - **CallingHome im Reflektor**: `[CallingHome]` in `urfd.ini` trägt den Reflektor mit denselben Daten und derselben Hash-Datei wie bisher das Dashboard im XLX-Verzeichnis ein, auch ohne Dashboard
 - **Sauberes Beenden**: urfd beendet sich bei SIGTERM in etwa 2 Sekunden. Vorher warteten die Router-Threads der Module ewig auf Pakete, Protokolle wurden gelöscht, während ihre Threads noch liefen (ein Absturz, der nur nicht auffiel, weil Docker urfd vorher abschoss), und die ID-Datenbank-Threads schliefen je bis zu 10 s; `docker stop` endete so immer mit einem Kill
 - **Transcoder-Verbindung ohne Nagle-Verzögerung**: `TCP_NODELAY` an beiden Enden der Verbindung urfd–tcd. Vorher wartete ein transcodierter Frame auf das verzögerte ACK des Reflektors, das erst mit dem nächsten DMR-Bündel kam; ein Frame ist jetzt nach etwa 23 ms statt 60 ms zurück (URF363, am Reflektor gemessen)

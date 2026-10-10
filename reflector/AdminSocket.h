@@ -97,6 +97,7 @@ private:
 
 	// Auth tokens
 	mutable std::mutex m_TokenMutex;
+	std::chrono::steady_clock::time_point m_LastAuthFailure{};   // guarded by m_TokenMutex
 	std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_Tokens;
 
 	// Thread

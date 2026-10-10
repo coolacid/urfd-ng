@@ -4,6 +4,7 @@
 #  One line per entry. Each entry specifies a remote reflector to peer with.
 #  DNS hostnames and IP addresses are both supported.
 #  Remote reflector must also list this reflector in its interlink file.
+#  Only listed reflectors may peer: with no entries, no reflector can.
 #
 #  Format: <Callsign> <Address> <Modules> [Port] [Protocol]
 #

@@ -249,47 +249,20 @@ bool CGateKeeper::IsNodeListedOk(const std::string &callsign) const
 
 }
 
+// only reflectors in the interlink file may peer, an empty file means none
 bool CGateKeeper::IsPeerListedOk(const std::string &callsign, char module) const
 {
-	bool ok = true;
-
-	// first check IP
-
-	// next, check callsign
-	if ( ok )
-	{
-		// look for an exact match in the list
-		m_InterlinkMap.Lock();
-		if ( !m_InterlinkMap.empty() )
-		{
-			ok = m_InterlinkMap.IsCallsignListed(callsign, module);
-		}
-		m_InterlinkMap.Unlock();
-	}
-
-	// done
+	m_InterlinkMap.Lock();
+	bool ok = m_InterlinkMap.IsCallsignListed(callsign, module);
+	m_InterlinkMap.Unlock();
 	return ok;
 }
 
 bool CGateKeeper::IsPeerListedOk(const std::string &callsign, const CIp &ip, char *modules) const
 {
-	bool ok = true;
-
-	// first check IP
-
-	// next, check callsign
-	if ( ok )
-	{
-		// look for an exact match in the list
-		m_InterlinkMap.Lock();
-		if ( ! m_InterlinkMap.empty() )
-		{
-			ok = m_InterlinkMap.IsCallsignListed(callsign, ip, modules);
-		}
-		m_InterlinkMap.Unlock();
-	}
-
-	// done
+	m_InterlinkMap.Lock();
+	bool ok = m_InterlinkMap.IsCallsignListed(callsign, ip, modules);
+	m_InterlinkMap.Unlock();
 	return ok;
 }
 

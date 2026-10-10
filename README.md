@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.3.2-dht** | tcd 0.2.1 | Dashboard v2.8.0
+**urfd 4.3.3-dht** | tcd 0.2.1 | Dashboard v2.8.1
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -506,8 +506,8 @@ Module names are configured once in `urfd.ini` and automatically available in th
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.8.0
-Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0).
+### Dashboard v2.8.1
+Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1).
 
 **New pages:**
 - **Active Users** - Connected nodes per module in card layout
@@ -761,7 +761,7 @@ Exit code 0 = OK, 1 = errors found. Warnings (missing optional fields) don't cau
 
 ## Interlink / Peering
 
-Four types of peering are supported in `urfd.interlink`:
+Four types of peering are supported in `urfd.interlink`. Only the reflectors listed there may peer; with no entries no reflector can (up to 4.3.2 an empty file let any reflector peer).
 
 | Type | Prefix | Default Port | Protocol | Requires |
 |------|--------|-------------|----------|----------|
@@ -838,6 +838,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
 - **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
+- **Dashboard v2.8.1**: Everything from outside is escaped (the `show` parameter, the reflector list from the XLX directory, hotspot and node data on the admin page, callsigns and filters); the admin API accepts only requests from its own page (JSON and `X-Requested-With`, no CORS), its session cookie is `HttpOnly` and `SameSite=Strict` and renewed at login
 - **Dashboard v2.8.0**: No CallingHome any more, the reflector registers itself; the reflector list reads `$Directory` (falling back to old `$CallingHome` settings); `/json/metadata` takes the dashboard URL from the reflector's XML
 - **Extended XML/JSON**: Module mappings (static + dynamic with TTL), reflector metadata, protocol list, per-user protocol info, dynamic TG array
 - **Protocol blocking display**: Active blocks shown as clickable labels in admin panel
@@ -849,6 +850,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **Security fixes (4.3.3)**: only reflectors listed in `urfd.interlink` may peer (an empty file let anyone peer over URF and XLX); the MMDVM client accepts packets only from its master, which it looks up again at every login (any packet used to redirect the BrandMeister link, with the next password hash going to the sender); hotspot config is kept only for logged-in hotspots and read under a lock; the admin socket refuses logins for 2 s after a wrong password, makes 128-bit tokens and no longer dies on a failing command; no misleading `MMDVMPort` error at startup without `[MMDVM]`
 - **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data and hash file the dashboard used, without needing the dashboard
 - **Clean shutdown**: urfd stops within about 2 seconds on SIGTERM. Before, the module router threads waited for packets forever, protocols were deleted while their threads still ran (a crash, hidden because Docker killed urfd first) and the ID database threads slept up to 10 s each, so `docker stop` always ended in a kill
 - **Transcoder link without Nagle delay**: `TCP_NODELAY` on both ends of the urfd–tcd connection. Before, a transcoded frame waited for the reflector's delayed ACK, which only came with the next DMR burst; a frame now returns after about 23 ms instead of 60 ms (URF363, measured at the reflector)

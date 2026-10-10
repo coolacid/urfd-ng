@@ -15,20 +15,24 @@
  *         {"action": "reconnect", "protocol": "mmdvm"}
  */
 
-session_start();
+require_once(__DIR__ . '/../pgs/functions.php');
+AdminSessionStart();
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: ' . ($_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_HOST'] ?? 'null'));
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
+header('X-Content-Type-Options: nosniff');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['status' => 'error', 'message' => 'POST only']);
+    exit;
+}
+
+// Only the dashboard's own page may call this. Another site can send neither a
+// JSON body nor the X-Requested-With header without a CORS preflight, and no
+// preflight is answered here, so these two checks stop cross-site requests.
+$contentType = strtolower(trim(explode(';', $_SERVER['CONTENT_TYPE'] ?? '')[0]));
+if ($contentType !== 'application/json' || ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'Forbidden']);
     exit;
 }
 
@@ -42,7 +46,7 @@ if (!isset($Admin) || !$Admin['Enable']) {
 }
 
 $input = json_decode(file_get_contents('php://input'), true);
-if (!$input || !isset($input['action'])) {
+if (!is_array($input) || !isset($input['action']) || !is_string($input['action'])) {
     http_response_code(400);
     echo json_encode(['status' => 'error', 'message' => 'Invalid request']);
     exit;
@@ -59,6 +63,8 @@ if ($action === 'login') {
 
     $result = adminSocketSend(['cmd' => 'auth', 'password' => $input['password']]);
     if ($result && isset($result['token'])) {
+        // a new session id on login, so a planted one is worth nothing
+        session_regenerate_id(true);
         $_SESSION['admin_token'] = $result['token'];
         echo json_encode(['status' => 'ok']);
     } else {
@@ -352,7 +358,7 @@ switch ($action) {
         break;
 
     default:
-        echo json_encode(['status' => 'error', 'message' => 'Unknown action: ' . $action]);
+        echo json_encode(['status' => 'error', 'message' => 'Unknown action']);
         exit;
 }
 
@@ -361,7 +367,7 @@ $result = adminSocketSend($cmd);
 // If token was rejected, clear session
 if ($result && isset($result['message']) && $result['message'] === 'authentication required') {
     // Session was closed above — reopen it to drop the stale token.
-    session_start();
+    AdminSessionStart();
     unset($_SESSION['admin_token']);
     session_write_close();
     http_response_code(401);

@@ -29,12 +29,10 @@ for ($i=0;$i<$Reflector->NodeCount();$i++) {
 	if (file_exists("./img/flags/".$Flag.".png")) {
 		echo '<a href="#" class="tip"><img src="./img/flags/'.$Flag.'.png" class="table-flag" alt="'.$Name.'"><span>'.$Name.'</span></a>';
 	}
+	$NodeName = $Reflector->Nodes[$i]->GetCallSign();
+	if ($Reflector->Nodes[$i]->GetSuffix() != "") $NodeName .= '-'.$Reflector->Nodes[$i]->GetSuffix();
 	echo '</td>
-	<td><a href="http://www.aprs.fi/'.$Reflector->Nodes[$i]->GetCallSign();
-	if ($Reflector->Nodes[$i]->GetSuffix() != "") echo '-'.$Reflector->Nodes[$i]->GetSuffix();
-	echo '" class="pl" target="_blank">'.$Reflector->Nodes[$i]->GetCallSign();
-	if ($Reflector->Nodes[$i]->GetSuffix() != "") { echo '-'.$Reflector->Nodes[$i]->GetSuffix(); }
-	echo '</a></td>
+	<td><a href="http://www.aprs.fi/'.rawurlencode($NodeName).'" class="pl" target="_blank">'.htmlspecialchars($NodeName, ENT_QUOTES, 'UTF-8').'</a></td>
 	<td class="mobile-hide">';
 	if (($Reflector->Nodes[$i]->GetPrefix() == 'REF') || ($Reflector->Nodes[$i]->GetPrefix() == 'XRF')) {
 		switch ($Reflector->Nodes[$i]->GetPrefix()) {

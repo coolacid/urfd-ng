@@ -59,12 +59,12 @@ if ($PageOptions['UserPage']['ShowFilter']) {
       <div class="mobile-filter-form">
          <form name="frmFilterCallSign" method="post" action="./index.php" style="display:inline-flex;gap:6px;align-items:center;">
             <input type="hidden" name="do" value="SetFilter" />
-            <input type="text" class="FilterField" value="'.$_SESSION['FilterCallSign'].'" name="txtSetCallsignFilter" placeholder="Callsign" onfocus="SuspendPageRefresh();" onblur="setTimeout(ReloadPage, '.$PageOptions['PageRefreshDelay'].');" />
+            <input type="text" class="FilterField" value="'.htmlspecialchars((string)$_SESSION['FilterCallSign'], ENT_QUOTES, 'UTF-8').'" name="txtSetCallsignFilter" placeholder="Callsign" onfocus="SuspendPageRefresh();" onblur="setTimeout(ReloadPage, '.$PageOptions['PageRefreshDelay'].');" />
             <input type="submit" value="Apply" class="FilterSubmit" />
          </form>
          <form name="frmFilterModule" method="post" action="./index.php" style="display:inline-flex;gap:6px;align-items:center;">
             <input type="hidden" name="do" value="SetFilter" />
-            <input type="text" class="FilterField" value="'.$_SESSION['FilterModule'].'" name="txtSetModuleFilter" placeholder="Module" onfocus="SuspendPageRefresh();" onblur="setTimeout(ReloadPage, '.$PageOptions['PageRefreshDelay'].');" />
+            <input type="text" class="FilterField" value="'.htmlspecialchars((string)$_SESSION['FilterModule'], ENT_QUOTES, 'UTF-8').'" name="txtSetModuleFilter" placeholder="Module" onfocus="SuspendPageRefresh();" onblur="setTimeout(ReloadPage, '.$PageOptions['PageRefreshDelay'].');" />
             <input type="submit" value="Apply" class="FilterSubmit" />
          </form>';
               if (($_SESSION['FilterModule'] != null) || ($_SESSION['FilterCallSign'] != null)) {
@@ -142,7 +142,7 @@ for ($i=0;$i<$Reflector->StationCount();$i++) {
             $Lon = (float)$Reflector->Stations[$i]->GetLongitude();
             echo '<a href="https://www.openstreetmap.org/?mlat=' . $Lat . '&amp;mlon=' . $Lon . '#map=12/' . $Lat . '/' . $Lon . '" class="pl" target="_blank" title="Position from the transmission">' . htmlspecialchars($Locator) . '</a>';
         } else {
-            echo '<a href="http://www.aprs.fi/' . $Reflector->Stations[$i]->GetCallsignOnly() . '" class="pl" target="_blank">&#x1F6F0;&#xFE0F;</a>';
+            echo '<a href="http://www.aprs.fi/' . rawurlencode($Reflector->Stations[$i]->GetCallsignOnly()) . '" class="pl" target="_blank">&#x1F6F0;&#xFE0F;</a>';
         }
         echo '</td>
    <td style="white-space:nowrap;">' . $Reflector->Stations[$i]->GetVia();

@@ -30,6 +30,10 @@ $Reflector->SetXMLFile($Service['XMLFile']);
 
 $Reflector->LoadXML();
 
+// the page to show, only one of the known ones: it ends up in the page and in a script
+$Pages = array('users', 'modules', 'modulesd', 'repeaters', 'peers', 'reflectors', 'livequadnet', 'admin');
+$_GET['show'] = (isset($_GET['show']) && in_array($_GET['show'], $Pages, true)) ? $_GET['show'] : '';
+
 // The reflector registers itself in the XLX directory ([CallingHome] in urfd.ini).
 ?>
 <!DOCTYPE html>
@@ -70,7 +74,7 @@ $Reflector->LoadXML();
       var PageRefresh;
 
       function ReloadPage() {
-         $.get("./index.php'.(isset($_GET['show'])?'?show='.$_GET['show']:'').'", function(data) {
+         $.get("./index.php'.(($_GET['show'] !== '')?'?show='.$_GET['show']:'').'", function(data) {
             var BodyStart = data.indexOf("<bo"+"dy");
             var BodyEnd = data.indexOf("</bo"+"dy>");
             if ((BodyStart >= 0) && (BodyEnd > BodyStart)) {
@@ -83,7 +87,7 @@ $Reflector->LoadXML();
             });
       }';
 
-        if (!isset($_GET['show']) || (($_GET['show'] != 'livequadnet') && ($_GET['show'] != 'reflectors') && ($_GET['show'] != 'interlinks') && ($_GET['show'] != 'admin'))) {
+        if ((($_GET['show'] != 'livequadnet') && ($_GET['show'] != 'reflectors') && ($_GET['show'] != 'interlinks') && ($_GET['show'] != 'admin'))) {
             echo '
       PageRefresh = setTimeout(ReloadPage, ' . $PageOptions['PageRefreshDelay'] . ');';
         }
@@ -94,7 +98,6 @@ $Reflector->LoadXML();
       }
    </script>';
     }
-    if (!isset($_GET['show'])) $_GET['show'] = "";
     ?>
 </head>
 <body>

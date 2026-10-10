@@ -44,8 +44,8 @@ bool CMMDVMClientProtocol::Initialize(const char *type, const EProtocol ptype, c
 	m_uiId[3] = (uint8_t)(m_uiDmrId);
 
 	// Resolve master address
-	auto addr = g_Configure.GetString(g_Keys.mmdvmclient.address);
-	m_MasterIp = CIp(addr.c_str(), AF_INET, SOCK_DGRAM, m_MasterPort);
+	m_MasterAddress = g_Configure.GetString(g_Keys.mmdvmclient.address);
+	ResolveMaster();
 
 	// Parse BlockProtocols (comma-separated, e.g. "SvxReflector,YSF")
 	if (g_Configure.Contains(g_Keys.mmdvmclient.blockprotocols))
@@ -100,9 +100,26 @@ bool CMMDVMClientProtocol::Initialize(const char *type, const EProtocol ptype, c
 	m_PingTimer.start();
 
 	std::cout << "MMDVMClient: initialized, DMR ID " << m_uiDmrId
-	          << ", master " << addr << ":" << m_MasterPort << std::endl;
+	          << ", master " << m_MasterAddress << ":" << m_MasterPort << std::endl;
 
 	return true;
+}
+
+// look the master up again, keeping the last address if that fails
+void CMMDVMClientProtocol::ResolveMaster(void)
+{
+	// (a CIp built from a host name never reports IsSet(), so look at the address)
+	CIp ip(m_MasterAddress.c_str(), AF_INET, SOCK_DGRAM, m_MasterPort);
+	if (ip.AddressIsZero())
+	{
+		std::cerr << "MMDVMClient: cannot resolve master " << m_MasterAddress << std::endl;
+		return;
+	}
+	CIp old(m_MasterIp);
+	old.SetPort(m_MasterPort);
+	if (!m_MasterIp.AddressIsZero() && (old != ip))
+		std::cout << "MMDVMClient: master " << m_MasterAddress << " is now at " << ip << std::endl;
+	m_MasterIp = ip;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -173,6 +190,8 @@ void CMMDVMClientProtocol::HandleStateMachine(void)
 	case EHBState::DISCONNECTED:
 		if (m_RetryTimer.time() > MMDVMCLI_RETRY_PERIOD)
 		{
+			// the master's address may have changed since the last login
+			ResolveMaster();
 			SendLogin();
 			m_State = EHBState::WAITING_LOGIN;
 			m_TimeoutTimer.start();
@@ -225,7 +244,13 @@ void CMMDVMClientProtocol::HandleStateMachine(void)
 
 void CMMDVMClientProtocol::HandleIncoming(const CBuffer &Buffer, const CIp &Ip)
 {
-	// Update master IP with actual source address (port may differ from config)
+	// Only the master may talk to us: anyone else could otherwise take the
+	// link over, with the password hash of the next login going to them
+	CIp from(Ip);
+	from.SetPort(m_MasterIp.GetPort());
+	if (from != m_MasterIp)
+		return;
+	// the master may answer from another port than the configured one
 	m_MasterIp = Ip;
 
 	// RPTACK

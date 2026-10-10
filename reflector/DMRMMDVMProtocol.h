@@ -95,7 +95,8 @@ public:
 		std::string slots, url, softwareId, packageId;
 		bool populated = false;
 	};
-	const std::unordered_map<std::string, SPeerInfo> &GetPeerInfo() const { return m_PeerInfoMap; }
+	// a copy: the admin thread reads it while the protocol thread updates it
+	std::unordered_map<std::string, SPeerInfo> GetPeerInfo() const { std::lock_guard<std::mutex> lock(m_PeerInfoMutex); return m_PeerInfoMap; }
 
 protected:
 	// queue helper
@@ -191,6 +192,7 @@ protected:
 	std::mutex m_IniMutex;
 
 	// peer info — keyed by IP address string
+	mutable std::mutex m_PeerInfoMutex;
 	std::unordered_map<std::string, SPeerInfo> m_PeerInfoMap;
 
 	// config data
