@@ -2,7 +2,13 @@
 
 Fork of [urfd](https://github.com/nostar/urfd) with extended features for the URF363 reflector project.
 
-**Version 4.1.0-dht** | Dashboard v2.7.0
+**Version 4.2.0-dht** | Dashboard v2.7.0
+
+**New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
+
+```bash
+git clone https://github.com/jcmerg/urfd.git && cd urfd && sudo ./setup.sh
+```
 
 ## What's New in This Fork
 
@@ -590,15 +596,25 @@ Name lookup works for all protocols — any callsign with a DMR ID database entr
 
 The URF Multi-protocol Gateway Reflector Server, **urfd**, is part of the software system for a Digital Voice Network. It supports D-Star (DPlus, DCS, DExtra, G3), DMR (MMDVM, DMR+, MMDVMClient), M17, YSF, P25, NXDN, USRP (AllStar), SvxReflector (SvxLink FM client) and SVXServer (SvxLink FM server).
 
-A key part of this is the hybrid transcoder, [tcd](https://github.com/jcmerg/tcd), in a separate repository. The reflector can be built without a transcoder, but clients will only hear other clients using the same codec.
+A key part of this is the hybrid transcoder, [tcd](tcd/), in the `tcd/` folder of this repository, so reflector and transcoder always come from the same version. The reflector can be built without a transcoder, but clients will only hear other clients using the same codec.
 
 This build supports dual-stack operation (IPv4 + IPv6).
 
 ## Docker Deployment
 
-This fork includes Docker support for easy deployment. See [`docker/README.md`](docker/README.md) for full details.
+The reflector and its dashboard run in Docker, the transcoder natively with systemd (the AMBE USB devices need low latency), on the same machine or on a second one. See [`docker/README.md`](docker/README.md) for details.
 
 ### Quick start
+
+`setup.sh` asks a few questions, writes `urfd.ini`, the dashboard config and `tcd.ini`, installs Docker if needed, and builds and starts everything. Run it again, or `sudo ./setup.sh update`, to update while keeping the configuration. The step-by-step guide is [docs/INSTALL.md](docs/INSTALL.md).
+
+```bash
+git clone https://github.com/jcmerg/urfd.git
+cd urfd
+sudo ./setup.sh
+```
+
+By hand, with the configuration in `/opt/urfd` (see the comments in `docker/docker-compose.yml`):
 
 ```bash
 cd docker
@@ -606,7 +622,7 @@ docker compose build
 docker compose up -d
 ```
 
-The transcoder ([tcd](https://github.com/jcmerg/tcd)) runs on a separate host with a DVSI AMBE device attached via USB. With the [md380_vocoder](https://github.com/jcmerg/md380_vocoder) library, only one DVSI device is needed — DMR/YSF runs in software.
+With the [md380_vocoder](https://github.com/jcmerg/md380_vocoder) library, the transcoder needs only one DVSI device — DMR/YSF runs in software.
 
 ### Container architecture
 

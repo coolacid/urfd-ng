@@ -2,22 +2,33 @@
 
 Docker deployment for the urfd reflector.
 
-The tcd transcoder runs natively on a separate host — Docker adds too much USB latency for reliable DVSI hardware access.
+The tcd transcoder (in [`../tcd`](../tcd/)) runs natively, not in Docker: Docker adds too much USB latency for reliable DVSI hardware access.
 
 ## Quick Start
+
+The easiest way is [`setup.sh`](../setup.sh) in the repository root, see [docs/INSTALL.md](../docs/INSTALL.md). It creates the configuration and runs the steps below.
 
 ```bash
 # Build and start
 docker/build.sh start
 
 # Or manually
-docker compose -f docker-compose.yml build
-docker compose -f docker-compose.yml up -d
+cd docker
+docker compose build
+docker compose up -d
 ```
 
 ## Configuration
 
-Mount your config directory to `/usr/local/etc/urfd`. Must contain at least `urfd.ini`. See the main [README](../README.md) and the commented templates in [config/](../config/) for details.
+The image is built from this checkout; configuration and state live outside it, in `$URFD_DATA` (default `/opt/urfd`), so a `git pull` never touches them:
+
+| Host path | In the container | Content |
+|---|---|---|
+| `$URFD_DATA/config/` | `/usr/local/etc/urfd` | `urfd.ini`, interlink, black/whitelist, downloaded ID databases |
+| `$URFD_DATA/dashboard/config.inc.php` | dashboard `pgs/config.inc.php` | Dashboard settings |
+| `$URFD_DATA/xlxd-ch/` | `/var/lib/xlxd-ch` | CallingHome state |
+
+`urfd.ini` must exist. See the main [README](../README.md) and the commented templates in [config/](../config/) for details.
 
 ### PHP tuning
 
@@ -36,7 +47,8 @@ defines no `unix_http_server` socket. Restart with `docker restart urfd`.
 | File | Purpose |
 |---|---|
 | `Dockerfile` | Multi-stage build (Ubuntu 24.04) |
-| `docker-compose.yml` | Production compose file |
+| `docker-compose.yml` | Compose file, builds from this checkout, data in `$URFD_DATA` |
+| `Dockerfile.dockerignore` | Keeps `.git`, `tcd/` and build output out of the build context |
 | `build.sh` | Build + restart helper |
 | `supervisord.conf` | Process manager (urfd, nginx, php-fpm) |
 | `nginx-dashboard.conf` | Dashboard web server config |
@@ -46,7 +58,7 @@ defines no `unix_http_server` socket. Restart with `docker restart urfd`.
 The Synology Container Manager cannot build images locally. Build on a Linux machine and export:
 
 ```bash
-docker build -t urfd:latest -f docker/Dockerfile .
+docker build -t urfd:latest -f docker/Dockerfile --build-context optfiles=docker .
 docker save urfd:latest | gzip > urfd-image.tar.gz
 ```
 

@@ -1,38 +1,23 @@
 #!/bin/bash
+# Rebuild the urfd image from this checkout and restart the container.
+#
+# Usage:
+#   docker/build.sh          # rebuild, restart if running
+#   docker/build.sh start    # rebuild and start
+#
+# Configuration stays in $URFD_DATA (default /opt/urfd), see docker-compose.yml.
 set -e
 
-OPT_DIR="/opt/urfd"
-URFD_SRC="$OPT_DIR/src"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 echo "=== Building urfd Docker image ==="
-echo "Source: $URFD_SRC"
-echo "Config: $OPT_DIR"
+docker compose build
 
-docker build \
-    -t urfd:latest \
-    -f "$OPT_DIR/Dockerfile" \
-    --build-context optfiles="$OPT_DIR" \
-    "$URFD_SRC"
-
-echo ""
-echo "=== Build complete ==="
-
-# Restart container if running
-if docker ps -q -f name=urfd | grep -q .; then
-    echo "=== Restarting urfd container ==="
-    cd "$OPT_DIR"
-    docker compose down
-    docker compose up -d
-    echo "=== Container restarted ==="
-elif [ "$1" = "start" ]; then
-    echo "=== Starting urfd container ==="
-    cd "$OPT_DIR"
-    docker compose up -d
-    echo "=== Container started ==="
+if docker ps -q -f name=^urfd$ | grep -q . || [ "$1" = "start" ]; then
+    echo "=== (Re)starting urfd container ==="
+    docker compose up -d --force-recreate
 else
-    echo ""
-    echo "Container not running. Run '$0 start' or 'cd $OPT_DIR && docker compose up -d' to start."
+    echo "Container not running. Run '$0 start' to start it."
 fi
 
-echo ""
-docker ps -f name=urfd
+docker ps -f name=^urfd$
