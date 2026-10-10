@@ -15,6 +15,7 @@ tcd.*
 
 # Executables
 tcd
+tcdmon
 
 # Shared files copied from urfd during build
 IP.cpp
