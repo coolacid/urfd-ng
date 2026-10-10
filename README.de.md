@@ -9,7 +9,7 @@ Fork von [urfd](https://github.com/n7tae/urfd) mit erweiterten Funktionen für d
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git && cd urfd && sudo ./setup.sh
+git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.sh
 ```
 
 ## Neu in diesem Fork
@@ -606,7 +606,7 @@ Reflektor und Dashboard laufen in Docker, der Transcoder direkt mit systemd (die
 `setup.sh` stellt ein paar Fragen, schreibt `urfd.ini`, die Dashboard-Konfiguration und `tcd.ini`, installiert bei Bedarf Docker und baut und startet alles. Ein erneuter Aufruf oder `sudo ./setup.sh update` aktualisiert und behält die Konfiguration. Die Schritt-für-Schritt-Anleitung steht in [docs/INSTALL.de.md](docs/INSTALL.de.md).
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd
 sudo ./setup.sh
 ```
@@ -660,7 +660,7 @@ Gibt es kein Paket, aus den Quellen bauen: [OpenDHT Wiki](https://github.com/sav
 ### Bauen
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd/reflector
 cp ../config/* .
 # Edit urfd.ini with your configuration

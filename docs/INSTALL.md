@@ -34,7 +34,7 @@ Log in to the machine (directly, or with `ssh` from another computer), then run:
 ```bash
 sudo apt update
 sudo apt install -y git
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd
 ```
 

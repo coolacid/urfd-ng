@@ -24,7 +24,7 @@ tcd converts voice between the digital modes on a URF reflector, so a D-Star use
 The easiest way: the setup script in the repository root installs reflector and transcoder together, or the transcoder alone on a second machine, asks a few questions and writes `tcd.ini`. See [docs/INSTALL.md](../docs/INSTALL.md).
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd
 sudo ./setup.sh
 ```
@@ -34,7 +34,7 @@ sudo ./setup.sh
 To build and install only the transcoder:
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd
 sudo bash tcd/build.sh               # two or more AMBE devices
 sudo bash tcd/build.sh --with-md380  # a single DV3000, DMR/YSF in software

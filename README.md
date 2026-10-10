@@ -9,7 +9,7 @@ Fork of [urfd](https://github.com/n7tae/urfd) with extended features for the URF
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git && cd urfd && sudo ./setup.sh
+git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.sh
 ```
 
 ## What's New in This Fork
@@ -627,7 +627,7 @@ The reflector and its dashboard run in Docker, the transcoder natively with syst
 `setup.sh` asks a few questions, writes `urfd.ini`, the dashboard config and `tcd.ini`, installs Docker if needed, and builds and starts everything. Run it again, or `sudo ./setup.sh update`, to update while keeping the configuration. The step-by-step guide is [docs/INSTALL.md](docs/INSTALL.md).
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd
 sudo ./setup.sh
 ```
@@ -681,7 +681,7 @@ If not available as a package, build from source: [OpenDHT Wiki](https://github.
 ### Build
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd/reflector
 cp ../config/* .
 # Edit urfd.ini with your configuration

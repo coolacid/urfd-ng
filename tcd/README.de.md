@@ -24,7 +24,7 @@ tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um
 Am einfachsten: Das Setup-Script im Wurzelverzeichnis des Repositorys installiert Reflektor und Transcoder zusammen oder den Transcoder allein auf einem zweiten Rechner, stellt ein paar Fragen und schreibt `tcd.ini`. Siehe [docs/INSTALL.de.md](../docs/INSTALL.de.md).
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd
 sudo ./setup.sh
 ```
@@ -34,7 +34,7 @@ sudo ./setup.sh
 Nur den Transcoder bauen und installieren:
 
 ```bash
-git clone https://github.com/jcmerg/urfd.git
+git clone https://github.com/jcmerg/urfd-ng.git urfd
 cd urfd
 sudo bash tcd/build.sh               # two or more AMBE devices
 sudo bash tcd/build.sh --with-md380  # a single DV3000, DMR/YSF in software

@@ -531,6 +531,16 @@ update() {
     [ -f "$TCD_INI" ] && have_tcd=true
     [ "$have_urfd" = true ] || [ "$have_tcd" = true ] || die "nothing installed yet, run 'sudo ./setup.sh' first"
 
+    # the project moved from jcmerg/urfd (archived) to jcmerg/urfd-ng, same history
+    local origin
+    origin=$(repo_git remote get-url origin 2>/dev/null || true)
+    case "$origin" in
+        *github.com[:/]jcmerg/urfd|*github.com[:/]jcmerg/urfd.git|*github.com[:/]jcmerg/urfd/)
+            info "The project moved to jcmerg/urfd-ng, switching the checkout over"
+            repo_git remote set-url origin "$(echo "${origin%/}" | sed 's#jcmerg/urfd\(\.git\)\{0,1\}$#jcmerg/urfd-ng.git#')"
+            ;;
+    esac
+
     info "Updating the source in $REPO_DIR"
     repo_git pull --ff-only
 
