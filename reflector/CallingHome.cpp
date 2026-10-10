@@ -38,23 +38,25 @@ static std::string XmlEscape(const std::string &in)
 
 void CCallingHome::Start(void)
 {
-	if (!g_Configure.GetBoolean(g_Keys.callinghome.enable))
+	if (!g_Configure.Contains(g_Keys.callinghome.enable) || !g_Configure.GetBoolean(g_Keys.callinghome.enable))
 		return;
 
 	// the directory knows URF reflectors by their XLX name, as the dashboard reports it
 	m_Name = "XLX" + g_Configure.GetString(g_Keys.names.callsign).substr(3, 3);
 	m_Url = g_Configure.GetString(g_Keys.names.url);
-	m_Country = g_Configure.GetString(g_Keys.callinghome.country);
-	m_Comment = g_Configure.GetString(g_Keys.callinghome.comment);
-	m_OverrideIP = g_Configure.GetString(g_Keys.callinghome.overrideip);
-	m_Server = g_Configure.GetString(g_Keys.callinghome.server);
+	// everything below Enable is optional
+	auto optional = [](const std::string &key) { return g_Configure.Contains(key) ? g_Configure.GetString(key) : std::string(); };
+	m_Country = optional(g_Keys.callinghome.country);
+	m_Comment = optional(g_Keys.callinghome.comment);
+	m_OverrideIP = optional(g_Keys.callinghome.overrideip);
+	m_Server = optional(g_Keys.callinghome.server);
 	if (m_Server.empty())
 		m_Server = CALLINGHOME_SERVER;
 	if (g_Configure.Contains(g_Keys.callinghome.pushdelay))
 		m_PushDelay = g_Configure.GetUnsigned(g_Keys.callinghome.pushdelay);
 	if (g_Configure.Contains(g_Keys.callinghome.timeout))
 		m_Timeout = g_Configure.GetUnsigned(g_Keys.callinghome.timeout);
-	m_HashFile = g_Configure.GetString(g_Keys.callinghome.hashfile);
+	m_HashFile = optional(g_Keys.callinghome.hashfile);
 	if (m_HashFile.empty())
 		m_HashFile = CALLINGHOME_HASHFILE;
 	m_Hash.clear();
