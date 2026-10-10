@@ -378,8 +378,8 @@ secure_files() {
     chmod 755 "$DATA_DIR/xlxd-ch"
     # older dashboards kept a copy of the admin password, it is not used any more
     local php="$DATA_DIR/dashboard/config.inc.php"
-    if [ -f "$php" ] && grep -q "^\$Admin\['Password'\]" "$php"; then
-        sed -i "/^\$Admin\['Password'\]/d" "$php"
+    if [ -f "$php" ] && grep -Eq "^\\\$Admin\\[[\"']Password[\"']\\]" "$php"; then
+        sed -E -i "/^\\\$Admin\\[[\"']Password[\"']\\]/d" "$php"
     fi
 }
 
