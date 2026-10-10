@@ -1,5 +1,7 @@
 # Installing urfd and tcd
 
+**English** | [Deutsch](INSTALL.de.md)
+
 This guide sets up a URF reflector, with its web dashboard and optionally the tcd transcoder, using the setup script. You need no Linux experience beyond typing a few commands. The script asks a handful of questions, writes the configuration for you, and builds and starts everything.
 
 - **urfd** is the reflector. It runs in Docker, together with the dashboard.
@@ -11,8 +13,8 @@ This guide sets up a URF reflector, with its web dashboard and optionally the tc
 - **Linux**: Debian 12, Ubuntu 22.04 or newer, or Raspberry Pi OS (64-bit recommended). A fresh install is best.
 - **Internet access** from that computer, and the ability to open ports in your router or firewall (see [Ports](#ports)).
 - **For the transcoder**: DVSI AMBE USB sticks (DV3000/ThumbDV or DV3003), plugged into the machine that runs tcd.
-  - One DV3000 stick: 1 transcoded module (DMR/YSF then runs in software, "MD380").
-  - DV3000 + DV3003: 2 modules. Two DV3003: up to 3 modules.
+  - One device (DV3000 or DV3003): 1 transcoded module, DMR/YSF then runs in software ("MD380").
+  - DV3000 + DV3003: 2 modules. Two DV3000: 1 module. Two DV3003: up to 3 modules.
 - **A reflector callsign**: `URF` plus three letters or digits, e.g. `URF363`. Check that it is not taken in the [reflector list](https://xlxapi.rlx.lu/api/exportreflectors).
 
 ## Which setup?
@@ -58,7 +60,7 @@ The script asks its questions one after another. A value in `[brackets]` is the 
 | Admin page | Lets you manage talkgroups and see the live log in the dashboard. The script creates a password |
 | Register in the XLX directory | Lists the reflector in Pi-Star, WPSD and other hotspot software. Say **no** for now and register later, once the reflector works and is reachable from the internet |
 | Install Docker | Yes, if the script offers it |
-| AMBE hardware | 1 for a single DV3000 stick, 2 for anything else |
+| AMBE hardware | 1 for a single device (DV3000 or DV3003), 2 for two devices |
 | Serial numbers | The script lists the connected USB serial devices. Enter the serial numbers of your AMBE sticks, or press Enter to let tcd pick the AMBE sticks it recognises |
 
 Building takes a few minutes, on a Raspberry Pi up to half an hour. At the end the script shows the dashboard address, the admin password and the ports to open. Everything it prints is also saved in `/var/log/urfd-setup.log`.
@@ -95,10 +97,10 @@ Forward these ports from your router to the machine, or open them in the firewal
 
 Once everything works from outside, the reflector can be listed in hotspot software:
 
-1. Edit `/opt/urfd/dashboard/config.inc.php`: set `$CallingHome['Active'] = true;`, and check `MyDashBoardURL`, `Country` and `Comment`.
+1. Edit `/opt/urfd/config/urfd.ini`, section `[CallingHome]`: set `Enable = true`, the `Country` name (e.g. `Germany`) and a `Comment`. The `DashboardUrl` from `[Names]` is sent along.
 2. Restart: `docker restart urfd`.
 
-The dashboard then reports to the directory every 5 minutes.
+The reflector then reports to the directory every 5 minutes; `docker logs urfd | grep CallingHome` shows whether it got through. If you answered yes to this question during setup, it is already on.
 
 ## Daily use
 
@@ -117,10 +119,10 @@ The update keeps your configuration. It pulls the new version, rebuilds and rest
 
 | File | What's in it |
 |---|---|
-| `/opt/urfd/config/urfd.ini` | Reflector: modules, protocols, BrandMeister connection, D-Star and YSF links, interlinks. Every setting is explained in the file |
+| `/opt/urfd/config/urfd.ini` | Reflector: modules, protocols, XLX directory registration, BrandMeister connection, D-Star and YSF links, interlinks. Every setting is explained in the file |
 | `/opt/urfd/config/urfd.interlink` | Links to other reflectors |
 | `/opt/urfd/config/urfd.blacklist`, `urfd.whitelist` | Callsigns that may or may not link |
-| `/opt/urfd/dashboard/config.inc.php` | Dashboard: banner text, IP privacy, XLX directory registration |
+| `/opt/urfd/dashboard/config.inc.php` | Dashboard: banner text, IP privacy, admin page |
 | `/usr/local/etc/tcd.ini` | Transcoder: reflector address, modules, AMBE serial numbers, audio levels |
 
 After editing, restart the reflector (`docker restart urfd`) or the transcoder (`sudo systemctl restart tcd`). Check `urfd.ini` before a restart with:
@@ -149,5 +151,5 @@ The transcoded modules must be the same in `urfd.ini` (`[Transcoder] Modules`) a
 cd ~/urfd/docker && sudo docker compose down --rmi all -v
 sudo rm -rf /opt/urfd
 sudo systemctl disable --now tcd
-sudo rm -f /etc/systemd/system/tcd.service /usr/local/bin/tcd /usr/local/bin/tcdmon /usr/local/etc/tcd.ini /usr/local/etc/tcd-build.conf
+sudo rm -f /etc/systemd/system/tcd.service /usr/local/bin/tcd /usr/local/bin/tcdmon /usr/local/bin/agc-analyze /usr/local/etc/tcd.ini /usr/local/etc/tcd-build.conf
 ```

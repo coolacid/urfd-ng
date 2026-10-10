@@ -1,8 +1,10 @@
-# URF363 - Universal Digital Voice Reflector
+# URF363 - Universal Digital Voice Reflector and Transcoder
 
-Fork of [urfd](https://github.com/nostar/urfd) with extended features for the URF363 reflector project.
+**English** | [Deutsch](README.de.md)
 
-**Version 4.2.0-dht** | Dashboard v2.7.0
+Fork of [urfd](https://github.com/n7tae/urfd) with extended features for the URF363 reflector project. It includes the hybrid transcoder [tcd](tcd/) and a setup script that installs both.
+
+**urfd 4.3.0-dht** | tcd 0.2.0 | Dashboard v2.8.0
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -11,6 +13,24 @@ git clone https://github.com/jcmerg/urfd.git && cd urfd && sudo ./setup.sh
 ```
 
 ## What's New in This Fork
+
+### Setup Script and Transcoder
+`setup.sh` installs the reflector (Docker, with the dashboard) and the transcoder (systemd), on one machine or split across two, after a few questions; it also updates them. The transcoder lives in [`tcd/`](tcd/), so reflector and transcoder always come from the same version. tcd uses the AMBE sticks through the kernel's `ftdi_sio` driver with the USB latency timer at 1 ms, so it no longer needs the libftd2xx driver, which ftdichip.com no longer lets scripts download. See [docs/INSTALL.md](docs/INSTALL.md) and [tcd/README.md](tcd/README.md).
+
+### XLX Directory Registration (CallingHome)
+The reflector registers itself in the XLX directory, which lists it in Pi-Star, WPSD and other hotspot software. This used to be the dashboard's job; now it works without the dashboard too, and the dashboard no longer makes the request.
+
+```ini
+[CallingHome]
+Enable = true
+Country = Germany              # country name as shown in the directory
+Comment = My URF Reflector     # max 100 characters
+# HashFile = /var/lib/xlxd-ch/callinghome.php  # shared with the dashboard, created if missing
+# OverrideIP =                 # blank = the directory uses the address it sees
+# PushDelay = 300              # seconds between updates
+```
+
+It sends what the dashboard sent (name `XLXnnn`, uptime, `DashboardUrl` from `[Names]`, country, comment, version, interlinks) and keeps using the dashboard's hash file, so an existing reflector stays the same entry in the directory. A hash file that exists but cannot be read is never replaced; nothing is sent then. Nothing is sent unless `Enable = true`. The settings are read at startup.
 
 ### MMDVMClient Connector
 Connect to any DMR master server (e.g. BrandMeister) via the MMDVM protocol. Maps talkgroups to reflector modules with per-timeslot support. Multiple TGs can share a module: the first becomes the primary (TX/RX), additional TGs are secondary (inbound RX only). Dynamic TGs can be added at runtime via the Admin interface.
@@ -486,8 +506,8 @@ Module names are configured once in `urfd.ini` and automatically available in th
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.7.0
-Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0).
+### Dashboard v2.8.0
+Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0).
 
 **New pages:**
 - **Active Users** - Connected nodes per module in card layout
@@ -502,29 +522,27 @@ Complete redesign with dark mode theme (v2.6.0), hardened against directory outa
 - MOTD/maintenance banner via `$PageOptions['MOTD']` in config.inc.php
 - Module names read from urfd XML (single source of truth)
 - Contact email obfuscated against bots
-- CallingHome runs automatically via supervisor (every 5 min)
 - QuadNet Live: native PHP proxy table with search and auto-refresh (replaces iframe)
 - Reflector list: client-side search and pagination (25 per page) with CSS status dots
 - QRZ links use callsign without module suffix
 - **Admin panel** (hidden): dynamic TG management with kerchunk button, transcoder stats, live log, protocol controls. Access via pi symbol or `?show=admin`.
 
-**Resilience against a directory outage**: the dashboard no longer depends on
-`xlxapi.rlx.lu` being reachable. Every outbound request has an explicit timeout, a
-failed CallingHome is logged instead of aborting the page, and the reflector list is
-cached on disk (`<HashFile dir>/reflectorlist.cache`) so a fresh entry serves the page
+**Resilience against a directory outage**: the dashboard does not depend on
+`xlxapi.rlx.lu` being reachable. The reflector list has an explicit timeout and is
+cached on disk (`<CacheDir>/reflectorlist.cache`), so a fresh entry serves the page
 with no network call at all and a stale one keeps the list working while the directory
-is down.
+is down. Since v2.8.0 the dashboard no longer registers the reflector in the directory
+(the reflector does, see [CallingHome](#xlx-directory-registration-callinghome)).
 
 ```php
 // pgs/config.inc.php
-$CallingHome['PushDelay'] = 300;   // Seconds between pushes
-$CallingHome['Timeout']   = 5;     // Seconds before giving up on the directory server
+$Directory['ServerURL'] = 'http://xlxapi.rlx.lu/api.php';
+$Directory['Timeout']   = 5;                    // Seconds before giving up on the directory server
+$Directory['CacheDir']  = '/var/lib/xlxd-ch';   // Reflector list cache
 ```
 
-`PushDelay` must stay well above `$PageOptions['PageRefreshDelay']`. If it drops to
-the refresh interval, practically every page load triggers a CallingHome, and with an
-unresponsive directory that is enough to exhaust the php-fpm worker pool and make the
-whole dashboard — including the admin panel — appear to hang.
+Older configs without `$Directory` keep working: the values are taken from their
+`$CallingHome` settings.
 
 ### JSON API
 Read-only HTTP endpoints under `/json/`, served by the dashboard:
@@ -626,10 +644,9 @@ With the [md380_vocoder](https://github.com/jcmerg/md380_vocoder) library, the t
 
 ### Container architecture
 
-The urfd container runs three services via supervisord:
+The urfd container runs two services via supervisord:
 - **urfd** - The reflector daemon
 - **nginx + php-fpm** - Dashboard on port 8363
-- **callhome** - Automatic CallingHome every 5 minutes
 
 ### Configuration files
 
@@ -642,7 +659,7 @@ All configuration is in `/opt/urfd/config/` (mounted as volume):
 Dashboard config at `/opt/urfd/dashboard/config.inc.php` (mounted into container):
 - `$PageOptions['MOTD']` - Maintenance banner (shown on all pages)
 - `$PageOptions['ContactEmail']` - Footer contact (obfuscated)
-- `$CallingHome['Active']` - Enable/disable XLX directory registration
+- `$Directory` - XLX directory server and cache for the reflector list (registration is `[CallingHome]` in `urfd.ini`)
 
 ## Installation (Bare Metal)
 
@@ -685,13 +702,22 @@ Edit `urfd.ini` to set:
 - Admin interface (port, password, bind address)
 - Database URLs for DMR ID, NXDN ID, YSF TX/RX lookups (comma separated for fallback sources, see [Resilient ID Database Loading](#resilient-id-database-loading))
 
+### Transcoder
+
+```bash
+sudo bash tcd/build.sh               # two or more AMBE devices
+sudo bash tcd/build.sh --with-md380  # a single DV3000, DMR/YSF in software
+```
+
+Installs the vocoder libraries, builds tcd as the owner of the checkout and installs it with its systemd unit. Configuration in `/usr/local/etc/tcd.ini`, see [tcd/README.md](tcd/README.md).
+
 ### Dashboard
 
 ```bash
 sudo cp -r ~/urfd/dashboard /var/www/urf
 ```
 
-Edit `pgs/config.inc.php` for email, country, CallingHome, and Admin settings. Module names are read from the urfd XML output. For the Admin panel, set `$Admin['Enable'] = true` and match the password with `urfd.ini`.
+Edit `pgs/config.inc.php` for email and Admin settings. Module names are read from the urfd XML output. For the Admin panel, set `$Admin['Enable'] = true` and match the password with `urfd.ini`.
 
 ## Administration Tools
 
@@ -810,12 +836,22 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 ### Dashboard & Output
 - **Protocol naming**: Consistent UI names — `MMDVM` = direct hotspot connections, `MMDVMClient` = BrandMeister/master server connection (previously both showed as "MMDVM" in different contexts)
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
-- **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
+- **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
+- **Dashboard v2.8.0**: No CallingHome any more, the reflector registers itself; the reflector list reads `$Directory` (falling back to old `$CallingHome` settings); `/json/metadata` takes the dashboard URL from the reflector's XML
 - **Extended XML/JSON**: Module mappings (static + dynamic with TTL), reflector metadata, protocol list, per-user protocol info, dynamic TG array
 - **Protocol blocking display**: Active blocks shown as clickable labels in admin panel
 
+### Transcoder (tcd)
+- **In this repository**: tcd moved into `tcd/` with its history; it builds against the urfd sources it shares (`TCPacketDef.h`, `TCSocket.*`) from `../reflector`, so both sides always speak the same protocol
+- **Serial access without libftd2xx**: AMBE devices through the kernel's `ftdi_sio` driver and `/dev/serial/by-id` (POSIX backend by Jason Kendall), RTS/CTS flow control, USB latency timer set to 1 ms; devices an older libftd2xx based tcd left unbound are bound back at startup; a lost device restarts tcd through systemd
+- **Device selection**: `DeviceSerial` matches the USB serial, the libftd2xx form with the port letter, the by-id name or the device node exactly; `tcd --list-devices` shows them
+- **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
+
 ### Infrastructure
+- **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data and hash file the dashboard used, without needing the dashboard
+- **Clean shutdown**: urfd stops within about 2 seconds on SIGTERM. Before, the module router threads waited for packets forever, protocols were deleted while their threads still ran (a crash, hidden because Docker killed urfd first) and the ID database threads slept up to 10 s each, so `docker stop` always ended in a kill
+- **Setup script**: `setup.sh` installs and updates reflector and transcoder, writes the configuration from the templates and checks it with inicheck; Docker compose builds from any checkout, data in `$URFD_DATA` (default `/opt/urfd`)
 - **Echo module**: Built-in parrot with enable/disable flag
 - **M17 LSTN support**: Listen-only M17 clients for monitoring services, which may not transmit
 - **mrefd interlink**: Share modules with M17 reflectors (`M17-XXX` in `urfd.interlink`, `[M17] Callsign`), including legacy mrefd
@@ -838,3 +874,4 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - Copyright (c) 2022 Doug McLain AD8DP and Thomas A. Early N7TAE
 - Copyright (c) 2024 Thomas A. Early N7TAE
 - Copyright (c) 2025-2026 Jens-Christian Merg DL4JC (URF363 fork extensions)
+- tcd: Copyright (c) 2021 Thomas A. Early N7TAE; POSIX serial backend by Jason Kendall (2026); fork extensions Jens-Christian Merg DL4JC

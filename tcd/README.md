@@ -1,99 +1,27 @@
 # tcd — Hybrid Digital Voice Transcoder
 
-Fork of [n7tae/tcd](https://github.com/n7tae/tcd) with bug fixes and usability improvements.
+**English** | [Deutsch](README.de.md)
 
-## Overview
+**Version 0.2.0** — the transcoder of the [urfd](../README.md) reflector, in the `tcd/` folder of the same repository. Fork of [n7tae/tcd](https://github.com/n7tae/tcd).
 
-tcd is a hybrid transcoder for the [URF reflector](https://github.com/jcmerg/urfd). It bridges between hardware-based vocoders (DVSI AMBE) and software-based vocoders (Codec2 for M17, IMBE for P25, and optionally MD380 for DMR/YSF).
+tcd converts voice between the digital modes on a URF reflector, so a D-Star user hears a DMR user and the other way round. It uses DVSI AMBE hardware for D-Star (AMBE) and DMR/YSF (AMBE2+), and software vocoders for M17 (Codec2), P25/NXDN (IMBE) and, optionally, DMR/YSF (MD380). The reflector hands the audio of its transcoded modules to tcd over TCP and gets every other mode back.
 
-## Requirements
+## Contents
 
-- Linux (systemd-based, Debian/Ubuntu recommended)
-- [imbe_vocoder](https://github.com/jcmerg/imbe_vocoder) library
-- DVSI AMBE hardware (see Device Configurations below)
-- [md380_vocoder](https://github.com/jcmerg/md380_vocoder) *(optional — required only when building with `md380=true`)*
- 
+- [Install](#install)
+- [Hardware](#hardware)
+- [Selecting the AMBE devices](#selecting-the-ambe-devices)
+- [Configuration (tcd.ini)](#configuration-tcdini)
+- [Audio levels](#audio-levels)
+- [Monitoring](#monitoring)
+- [Operation and troubleshooting](#operation-and-troubleshooting)
+- [Changes from upstream](#changes-from-upstream)
 
-### Hardware Requirements by Build Type
+## Install
 
-| Build | Min. Hardware | Enabled Features |
-|-------|---------------|------------------|
-| `make` (default) | 2× AMBE3000 (DV3000), **or** 1× AMBE3003 (DV3003), **or** DV3000+DV3003 | All codecs; no software DMR fallback |
-| `make md380=true` | 1× AMBE device (DV3000 or DV3003) | All codecs + software DMR via MD380, DMR re-encode after AGC |
+### With the setup script
 
-## Device Configurations
-
-tcd auto-detects the connected devices and selects the appropriate mode:
-
-### 1. Mixed Mode: DV3000 + DV3003 (recommended, 2 modules)
-
-Use a DV3000 (1 D-Star channel) together with a DV3003 (1 D-Star + 2 DMR channels) for concurrent 2-module cross-mode transcoding.
-
-```ini
-Modules = FS            # 2 modules (first = DV3000 D-Star, second = DV3003 mixed)
-DeviceSerial = DQ015SBR # DV3000
-DeviceSerial = DKB7FXGE # DV3003
-```
-
-Channel assignment (automatic):
-- **DV3000 ch0**: D-Star for first module (F)
-- **DV3003 ch0**: D-Star for second module (S)
-- **DV3003 ch1**: DMR for first module (F)
-- **DV3003 ch2**: DMR for second module (S)
-
-**DMR/YSF gain options:**
-
-| Build | DmrGainMode | DMR→DMR/YSF gain | AGC on DMR→DMR/YSF |
-|-------|-------------|-------------------|--------------------|
-| Without md380 | `ambe` | Bitstream b2 (`AmbeGainDb=-2`) | No |
-| With md380 | `reencode` | PCM (`DmrReencodeGain=-16`) | Yes |
-| With md380 | `ambe` | Bitstream b2 (`AmbeGainDb=-2`) | No |
-
-Cross-mode paths (DMR→D-Star, D-Star→DMR, etc.) always have full AGC and OutputGain support regardless of build or mode.
-
-### 2. Single Device + MD380 (1 module, requires `md380=true` build)
-
-One DVSI device for D-Star, MD380 software vocoder for DMR/YSF. Only supports 1 transcoded module. Works on ARM and x86_64. Build with `make md380=true` (or `build.sh --with-md380`).
-
-```ini
-Modules = S
-DeviceSerial = DQ015SBR
-```
-
-**AGC limitation**: In this mode, DMR/YSF→DMR/YSF audio is **not re-encoded** after AGC because the MD380 cannot safely decode and re-encode in the same pipeline (shared encoder/decoder state). Use `DmrGainMode = ambe` for DMR/YSF level adjustment instead:
-
-```ini
-DmrGainMode = ambe
-AmbeGainDb  = -2
-```
-
-AGC still normalizes audio for all cross-mode paths (DMR→D-Star, DMR→M17, etc.). To get full AGC + re-encode on DMR/YSF→DMR/YSF, use a two-device configuration.
-
-### 3. Two Same-Type Devices (1-3 modules)
-
-Two DV3000s (1 module) or two DV3003s (up to 3 modules). One device handles D-Star, the other DMR/YSF. Same gain options as Mixed Mode (see table above).
-
-```ini
-Modules = AFS           # up to 3 with DV3003 pair
-```
-
-## Device Discovery
-
-List connected AMBE devices and their USB serials (POSIX):
-
-```bash
-tcd --list-devices
-```
-
-If you have multiple USB serial devices, use `DeviceSerial` in `tcd.ini` to whitelist your AMBE device. It must match exactly: the USB serial number, the libftd2xx style serial with the port letter of multi-port devices (e.g. `DA1234A`), the `/dev/serial/by-id` name or the device node. tcd uses `/dev/serial/by-id` and the kernel's `ftdi_sio` driver with the USB latency timer at 1 ms; it does not need the libftd2xx (D2XX) driver. Devices that an older, libftd2xx based tcd left unbound from `ftdi_sio` are bound back at startup.
-
-## Build & Install
-
-tcd lives in the `tcd/` folder of the [urfd repository](https://github.com/jcmerg/urfd). It builds against the urfd sources it shares (`TCPacketDef.h`, `TCSocket.*`, ...) from `../reflector`, so reflector and transcoder always come from the same version.
-
-### Quick start (setup.sh)
-
-The easiest way is the setup script in the repository root. It asks a few questions, writes `tcd.ini` (and `urfd.ini` if the reflector runs on the same machine), builds and starts everything. See [docs/INSTALL.md](../docs/INSTALL.md).
+The easiest way: the setup script in the repository root installs reflector and transcoder together, or the transcoder alone on a second machine, asks a few questions and writes `tcd.ini`. See [docs/INSTALL.md](../docs/INSTALL.md).
 
 ```bash
 git clone https://github.com/jcmerg/urfd.git
@@ -101,288 +29,279 @@ cd urfd
 sudo ./setup.sh
 ```
 
-### build.sh
+### With build.sh
 
-To only build and install tcd:
+To build and install only the transcoder:
 
 ```bash
 git clone https://github.com/jcmerg/urfd.git
 cd urfd
-sudo bash tcd/build.sh               # without md380 (requires ≥2 AMBE devices)
-sudo bash tcd/build.sh --with-md380  # with md380 (1 AMBE device sufficient)
+sudo bash tcd/build.sh               # two or more AMBE devices
+sudo bash tcd/build.sh --with-md380  # a single DV3000, DMR/YSF in software
 ```
 
-The script installs the libraries tcd needs (imbe_vocoder, and md380_vocoder with `--with-md380`), builds tcd from this repository, installs the binary and the systemd service, and restarts the service if it was running.
+`build.sh` installs the build tools and the vocoder libraries ([imbe_vocoder](https://github.com/jcmerg/imbe_vocoder), and with `--with-md380` [md380_vocoder](https://github.com/jcmerg/md380_vocoder): native on armhf, through [dynarmic](https://github.com/jcmerg/md380_vocoder_dynarmic) on x86_64 and arm64), builds tcd as the owner of the checkout and installs `tcd`, `tcdmon`, `agc-analyze` and the systemd unit. A running tcd is restarted. The first install puts the template at `/usr/local/etc/tcd.ini`; edit it (see [Configuration](#configuration-tcdini)) and start with `sudo systemctl start tcd`.
 
-Edit `/usr/local/etc/tcd.ini` after install (see Configuration below).
+To update: `git pull` in the checkout and run `build.sh` again, or `sudo ./setup.sh update`.
 
-### Manual build
+### By hand
 
 With the libraries installed:
 
 ```bash
 cd urfd/tcd
-make -j$(nproc)             # without md380 (default)
-make -j$(nproc) md380=true  # with md380 software vocoder
+make -j$(nproc)             # without MD380
+make -j$(nproc) md380=true  # with the MD380 software vocoder
 sudo make install
 ```
 
-`config/tcd.ini` is the commented template for `/usr/local/etc/tcd.ini`, `config/tcd.service` the systemd unit.
+tcd builds against the urfd sources it shares with the reflector (`TCPacketDef.h`, `TCSocket.*`, ...) from `../reflector`, so both sides always speak the same protocol. `config/tcd.ini` is the commented template, `config/tcd.service` the systemd unit.
+
+### Requirements
+
+- Linux with systemd: Debian, Ubuntu or Raspberry Pi OS; x86_64, arm64 or armhf
+- DVSI AMBE USB devices (see [Hardware](#hardware)); they use the kernel's `ftdi_sio` driver, no extra driver needed
+- Low latency to the AMBE devices: tcd runs natively, not in Docker. It can run on the reflector's machine or on another one, e.g. a Raspberry Pi next to the radio gear.
+
+## Hardware
+
+Each transcoded module needs a D-Star channel and a DMR/YSF channel. A DV3000 (ThumbDV, DVstick-30, USB-3000) has one channel, a DV3003 (DVstick-33, USB-3003) three. Without AMBE hardware for DMR/YSF, the MD380 software vocoder takes that part (build with `md380=true` / `--with-md380`).
+
+| Hardware | Build | Modules | Notes |
+|---|---|---|---|
+| 1× DV3000 or 1× DV3003 | MD380 required | 1 | D-Star on the device, DMR/YSF in software |
+| DV3000 + DV3003 | with or without MD380 | 2 | mixed mode, recommended |
+| 2× DV3000 | with or without MD380 | 1 | one for D-Star, one for DMR/YSF |
+| 2× DV3003 | with or without MD380 | up to 3 | one for D-Star, one for DMR/YSF |
+
+A single device always needs the MD380 build; tcd refuses to start without it. With two devices, MD380 adds the DMR re-encode (see [`DmrGainMode`](#dmrysf--dmrysf-level-dmrgainmode)). tcd detects the devices and picks the mode itself.
+
+### Mixed mode: DV3000 + DV3003
+
+Two modules at once, with the channels assigned automatically:
+
+| Channel | Use |
+|---|---|
+| DV3000 ch0 | D-Star, first module |
+| DV3003 ch0 | D-Star, second module |
+| DV3003 ch1 | DMR/YSF, first module |
+| DV3003 ch2 | DMR/YSF, second module |
+
+```ini
+Modules = FS            # first = D-Star on the DV3000, second = D-Star on the DV3003
+DeviceSerial = DQ015SBR # DV3000
+DeviceSerial = DKB7FXGE # DV3003
+```
+
+### Single device with MD380
+
+One module, D-Star on the DV3000 or DV3003 and DMR/YSF through the MD380. In this mode, DMR/YSF → DMR/YSF audio is **not re-encoded** after the AGC, because the MD380 cannot decode and re-encode in the same pipeline (shared encoder/decoder state). Use the bitstream gain (`DmrGainMode = ambe`) for that path; all paths between different modes still get the full AGC. Re-encode on DMR/YSF → DMR/YSF needs a second AMBE device.
+
+### DV3003 notes
+
+- **Companding off**: every DV3003 channel gets companding explicitly disabled. The DV3003 defaults to companding on (CP_ENABLE pull-up), the DV3000 to off; without this, the DMR/YSF channels got µ-law PCM read as linear, which distorts the audio.
+- **Serial flush**: before the soft reset, 350 zero bytes clear any stale serial state.
+- **Per-channel codec**: one DV3003 can run D-Star and DMR/YSF channels at the same time (mixed mode).
+
+## Selecting the AMBE devices
+
+```bash
+tcd --list-devices
+```
+
+lists the USB serial devices from `/dev/serial/by-id` with their serial numbers and marks the ones that look like AMBE devices.
+
+Without `DeviceSerial` in `tcd.ini`, tcd uses every device it recognises as AMBE by its name. With other USB serial devices on the machine (GPS, CAT cables, ...), list your AMBE devices explicitly. `DeviceSerial` must match exactly one of:
+
+- the USB serial number (`DKB7FXGE`)
+- the older libftd2xx form with the port letter of multi-port devices (`DA1234A`)
+- the `/dev/serial/by-id` name
+- the device node (`/dev/ttyUSB0`)
+
+tcd opens the devices through the kernel's `ftdi_sio` driver and sets their USB latency timer to 1 ms (the driver default is 16 ms, too slow for the AMBE timing; the log shows the value). Devices that an older, libftd2xx based tcd left unbound from `ftdi_sio` are bound back at startup, so an upgrade needs no replugging.
 
 ## Configuration (tcd.ini)
 
-```ini
-Port = 10100
-ServerAddress = 172.16.200.10   # IP of the urfd reflector
-Modules = FS                    # must match urfd.ini [Transcoder] section
+`/usr/local/etc/tcd.ini`; the template in [`config/tcd.ini`](config/tcd.ini) explains every key. Restart tcd after changes (`sudo systemctl restart tcd`), or change the audio settings live in the [web dashboard](#web-dashboard).
 
-# Whitelist AMBE devices by serial (use 'tcd --list-devices' to find them)
-DeviceSerial = DQ015SBR
-DeviceSerial = DKB7FXGE
+### Connection and devices
 
-# Output Gain — post-AGC, per target codec, in dB
-# Applied to PCM before encoding. Always effective on cross-mode paths.
-# For DMR→DMR/YSF passthrough, OutputGainDMR only applies with DmrGainMode=reencode.
-OutputGainDStar = 0             # D-Star output
-OutputGainM17   = 0             # M17/Codec2 output
-OutputGainDMR   = 0             # DMR/YSF output
-OutputGainIMBE  = 0             # P25/NXDN output
-OutputGainUSRP  = 0             # USRP output
+| Key | Template | Meaning |
+|---|---|---|
+| `ServerAddress` | `127.0.0.1` | address of the urfd reflector |
+| `Port` | `10100` | the reflector's `[Transcoder] Port` |
+| `Modules` | `FS` | transcoded modules, the same letters as the reflector's `[Transcoder] Modules` |
+| `DeviceSerial` | — | AMBE device to use, one line each (see [above](#selecting-the-ambe-devices)) |
 
-# DVSI Hardware Gains in dB (-40 to +40) — inside the DVSI chip
-DStarGainIn     = 0
-DStarGainOut    = 0
-DmrGainIn       = 0
-DmrGainOut      = 0
+### Gains
 
-# USRP/SVX PCM gains in dB (-40 to +40)
-UsrpGainIn      = 0
-UsrpGainOut     = 0
+All gains are in dB, -40 to +40.
 
-# DMR/YSF Gain Mode — controls how DMR→DMR/YSF output level is adjusted.
-#   off      = no gain adjustment on DMR→DMR/YSF passthrough
-#   ambe     = bitstream b2 parameter manipulation (no decode/re-encode, experimental)
-#   reencode = full MD380 decode/re-encode with AGC + DmrReencodeGain (requires md380=true)
-DmrGainMode     = ambe          # off / ambe / reencode
-AmbeGainDb      = -2            # for ambe mode: -30 to 0 dB (each 2 dB ≈ 1 b2 step)
-DmrReencodeGain = -16           # for reencode mode: compensates re-encode loudness (~-16 dB)
+| Key | Template | Applied to |
+|---|---|---|
+| `OutputGainDStar` | `0` | D-Star output, after the AGC |
+| `OutputGainDMR` | `0` | DMR/YSF output, after the AGC |
+| `OutputGainM17` | `0` | M17/Codec2 output, after the AGC |
+| `OutputGainIMBE` | `0` | P25/NXDN output, after the AGC |
+| `OutputGainUSRP` | `0` | USRP output, after the AGC |
+| `DStarGainIn` / `DStarGainOut` | `0` | inside the DVSI chip, D-Star decode / encode |
+| `DmrGainIn` / `DmrGainOut` | `0` | inside the DVSI chip, DMR decode / encode |
+| `UsrpGainIn` / `UsrpGainOut` | `0` | USRP audio in / out |
 
-# AGC (Automatic Gain Control)
-AGC             = true
-AGCTarget       = -16
-AGCAttack       = 50
-AGCRelease      = 500
-AGCMaxGainUp    = 30
-AGCMaxGainDown  = 24
-AGCNoiseGate    = -55
+The SVX gain is set in the reflector's `urfd.ini` (`RxGain`/`TxGain`), not here.
 
-# Web Dashboard & Monitoring
-Monitor          = true
-MonitorHttpPort  = 8080
-MonitorStatsPort = 8081
+### DMR/YSF → DMR/YSF level (`DmrGainMode`)
 
-# Stats CSV Logging (enable for tuning, disable in normal operation)
-StatsLog       = false
-StatsLogDir    = /tmp/tcd-stats
-StatsLogRetain = 24
-```
+DMR to DMR/YSF audio normally passes through as AMBE2+ without being decoded, so the AGC cannot touch it. `DmrGainMode` decides how its level is adjusted:
 
-### Audio gain
+| Mode | Needs | What it does |
+|---|---|---|
+| `off` | — | no adjustment |
+| `ambe` | — | changes the b2 (delta-gamma) gain parameter directly in the AMBE2+ frame, with `AmbeGainDb` (-30 to 0 dB, about 2 dB per step). No decode, no quality loss, also repairs Golay FEC errors. Experimental. |
+| `reencode` | MD380 | full decode and re-encode through the MD380, with AGC and `DmrReencodeGain` (compensates the re-encode loudness, around -16 dB). Falls back to `ambe` without MD380. |
 
-All transcoding passes through PCM as intermediate format. The gain chain depends on the source codec:
+| Key | Template | Code default |
+|---|---|---|
+| `DmrGainMode` | `ambe` | `ambe` |
+| `AmbeGainDb` | `-2` | `-2` |
+| `DmrReencodeGain` | `-16` | — |
+
+### AGC
+
+| Key | Template | Code default | Meaning |
+|---|---|---|---|
+| `AGC` | `true` | `false` | automatic gain control on/off |
+| `AGCTarget` | `-16` | `-16` | target level in dBFS |
+| `AGCAttack` | `50` | `50` | ms to bring loud audio down |
+| `AGCRelease` | `500` | `500` | ms to bring quiet audio up |
+| `AGCMaxGainUp` | `30` | `30` | most amplification in dB |
+| `AGCMaxGainDown` | `24` | `24` | most attenuation in dB |
+| `AGCNoiseGate` | `-55` | `-55` | below this level (dBFS) the gain is held |
+
+### Monitoring and logging
+
+| Key | Template | Meaning |
+|---|---|---|
+| `Monitor` | `true` | web dashboard and stats socket on/off |
+| `MonitorHttpPort` | `8080` | web dashboard |
+| `MonitorStatsPort` | `8081` | stats socket (JSON, for `tcdmon`) |
+| `StatsLog` | `false` | per-stream CSV files for AGC tuning |
+| `StatsLogDir` | `/tmp/tcd-stats` | where they go |
+| `StatsLogRetain` | `24` | hours before they are deleted |
+
+## Audio levels
+
+Every conversion goes through PCM:
 
 ```
 D-Star/DMR (DVSI hardware):
-  AMBE --[DVSI GainIn hw]--> PCM --[AGC]--> PCM --[OutputGain sw]--> [DVSI GainOut hw]--> Target AMBE
+  AMBE --[DVSI GainIn]--> PCM --[AGC]--> PCM --[OutputGain]--> [DVSI GainOut] --> target AMBE
 
 M17/P25 (software vocoder):
-  Codec --[decode]--> PCM --[AGC]--> PCM --[OutputGain]--> Target Codec
+  codec --[decode]--> PCM --[AGC]--> PCM --[OutputGain]--> target codec
 
-USRP/SVX (raw PCM):
-  PCM --[UsrpGainIn]--> PCM --[AGC]--> PCM --[OutputGain]--> Target Codec
+USRP/SVX (PCM):
+  PCM --[UsrpGainIn]--> PCM --[AGC]--> PCM --[OutputGain]--> target codec
 
-DMR→DMR/YSF re-encode (DmrGainMode=reencode):
-  AMBE2+ --[decode]--> PCM --[AGC]--> PCM --[OutputGainDMR]--> [DmrReencodeGain]--> MD380 --> AMBE2+
+DMR -> DMR/YSF with DmrGainMode = reencode:
+  AMBE2+ --[decode]--> PCM --[AGC]--> PCM --[OutputGainDMR]--> [DmrReencodeGain] --> MD380 --> AMBE2+
 ```
 
-The web dashboard and tcdmon show a simplified version of this chain per active module.
+**With the AGC**, the static gains can usually all stay at 0: it evens out different microphones, radios and codecs per transmission. Without it, every route needs its own static gain.
 
-#### Output Gain (post-AGC)
+The AGC works per stream (per transmission):
+- RMS over a sliding window of 3 frames (60 ms), following syllables rather than single sounds
+- a slow average (about 2 s) of the gain each speaker needs; in pauses the gain drifts towards it, so the first syllable after a pause starts at the right level
+- faster release for the first 5 frames after the gate opens
+- a peak limiter at -0.1 dBFS, so it never clips
 
-Applied after AGC, independently per target codec. Use these to fine-tune the output level for each codec path. The DVSI hardware handles AMBE/AMBE2+ level matching internally, so cross-mode paths (D-Star↔DMR) typically need no compensation here.
-
-| Parameter | Default | Applied to |
-|-----------|---------|------------|
-| `OutputGainDStar` | `0` | D-Star DVSI encode |
-| `OutputGainM17` | `0` | M17/Codec2 encode |
-| `OutputGainDMR` | `0` | DMR/YSF (see below) |
-| `OutputGainIMBE` | `0` | P25/NXDN (IMBE encoder) |
-| `OutputGainUSRP` | `0` | USRP output |
-
-Gains are applied on local copies in each encode function and in the DVSI FeedDevice thread — the shared PCM buffer is never modified.
-
-`OutputGainDMR` applies to all DMR/YSF encode paths (DVSI hardware and re-encode). For the re-encode loudness compensation, use `DmrReencodeGain` (recommended `-16`) which only affects the MD380 re-encode path. Without re-encode, use `AmbeGainDb` instead for DMR/YSF level adjustment.
-
-#### DVSI Hardware Gain
-
-Gain values (in dB, range -40 to +40) applied inside the DVSI chip:
-
-| Parameter | Direction | Description |
-|-----------|-----------|-------------|
-| `DStarGainIn` | D-Star AMBE → PCM | Boost quiet D-Star audio |
-| `DStarGainOut` | PCM → D-Star AMBE | Reduce PCM for D-Star encoding |
-| `DmrGainIn` | DMR AMBE2+ → PCM | Attenuate hot DMR audio |
-| `DmrGainOut` | PCM → DMR AMBE2+ | Attenuate PCM for DMR encoding |
-| `UsrpGainIn` | PCM from USRP → internal | Adjust incoming USRP audio |
-| `UsrpGainOut` | Internal → USRP | Adjust outgoing USRP audio |
-
-**Note**: SVX gain is configured in urfd.ini (`RxGain`/`TxGain`), not in tcd.
-
-#### AGC (Automatic Gain Control)
-
-The AGC normalizes audio levels after decode and before encode. It tracks gain per stream (per transmission), so each user gets independent level adjustment.
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `AGC` | `false` | Enable/disable AGC (`true` or `false`) |
-| `AGCTarget` | `-16` | Target RMS level in dBFS. Lower = quieter output. |
-| `AGCAttack` | `50` | Attack time in ms. How fast loud signals are dampened. |
-| `AGCRelease` | `500` | Release time in ms. How fast quiet signals are raised. |
-| `AGCMaxGainUp` | `30` | Maximum amplification in dB. Limits noise boost on quiet input. |
-| `AGCMaxGainDown` | `24` | Maximum attenuation in dB. Limits reduction on loud input. |
-| `AGCNoiseGate` | `-55` | Noise gate threshold in dBFS. Below this level, gain is frozen. |
-
-#### DMR/YSF Gain Mode (`DmrGainMode`)
-
-Controls how DMR→DMR/YSF output level is adjusted. Without re-encode, AMBE2+ data is passed through directly — AGC cannot be applied because there is no PCM stage. Re-encode forces a decode/re-encode cycle so that AGC and gain control take effect on this path. Without MD380, bitstream b2 manipulation is the only option for DMR→DMR/YSF level adjustment. Set via the dashboard dropdown or `DmrGainMode` in tcd.ini.
-
-| Mode | Config value | Requires | Description |
-|------|-------------|----------|-------------|
-| **Off** | `off` | — | No gain adjustment on DMR→DMR/YSF passthrough |
-| **Bitstream** | `ambe` | — | Adjusts b2 (delta-gamma) parameter directly in AMBE2+ frame. No decode/re-encode, no quality loss. Also repairs Golay FEC errors. **(experimental)** |
-| **Re-encode** | `reencode` | `md380=true` | Full decode/re-encode via MD380. Provides AGC normalization + `DmrReencodeGain` on PCM. Falls back to `ambe` if md380 not available. |
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `DmrGainMode` | `ambe` | `off` / `ambe` / `reencode` |
-| `AmbeGainDb` | `-2` | Bitstream mode: -30 to 0 dB (each 2 dB ≈ 1 b2 step). Even -2 dB repairs FEC errors. |
-| `DmrReencodeGain` | `-16` | Re-encode mode: compensates re-encode loudness (dB). Recommended `-16`. |
-
-Gain limits are asymmetric by design: attenuation (down) is safe, amplification (up) risks noise. Typical DMR input sits at -35 dBFS, so +20 dB up is needed to reach -16 target.
-
-**AGC algorithm details:**
-- **Sliding RMS window** (3 frames / 60ms): smooths consonant/vowel variation, tracks syllable-level energy
-- **Per-stream long-term average gain**: tracks the typical gain needed for each speaker via slow EMA (~2s)
-- **Gate with gain decay**: during silence, gain drifts toward the speaker's long-term average gain, so the first syllable after a pause starts at the right level
-- **Fast post-gate release**: first 5 frames after gate opening use 5x release speed (capped at alpha=0.5) for quicker recovery
-- **Peak limiter**: hard limit at -0.1 dBFS, never clips
-
-**Without AGC**, the static gain values must compensate for all level differences between codecs and users. Tuning is tedious and every route needs individual attention.
-
-**With AGC**, static gains are typically 0 for all codecs. The AGC automatically adjusts for different microphone levels, radio models, and codec characteristics.
-
-All AGC and gain parameters can be changed at runtime via the web dashboard (no restart required).
+The gain limits are asymmetric on purpose: attenuating is safe, amplifying also lifts noise. Typical DMR input sits around -35 dBFS, so about +20 dB are needed to reach a -16 dBFS target.
 
 ## Monitoring
 
-### Web Dashboard
+### Web dashboard
 
-Access `http://<tcd-host>:8080` in a browser. Features:
+`http://<tcd-host>:8080`:
 
-- **Signal flow diagram**: Shows the active codec path with live dBFS levels at each stage
-- **VU meters**: Pre-AGC and post-AGC with peak hold
-- **AGC controls**: Enable/disable, target, attack, release, gain limits (up to 40dB) — changes apply live
-- **Gain sliders**: Grouped into Output Gain (post-AGC) / DVSI Hardware / USRP-SVX / DMR/YSF Gain mode dropdown (Off / Bitstream b2 / Re-encode MD380)
-- **DVSI device status**: Serial, type, role (dstar/dmr/mixed), vocoder slots used/total, active module letters, buffer depth
-- **MD380 software vocoder**: Re-encode on/off, cached streams, encode/decode/re-encode counters, active module
-- **Reflector status**: Connected/disconnected, packet counters
-- **Save to INI**: Persist current settings to tcd.ini
-- **Mobile responsive**: Signal flow scrollable, config labels compact, grid collapses on narrow screens
+- signal flow of the active path with live levels at each stage
+- VU meters before and after the AGC, with peak hold
+- AGC and gain controls that apply immediately, and a button to save them to `tcd.ini`
+- DVSI devices: serial, type, role, channels in use and their modules, buffer depth
+- MD380 status and counters, reflector connection and packet counters
 
-### ncurses Terminal Monitor (tcdmon)
+### tcdmon
 
-For SSH access to the transcoder host:
+Terminal monitor, handy over SSH:
 
 ```bash
-tcdmon                      # connect to localhost:8081
-tcdmon 172.16.20.20 8081    # connect to remote host
+tcdmon                      # this machine, port 8081
+tcdmon 192.0.2.20 8081      # another machine
 ```
 
-Shows VU bars, signal flow, AGC state, DVSI device slots with active modules, MD380 vocoder status with counters, output gain summary. Press `q` to quit.
+Shows level bars, signal flow, AGC state, the DVSI channels with their modules, the MD380 counters and the output gains. `q` quits.
 
-### Stats CSV Logging
+### Stats CSV and agc-analyze
 
-When `StatsLog = true`, tcd writes a CSV file per stream to `StatsLogDir`:
-
-```
-F_20260402_003512_43521.csv
-```
-
-Format: `ms,module,codec,rms_in,peak_in,rms_out,peak_out,agc_gain,gate`
-
-Files older than `StatsLogRetain` hours are automatically deleted. Useful for post-hoc AGC analysis with gnuplot, Excel, or Python.
-
-### agc-analyze
-
-Installed as `/usr/local/bin/agc-analyze` by `build.sh`. Analyzes stats CSV files for AGC tuning:
+With `StatsLog = true`, tcd writes one CSV file per stream to `StatsLogDir` (e.g. `F_20260402_003512_43521.csv`, columns `ms,module,codec,rms_in,peak_in,rms_out,peak_out,agc_gain,gate`). `agc-analyze` evaluates them:
 
 ```bash
-agc-analyze                            # detail view, default dir /tmp/tcd-stats
-agc-analyze -s                         # summary table (one line per stream)
-agc-analyze -s -c dmr                  # filter by codec (dstar, dmr, p25, usrp, svx)
-agc-analyze -s -m F                    # filter by module
-agc-analyze file.csv                   # single file detail
+agc-analyze               # details, default directory /tmp/tcd-stats
+agc-analyze -s            # one line per stream
+agc-analyze -s -c dmr     # by codec: dstar, dmr, p25, usrp, svx
+agc-analyze -s -m F       # by module
+agc-analyze file.csv      # one file
 ```
 
-Shows per-stream metrics: duration, speech/gated frame ratio, input/output RMS, AGC gain range, clipping percentage. Summary mode (`-s`) is useful for comparing gain settings across many transmissions.
+It shows duration, speech and gated frames, input and output level, the AGC gain range and clipping per stream.
 
-## DV3003 Notes
-
-The DV3003 (AMBE-3003F) requires special handling compared to the DV3000:
-
-- **PKT_COMPAND=0**: All DV3003 channels need companding explicitly disabled. The DV3003 defaults to companding ON (CP_ENABLE pullup), while the DV3000 defaults to OFF (board wiring). Without this fix, DMR/YSF channels receive mu-law PCM interpreted as linear, causing audio distortion
-- **350-byte serial flush**: Before soft reset, 350 zero bytes are sent to clear any stale serial state
-- **Mixed-mode**: A single DV3003 can have channels configured for different codecs (D-Star + DMR) simultaneously
-
-## Managing tcd
+## Operation and troubleshooting
 
 ```bash
-sudo systemctl start tcd
-sudo systemctl stop tcd
 sudo systemctl status tcd
-sudo journalctl -u tcd -f          # follow logs
+sudo systemctl restart tcd
+journalctl -u tcd -f
 ```
+
+| Symptom | Check |
+|---|---|
+| `Could not find an AMBE device!` | `tcd --list-devices`; with `DeviceSerial` set, it must match exactly (see [above](#selecting-the-ambe-devices)) |
+| `No USB serial devices found` | no device is plugged in, or the `ftdi_sio` driver is missing (`lsmod \| grep ftdi_sio`) |
+| `USB latency timer is 16 ms` warning | tcd could not set the latency timer; it has to run as root (the systemd unit does) |
+| `Lost the AMBE device ..., shutting down` | the device was unplugged or reset; systemd restarts tcd after 5 s and it finds the device again |
+| the reflector shows no transcoder | `ServerAddress` and `Port` in `tcd.ini`, the same `Modules` on both sides, and port 10100/tcp reachable from the tcd machine |
 
 ## Changes from upstream
 
-### Hardware & Device Support
-- **Mixed-mode DV3000+DV3003**: Concurrent 2-module transcoding with per-channel codec configuration
-- **DV3003 D-Star support**: PKT_COMPAND fix, 350-byte flush, per-channel encoding
-- **Serial backend**: AMBE devices through the kernel ftdi_sio driver and `/dev/serial/by-id` (POSIX backend by Jason Kendall), USB latency timer set to 1 ms, no libftd2xx; device whitelist by serial number, buffer flush on overflow
-- **SVX codec path**: Separate `ECodecType::svx` for independent SVX audio handling
+### Hardware and devices
+- **Serial access without libftd2xx**: through the kernel's `ftdi_sio` driver and `/dev/serial/by-id` (POSIX backend by Jason Kendall), RTS/CTS flow control, USB latency timer at 1 ms; devices left unbound by an older tcd are bound back; a lost device restarts tcd through systemd
+- **Device selection**: `--list-devices`, `DeviceSerial` with exact matching
+- **Mixed mode DV3000 + DV3003**: two modules at once with per-channel codec setup
+- **DV3003 D-Star**: companding off, serial flush, per-channel encoding
+- **SVX codec path**: its own `ECodecType::svx` for SVX audio
 
-### Audio Processing
-- **Per-codec output gains**: Independent post-AGC gains for D-Star, M17/Codec2, DMR/YSF, P25/NXDN, USRP — applied in encode functions and DVSI FeedDevice (shared buffer never modified)
-- **AMBE2+ bitstream gain** (experimental): `AmbeGainDb` adjusts the b2 (delta-gamma) parameter directly in the AMBE2+ frame — no vocoder decode/re-encode needed, no quality loss. Uses Golay(24,12) FEC recomputation for the A partition. Active when DMR Re-encode is off.
-- **AGC v3**: Sliding RMS window (60ms), per-stream speaker tracking, gate-with-decay to speaker average, fast post-gate release (5x/5 frames), asymmetric limits (up to 40dB), noise gate with hysteresis, peak limiter, live reconfiguration from dashboard
-- **DMR re-encode** (requires `md380=true`): `DmrGainMode=reencode` enables full decode/re-encode via MD380 with AGC normalization + `DmrReencodeGain` for DMR→DMR/YSF
-- **MD380 stream isolation**: Save/restore encoder state per stream, mutex around all MD380 calls
+### Audio
+- **Output gains per codec**: after the AGC, for D-Star, M17/Codec2, DMR/YSF, P25/NXDN and USRP, applied on copies (the shared buffer is never changed)
+- **AMBE2+ bitstream gain** (experimental): `AmbeGainDb` adjusts the b2 parameter in the AMBE2+ frame, with Golay(24,12) FEC recomputed for the A partition
+- **AGC v3**: sliding RMS window, per-speaker tracking, gate with decay, fast release after the gate, asymmetric limits, noise gate, peak limiter, live changes from the dashboard
+- **DMR re-encode** (`md380=true`): `DmrGainMode = reencode` with AGC and `DmrReencodeGain` on DMR → DMR/YSF
+- **MD380 stream isolation**: encoder state saved per stream, MD380 calls serialized
 
-### Monitoring & Configuration
-- **Web dashboard**: Embedded mongoose HTTP+WS with signal flow, VU meters, grouped gain sliders (Output/DVSI/USRP/Software), AGC controls, DVSI slot tracking, MD380 vocoder status, save-to-INI, mobile responsive
-- **ncurses monitor** (`tcdmon`): SSH-friendly terminal UI with device slots, MD380 counters, active modules, output gain summary
-- **Stats CSV logging**: Per-stream per-codec AGC/level recording with auto-cleanup, `agc-analyze` CLI tool for post-hoc analysis
-- **Config key renames**: `DmrGainIn/Out` (was DmrYsfGainIn/Out), `UsrpGainIn/Out` (was UsrpRxGain/TxGain), gain ranges extended to ±40 dB
+### Monitoring and configuration
+- **Web dashboard**: embedded HTTP/WebSocket server with signal flow, VU meters, gain and AGC controls, device and MD380 status, save to INI
+- **tcdmon**: terminal monitor
+- **Stats CSV** with automatic cleanup and the `agc-analyze` tool
+- **Renamed keys**: `DmrGainIn/Out` (was `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (was `UsrpRxGain/TxGain`), gains extended to ±40 dB
 
 ### Reliability
-- **Optional MD380**: Build with `md380=true` / `--with-md380` to enable; without it, ≥2 AMBE devices are required and DMR re-encode is unavailable
-- **Performance**: blocking reads with timeout instead of busy-poll, condition variables, ~5% CPU on Pi
-- **Thread safety**: Mutex around IMBE vocoder, SIGPIPE ignored for clean reconnection
-- **Error handling**: SendToReflector retry with backoff, graceful queue overflow, ReadDevice timeout recovery
-- **Reconnect backoff**: Exponential backoff (0.5s → 5s max) when reflector is unreachable, prevents log spam and CPU waste
-- **Usability**: `--list-devices` CLI, `DeviceSerial` config, unified `build.sh`
+- **Optional MD380**: without it, two AMBE devices are needed and re-encode is unavailable
+- **Performance**: blocking reads with a timeout instead of busy polling, about 5 % CPU on a Raspberry Pi
+- **Thread safety**: lock around the IMBE vocoder, SIGPIPE ignored for clean reconnects
+- **Error handling**: retries towards the reflector with backoff, dropping on queue overflow, timeout recovery while reading
+- **Reconnect backoff**: 0.5 s growing to 5 s while the reflector is unreachable
+- **Build**: part of the urfd repository, `build.sh` builds as the checkout owner
 
 ## Copyright
 
 - Copyright (c) 2021-2023 Thomas A. Early N7TAE, Doug McLain AD8DP
+- POSIX serial backend: Jason Kendall (2026)
 - Copyright (c) 2026 Jens-Christian Merg DL4JC (fork improvements)

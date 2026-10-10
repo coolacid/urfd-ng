@@ -1,0 +1,856 @@
+# URF363 - Universal Digital Voice Reflector und Transcoder
+
+[English](README.md) | **Deutsch**
+
+Fork von [urfd](https://github.com/n7tae/urfd) mit erweiterten Funktionen für das Reflektor-Projekt URF363. Enthält den hybriden Transcoder [tcd](tcd/) und ein Setup-Script, das beides installiert.
+
+**urfd 4.3.0-dht** | tcd 0.2.0 | Dashboard v2.8.0
+
+**Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
+
+```bash
+git clone https://github.com/jcmerg/urfd.git && cd urfd && sudo ./setup.sh
+```
+
+## Neu in diesem Fork
+
+### Setup-Script und Transcoder
+`setup.sh` installiert nach ein paar Fragen den Reflektor (in Docker, mit Dashboard) und den Transcoder (mit systemd), auf einem Rechner oder auf zwei verteilt, und aktualisiert beide auch. Der Transcoder liegt in [`tcd/`](tcd/), Reflektor und Transcoder stammen also immer aus derselben Version. tcd spricht die AMBE-Sticks über den Kernel-Treiber `ftdi_sio` mit einem USB-Latenz-Timer von 1 ms an und braucht damit den libftd2xx-Treiber nicht mehr, den ftdichip.com nicht mehr per Script herunterladen lässt. Siehe [docs/INSTALL.de.md](docs/INSTALL.de.md) und [tcd/README.md](tcd/README.md).
+
+### XLX-Verzeichnis (CallingHome)
+Der Reflektor trägt sich selbst im XLX-Verzeichnis ein, über das ihn Pi-Star, WPSD und andere Hotspot-Software anbieten. Das war bisher Aufgabe des Dashboards; jetzt geht es auch ohne Dashboard, und das Dashboard stellt die Anfrage nicht mehr.
+
+```ini
+[CallingHome]
+Enable = true
+Country = Germany              # country name as shown in the directory
+Comment = My URF Reflector     # max 100 characters
+# HashFile = /var/lib/xlxd-ch/callinghome.php  # shared with the dashboard, created if missing
+# OverrideIP =                 # blank = the directory uses the address it sees
+# PushDelay = 300              # seconds between updates
+```
+
+Gesendet wird dasselbe wie vorher vom Dashboard (Name `XLXnnn`, Laufzeit, `DashboardUrl` aus `[Names]`, Land, Kommentar, Version, Kopplungen), und die Hash-Datei des Dashboards wird weiterverwendet; ein bestehender Reflektor bleibt im Verzeichnis also derselbe Eintrag. Eine vorhandene, aber nicht lesbare Hash-Datei wird nie ersetzt; dann wird nichts gesendet. Ohne `Enable = true` wird nichts gesendet. Die Einstellungen werden beim Start gelesen.
+
+### MMDVMClient-Anbindung
+Verbindet sich über das MMDVM-Protokoll mit einem beliebigen DMR-Master-Server (z.B. BrandMeister). Bildet Talkgroups auf Reflektor-Module ab, mit Unterstützung pro Timeslot. Mehrere TGs können sich ein Modul teilen: Die erste ist die primäre (TX/RX), weitere TGs sind sekundär (nur eingehend, RX). Dynamische TGs lassen sich zur Laufzeit über die Admin-Oberfläche hinzufügen.
+
+```ini
+[MMDVMClient]
+Enable = true
+MasterAddress = master.example.com  # MMDVM master server IP or DNS hostname
+MasterPort = 62031
+# LocalPort = 12345                 # Fixed local UDP source port (omit = OS-assigned)
+DmrId = 1234567                     # Your registered DMR/hotspot ID
+Password = changeme                 # MMDVM hotspot security password
+Callsign = YOURCALL                 # Callsign (used for DMR-ID lookup on kerchunk)
+Latitude = 0.0
+Longitude = 0.0
+Location = My City
+Description = My URF Reflector
+URL = https://example.com
+RxFreq = 430412500
+TxFreq = 439812500
+# FallbackDmrId = 1234567           # DMR ID for unknown callers (0 or omit = drop)
+# BlockProtocols = SvxReflector,YSF # Block protocols bidirectionally
+#
+# BrandMeister API (optional): sync static TGs, add/remove via API instead of kerchunk
+# Get your API key from BrandMeister SelfCare -> Profile -> Security -> API Keys
+# BrandMeisterApiKey = eyJ0eXAiOiJKV1Qi...
+#
+# TG mapping: TG<number> = <Module>[,TS<1|2>]
+# First TG per module = primary (TX/RX). Additional = secondary (RX only).
+# Default timeslot is TS2.
+TG91 = A,TS2                        # Worldwide -> Module A (primary)
+# TG262 = A,TS2                     # Germany -> Module A (secondary, RX only)
+# TG26363 = B,TS1                   # Local -> Module B (primary)
+```
+
+**Mehrere TGs pro Modul**: Die erste für ein Modul eingetragene TG ist die primäre und wird für ausgehenden Verkehr (TX) verwendet. Weitere TGs auf demselben Modul sind sekundär und empfangen nur eingehenden Verkehr (RX). Über die Admin-Oberfläche hinzugefügte dynamische TGs sind immer sekundär, außer das Modul hat noch keine primäre.
+
+**FallbackDmrId**: Lässt sich ein Rufzeichen keiner DMR-ID zuordnen, wird stattdessen diese ID verwendet. Ist sie nicht gesetzt oder 0, wird der Stream verworfen.
+
+**BrandMeisterApiKey** (optional): Schaltet die Anbindung an die BrandMeister REST API v2 ein. Den Schlüssel gibt es unter BrandMeister SelfCare -> Profile -> Security -> API Keys. Auswirkungen:
+- **Abgleich beim Start**: Holt die statischen TGs von BM, entfernt verwaiste (nicht in der Konfiguration) und ergänzt fehlende
+- **Dynamische TG hinzufügen**: Wird per API bei BM als statisch eingetragen (kein Kerchunk nötig)
+- **Dynamische TG entfernen**: Wird per API bei BM gelöscht
+- Ohne API-Schlüssel gilt wie bisher das Kerchunk-Verfahren
+
+### SvxReflector-Client
+Verbindet sich mit SvxLink-SvxReflector-Servern (z.B. FM-Funknetz) und überträgt FM-Audio in beide Richtungen. Signalisierung über TCP, OPUS-kodiertes Audio über UDP. Benötigt transcodierte Module. Dynamische TGs lassen sich zur Laufzeit über die Admin-Oberfläche hinzufügen.
+
+```ini
+[SvxReflector]
+Enable = true
+Host = svxreflector.example.com    # DNS hostname or IP
+Port = 5300                         # TCP and UDP port (same)
+Callsign = YOURCALL-HS             # Node callsign (as registered on server)
+Password = changeme                 # Authentication password
+# BlockProtocols = MMDVMClient,USRP # Block protocols bidirectionally
+# RxGain = 0                        # Incoming audio gain in dB (-40 to +40, default 0)
+# TxGain = 0                        # Outgoing audio gain in dB (-40 to +40, default 0)
+#
+# TG mapping: TG<number> = <Module>
+# Modules must be transcoded. Multiple TGs per module supported.
+# TG26363 = S
+```
+
+**BlockProtocols** (alle Client-Protokolle): Unterstützt bei MMDVMClient, SvxReflector, DCSClient, DExtraClient, DPlusClient und YSFClient. Audio aus den aufgeführten Quell-Protokollen wird nicht über diese Anbindung weitergeleitet. Jedes Client-Protokoll verhindert außerdem immer, dass Audio zu ihm selbst zurückläuft (DCSClient schickt z.B. nie Audio, das von DCSClient kam, wieder hinaus). Verfügbare Protokollnamen: `MMDVM`, `MMDVMClient`, `SvxReflector`, `DExtra`, `DExtraClient`, `DPlus`, `DPlusClient`, `DCS`, `DCSClient`, `DMRPlus`, `YSF`, `YSFClient`, `M17`, `NXDN`, `P25`, `USRP`, `URF`, `XLXPeer`, `G3`. Durch Komma getrennt.
+
+**RxGain / TxGain**: Feste Verstärkung für SVX-Audio, unabhängig von der USRP-Verstärkung (die in tcd.ini eingestellt wird). RxGain wirkt nach dem OPUS-Dekodieren vor dem Transcoder, TxGain nach dem Transcoder vor dem OPUS-Kodieren. Die AGC in tcd läuft auf SVX-Audio weiterhin nach RxGain. Standard ist für beide 0 dB.
+
+### SVXServer
+Nimmt eingehende Verbindungen von SvxLink-Knoten an. Arbeitet als SvxReflector-Server (Protokoll V2, HMAC-SHA1-Authentifizierung, OPUS-Audio). Benötigt transcodierte Module. Nutzer melden sich mit Rufzeichen und Passwort an. Die TG-Zuordnung funktioniert wie beim SvxReflector-Client, Clients wählen TGs per `MsgSelectTG`. Nutzer und TGs lassen sich zur Laufzeit über die Admin-Oberfläche verwalten.
+
+```ini
+[SVXServer]
+Enable = true
+Port = 5300                         # TCP and UDP port (same)
+# BlockProtocols = MMDVMClient,USRP # Block protocols bidirectionally
+# RxGain = 0                        # Incoming audio gain in dB (-40 to +40)
+# TxGain = 0                        # Outgoing audio gain in dB (-40 to +40)
+#
+# TG mapping: TG<number> = <Module>
+# Modules must be transcoded. Multiple TGs per module supported.
+# TG26363 = A
+#
+# User authentication: <Callsign> = <Password>
+# Users can also be added/removed at runtime via the Admin interface.
+# N0CALL-HS = changeme
+```
+
+**Nutzerverwaltung**: Nutzer lassen sich zur Laufzeit über die Admin-Oberfläche hinzufügen und entfernen oder fest in `urfd.ini` eintragen. Jeder Nutzer meldet sich mit Rufzeichen und Passwort per HMAC-SHA1 an.
+
+**TG-Zuordnung**: Wie beim SvxReflector-Client, die Module müssen transcodiert sein. Mehrere TGs pro Modul sind möglich. Dynamische TGs lassen sich über die Admin-Oberfläche mit einstellbarer Laufzeit (TTL) hinzufügen.
+
+**Admin-Befehle**:
+```json
+{"cmd": "svxserver_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
+{"cmd": "svxserver_user_remove", "token": "...", "callsign": "N0CALL-HS"}
+{"cmd": "svxserver_user_list", "token": "..."}
+```
+
+### MMDVM-Server
+Nimmt Verbindungen von MMDVM-Hotspots und -Repeatern direkt an (ohne BrandMeister). Implementiert das HomeBrew-DMR-Protokoll (Handshake RPTL→RPTK→RPTC→RPTO). Für reinen DMR-zu-DMR-Betrieb ohne Transcoder nutzbar, transcodierte Module sind nur für die Verbindung zwischen Betriebsarten nötig. Die TG-Zuordnung funktioniert wie beim MMDVMClient, mit Timeslots. **Dual-Slot**: Jeder Timeslot (TS1/TS2) verbindet sich unabhängig mit seinem eigenen Modul, ein Hotspot kann also gleichzeitig auf zwei Modulen sein.
+
+```ini
+[MMDVM]
+Enable = true
+Port = 62030
+# FallbackDmrId = 0                # DMR ID for unknown callers (0 or omit = drop)
+# RequireAuth = false              # Set to false to accept all connections (legacy)
+# BlockProtocols = SVXServer,USRP  # Block protocols bidirectionally
+#
+# TG mapping: TG<number> = <Module>[,TS<1|2>]
+# First TG per module = primary (TX/RX). Additional = secondary (RX only).
+# Default timeslot is TS2. Dual-slot: map different modules to different TSes.
+TG9 = A,TS2                        # Common hotspot default
+# TG26363 = F,TS1                  # Local TG -> Module F on TS1
+#
+# User authentication: <BASE-DMRID> or <CALLSIGN> = <password>
+# No users configured = all logins rejected.
+# One entry covers all 9-digit extensions (e.g. 2631353 covers 263135300-99).
+# Password may be empty to allow any password (useful for compat hotspots).
+# 2631353 = changeme               # 7-digit base DMR ID
+# DL4JC = changeme                 # Callsign (resolved to DMR ID at startup)
+# 2632545 =                        # Open access (no password required)
+```
+
+**Erweiterte DMR-IDs**: Hotspots im BrandMeister-Stil hängen an die 7-stellige DMR-ID eine 2-stellige Endung an (z.B. `263135301` = Basis `2631353` + Endung `01`). urfd entfernt die Endung selbst, ein Nutzer-Eintrag mit der Basis-ID gilt für alle Endungen.
+
+**Nutzer-Anmeldung**: Nutzer melden sich mit DMR-ID (7-9 Ziffern) oder Rufzeichen an. Rufzeichen werden beim Start über die DMR-ID-Datenbank in DMR-IDs übersetzt. Sind keine Nutzer eingetragen, werden alle Anmeldungen abgelehnt. Einzelne Nutzer können mit leerem Passwort eingetragen werden, dann ist jedes Passwort gültig (nützlich für einfache Hotspots). Mit `RequireAuth = false` entfällt die Anmeldung ganz und alle Verbindungen werden angenommen (früheres Verhalten). Nutzer lassen sich zur Laufzeit über die Admin-Oberfläche verwalten.
+
+**TG-Zuordnung**: Wie beim MMDVMClient: Die erste TG pro Modul ist primär (TX+RX), weitere TGs sind sekundär (nur RX). Dynamische TGs lassen sich über die Admin-Oberfläche mit einstellbarer Laufzeit hinzufügen.
+
+**Dual-Slot**: Jeder Timeslot verbindet sich unabhängig. Sendet ein Hotspot auf TS1 mit TG 4019 (Modul S) und auf TS2 mit TG 4004 (Modul D), empfängt er beide Module gleichzeitig, Modul S auf dem Timeslot, der für dessen TG eingetragen ist, Modul D auf dem anderen. Dafür müssen TGs verschiedener Module auf verschiedenen Timeslots liegen. Das Dashboard zeigt beide verbundenen Module (z.B. "S (TS1), D (TS2)").
+
+**Hotspot-Einstellungen**: Den Hotspot direkt auf die IP des Reflektors, Port 62030, einstellen. In WPSD/Pi-Star "MMDVM_BRIDGE" oder den Einzel-Netzwerk-Modus verwenden. Der Multi-Netzwerk-Modus von DMRGateway leitet standardmäßig zu BrandMeister und muss abgeschaltet werden.
+
+**Admin-Befehle**:
+```json
+{"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2631353, "password": "secret"}
+{"cmd": "mmdvm_user_add", "token": "...", "callsign": "DL4JC", "password": "secret"}
+{"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2632545}
+{"cmd": "mmdvm_user_remove", "token": "...", "dmrid": 2631353}
+{"cmd": "mmdvm_user_list", "token": "..."}
+{"cmd": "mmdvm_tg_add", "token": "...", "tg": 26363, "module": "F", "ts": 2, "ttl": 900}
+{"cmd": "mmdvm_tg_remove", "token": "...", "tg": 26363}
+{"cmd": "mmdvm_tg_list", "token": "..."}
+{"cmd": "mmdvm_peer_list", "token": "..."}
+```
+
+### D-Star-Client-Anbindungen (DCS, DExtra, DPlus)
+Verbindet sich als Client-Knoten mit fremden D-Star-Reflektoren und ordnet deren Module lokalen Reflektor-Modulen zu. Alle drei D-Star-Linkprotokolle werden mit ihrem jeweiligen Paketformat unterstützt. Zuordnungen lassen sich fest in `urfd.ini` eintragen oder zur Laufzeit über die Admin-Oberfläche hinzufügen.
+
+```ini
+[DCSClient]
+Enable = true
+Callsign = DL4JC                         # Must be whitelisted on target reflector
+Map1 = dcs002.xreflector.net,30051,A,S   # DCS002 module A -> local module S
+Map2 = dcs009.xreflector.net,30051,B,F   # DCS009 module B -> local module F
+# BlockProtocols = MMDVMClient,YSF       # Optional: block audio from these protocols
+
+[DExtraClient]
+Enable = true
+Callsign = DL4JC
+Map1 = xrf757.openquad.net,30001,A,A     # XRF757 module A -> local module A
+
+[DPlusClient]
+Enable = true
+Callsign = DL4JC                         # Must be registered at dstargateway.org
+Map1 = ref001.dstargateway.org,20001,C,A # REF001 module C -> local module A
+```
+
+**Format der Zuordnung**: `host,port,remote_module,local_module`. Jede Zuordnung baut eine Verbindung zum angegebenen Modul des fremden Reflektors auf und leitet das Audio auf das lokale Modul.
+
+**Rufzeichen**: DPlus-Reflektoren verlangen eine Registrierung bei [dstargateway.org](https://regist.dstargateway.org/). DExtra- und DCS-Reflektoren sind meist offen.
+
+**Dynamische Zuordnungen**: Über den Abschnitt "D-Star Client Mappings" im Admin-Dashboard oder über die Socket-API:
+```json
+{"cmd": "dcs_map_add", "token": "...", "host": "dcs002.xreflector.net", "port": 30051, "remote_module": "A", "local_module": "S"}
+{"cmd": "dcs_map_remove", "token": "...", "local_module": "S"}
+{"cmd": "dcs_map_list", "token": "..."}
+{"cmd": "dextra_map_add", "token": "...", "host": "xrf757.openquad.net", "port": 30001, "remote_module": "A", "local_module": "A"}
+{"cmd": "dplus_map_add", "token": "...", "host": "ref001.dstargateway.org", "port": 20001, "remote_module": "A", "local_module": "Z"}
+{"cmd": "reconnect", "token": "...", "protocol": "dcsclient"}
+```
+
+### YSF-Client-Anbindung
+Verbindet sich als Client-Knoten mit fremden YSF-Reflektoren. Optional mit DG-ID zur Raumwahl auf Reflektoren, die DG-IDs auswerten. Jede Verbindung wird einem lokalen Reflektor-Modul zugeordnet.
+
+```ini
+[YSFClient]
+Enable = true
+Callsign = DL4JC
+Map1 = 90.187.72.177,42099,A             # YSF reflector -> local module A
+Map2 = 85.215.138.68,42000,F,15          # YSF reflector -> local module F, DG-ID 15
+# BlockProtocols = MMDVMClient            # Optional
+```
+
+**Format der Zuordnung**: `host,port,local_module[,dgid]`. Die DG-ID ist optional (0 = aus). Ist sie gesetzt, steht sie im FICH-Header aller ausgehenden Sprachpakete.
+
+**YSF-Feld "Radio"**: Ausgehende Sprachpakete tragen das Reflektor-Rufzeichen (z.B. `URF363`) im Radio-/Beschreibungsfeld (CSD1, Bytes 0-9). Auf YSF-Dashboards wie ysf-deutschland.de erscheint es in der Spalte "Radio".
+
+**Dynamische Zuordnungen**:
+```json
+{"cmd": "ysf_map_add", "token": "...", "host": "90.187.72.177", "port": 42099, "local_module": "A", "dgid": 0}
+{"cmd": "ysf_map_remove", "token": "...", "local_module": "A"}
+{"cmd": "ysf_map_list", "token": "..."}
+```
+
+### NXDN-Modulwahl
+Reflektor-Module werden über die NXDN-RAN (Radio Access Number) oder über die Ziel-ID gewählt.
+
+```ini
+[NXDN]
+Enable = true
+Port = 41400
+AutoLinkModule = S             # Module for RAN 0 and RAN 1 (comment out to disable)
+ReflectorID = 26363
+# FallbackNxdnId = 8970        # NXDN ID for unknown callers (0 or omit = drop)
+ModuleDstIdBase = 4000         # dstId 4001-4026 = A-Z (omit to disable)
+```
+
+**RAN zu Modul**: RAN 1-26 entspricht Modul A-Z, wobei RAN 1 und die RAN des AutoLinkModule getauscht sind. RAN 1 erreicht immer das AutoLinkModule, Modul A bekommt dafür dessen RAN. RAN 0 führt ebenfalls zum AutoLinkModule. Mit `AutoLinkModule = S`:
+
+| RAN | Modul | RAN | Modul | RAN | Modul |
+|-----|-------|-----|-------|-----|-------|
+| 0   | S     | 10  | J     | 19  | **A** |
+| 1   | **S** | 11  | K     | 20  | T     |
+| 2   | B     | ... | ...   | 26  | Z     |
+
+Der Tausch ist nötig, weil RAN 1 die einzige RAN ist, die die meisten Clients erzeugen können. DroidStar setzt fest `set_sacch_ran(0x01)`, und MMDVMHost überschreibt die RAN des Funkgeräts vor dem Weiterleiten mit der im Hotspot eingestellten `[NXDN] RAN` (Standard 1) und verwirft HF mit abweichender RAN. Ein Wechsel der RAN pro Aussendung vom Funkgerät aus funktioniert deshalb nur bei direkter Verbindung; über einen Hotspot ist die RAN eine Einstellung des Hotspots.
+
+**Ziel-ID zu Modul** (hat Vorrang vor der RAN): Wird mit `ModuleDstIdBase` eingeschaltet. Ziel-ID `base+1` bis `base+26` entspricht Modul A-Z, jede andere Ziel-ID fällt auf die RAN zurück. Ausgewertet wird beim Verbindungs-Poll und in jedem Frame, das Modul stimmt also ab dem ersten Paket. Mit `ModuleDstIdBase = 4000` passen die NXDN-Ziel-IDs zur DMR+-TG-Zuordnung (4001 = A, 4002 = B, …).
+
+Für Clients, die keine RAN setzen können, ist das die einzige Möglichkeit der Modulwahl. DroidStar-Nutzer legen unter Settings pro Modul einen eigenen Host an, die Nummer ist die Ziel-ID:
+
+```
+NXDN 4001 my.reflector.org 41400     -> Module A
+NXDN 4003 my.reflector.org 41400     -> Module C
+NXDN 26363 my.reflector.org 41400    -> AutoLinkModule
+```
+
+Ausgehende Frames tragen die Ziel-ID, mit der der jeweilige Client gepollt hat, pro unterschiedlicher Ziel-ID auf dem Modul getrennt kodiert. Das ist nötig, nicht kosmetisch: `NXDNGateway` verwirft jedes Frame des Reflektors, dessen Ziel-ID nicht zur TG passt, mit der der Hotspot verbunden ist. Ein Client auf der reinen Reflektor-ID und einer auf einer Modul-Ziel-ID brauchen also jeweils eigene Frames.
+
+**NXDN-ID-Auflösung**: Eingehende NXDN-IDs werden über die NXDN-ID-Datenbank in Rufzeichen übersetzt. Fehlt eine ID dort, wird die DMR-ID-Datenbank verwendet (viele Funkamateure nutzen ihre DMR-ID auch als NXDN-ID). Das ermöglicht die Anzeige des Rufzeichens über Betriebsarten hinweg und die Namenssuche für D-Star-Slow-Data. Unbekannte IDs werden verworfen, außer FallbackNxdnId ist gesetzt.
+
+**D-Star-Slow-Data**: NXDN-Quellen erscheinen im D-Star-Textfeld als `via NXDN RAN<n>`. Betreibernamen werden in der DMR- und der NXDN-Datenbank gesucht.
+
+**Dashboard**: Die Spalte NXDN RAN erscheint in der Modulübersicht, wenn NXDN eingeschaltet ist, daneben die Spalte `NXDN DST-ID`, sobald `ModuleDstIdBase` gesetzt ist. Die Spalten DMR+ und YSF DG-ID werden ausgeblendet, wenn das jeweilige Protokoll aus ist.
+
+### Laufzeit dynamischer Talkgroups
+
+Dynamische TGs von MMDVM und SVX laufen nach 15 Minuten ohne Aktivität ab. Der Timer wird bei jedem Sendebeginn (DvHeader) auf dem Modul erneuert, egal aus welchem Protokoll der Verkehr kommt. Aktivität aus beliebigen Betriebsarten hält also alle Timer einheitlich am Leben.
+
+**Hinweis zu BrandMeister**: BM führt einen eigenen Timer für das TG-Abonnement. Läuft das BM-Abonnement ab, läuft ohne weitere Aktivität auch die lokale Zuordnung in urfd ab. Mit dem Admin-Befehl **kerchunk** lässt sich das Abonnement bei BM ohne Funkgerät verlängern.
+
+**Hinweis zu SVX**: Sind alle dynamischen SVX-TGs abgelaufen, schickt urfd `SELECT_TG(0)` an den SVX-Server, meldet sich damit sauber ab und bekommt keinen Verkehr für abgelaufene TGs mehr.
+
+### Admin-Oberfläche
+Verwaltung zur Laufzeit über einen JSON-basierten TCP-Socket, bedienbar über das Web-Panel im Dashboard. Läuft in einem eigenen Thread und blockiert die Audioverarbeitung nicht. Jede Client-Verbindung läuft in einem eigenen Thread mit 5 Sekunden Leerlauf-Timeout, langsame oder hängende Clients können den Admin-Socket also nicht blockieren.
+
+```ini
+[Admin]
+Enable = true
+Port = 10101
+Password = yoursecretpassword
+# BindAddress = 127.0.0.1      # Default: loopback only
+```
+
+Dashboard-Konfiguration (`config.inc.php`):
+```php
+$Admin['Enable']   = true;
+$Admin['Host']     = '127.0.0.1';
+$Admin['Port']     = 10101;
+$Admin['Password'] = 'yoursecretpassword';  # must match urfd.ini
+```
+
+**Funktionen:**
+- **Dynamische TG-Verwaltung**: Talkgroups zur Laufzeit mit einstellbarer Laufzeit hinzufügen und entfernen. Mit BM-API-Schlüssel per REST-API als statisch eingetragen (kein Kerchunk nötig), ohne per Kerchunk bei BM aktiviert. Bei SVX wird SELECT_TG über TCP geschickt.
+- **Protokoll-Sperren zur Laufzeit**: Beliebige Protokoll-Paare in beide Richtungen sperren und freigeben. Wird nicht gespeichert und gilt nach einem Neustart nicht mehr. Die Schaltfläche "Reset to Config Default" stellt die Einstellungen aus der INI wieder her.
+- **Mehrere TGs pro Modul**: Sekundäre TGs (nur RX) dynamisch zu Modulen hinzufügen, die schon eine primäre TG haben.
+- **Kerchunk auf Knopfdruck**: Einen Kerchunk für eine bestimmte TG an BrandMeister schicken, ohne Funkgerät. Nur MMDVM. Mit BM-API-Schlüssel nicht nötig.
+- **D-Star-Client-Zuordnungen**: Verbindungen zu DCS-, DExtra- und DPlus-Reflektoren mit Modul-zu-Modul-Zuordnung dynamisch hinzufügen und entfernen. Protokollauswahl DCS/DExtra/DPlus mit passendem Standard-Port.
+- **YSF-Client-Zuordnungen**: Verbindungen zu YSF-Reflektoren mit optionaler DG-ID hinzufügen und entfernen.
+- **MMDVM-Server-Verwaltung**: Nutzer (per DMR-ID oder Rufzeichen) und TG-Zuordnungen hinzufügen, entfernen und auflisten. Verbundene Hotspots mit DMR-ID, Frequenzen, Standort und Software-Angaben anzeigen.
+- **Protokoll neu verbinden**: Neuverbindung von MMDVM, SVX, DCSClient, DExtraClient, DPlusClient oder YSFClient erzwingen.
+- **Transcoder-Statistik**: Verbindungsstatus, aktiver Codec, Paketzähler und Laufzeit pro transcodiertem Modul.
+- **Live-Log**: Die letzten 200 Log-Zeilen mit Zeitstempel, alle 10 Sekunden aktualisiert.
+- **Last Heard leeren**: Leert die Liste der zuletzt gehörten Stationen im Dashboard.
+- **Versteckter Zugang**: Über das Pi-Symbol unten rechts oder direkt mit `?show=admin`.
+
+**Socket-Protokoll**: Zeilenweises JSON über TCP. Zuerst anmelden, dann Befehle mit dem zurückgegebenen Token schicken:
+```json
+{"cmd": "auth", "password": "..."}
+{"cmd": "tg_add", "token": "...", "protocol": "mmdvm", "tg": 26207, "module": "S", "ts": 1, "ttl": 900}
+{"cmd": "tg_remove", "token": "...", "protocol": "mmdvm", "tg": 26207}
+{"cmd": "tg_list", "token": "..."}
+{"cmd": "kerchunk", "token": "...", "tg": 26207}
+{"cmd": "tc_stats", "token": "..."}
+{"cmd": "reconnect", "token": "...", "protocol": "mmdvm"}
+{"cmd": "log", "token": "...", "lines": 50}
+{"cmd": "status", "token": "..."}
+{"cmd": "block", "token": "...", "a": "SVX", "b": "MMDVM"}
+{"cmd": "unblock", "token": "...", "a": "SVX", "b": "MMDVM"}
+{"cmd": "block_reset", "token": "..."}
+{"cmd": "dcs_map_add", "token": "...", "host": "dcs002.xreflector.net", "port": 30051, "remote_module": "A", "local_module": "S"}
+{"cmd": "dcs_map_remove", "token": "...", "local_module": "S"}
+{"cmd": "dcs_map_list", "token": "..."}
+{"cmd": "ysf_map_add", "token": "...", "host": "90.187.72.177", "port": 42099, "local_module": "A", "dgid": 15}
+{"cmd": "ysf_map_list", "token": "..."}
+{"cmd": "svxserver_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
+{"cmd": "svxserver_user_remove", "token": "...", "callsign": "N0CALL-HS"}
+{"cmd": "svxserver_user_list", "token": "..."}
+{"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2631353, "password": "secret"}
+{"cmd": "mmdvm_user_add", "token": "...", "callsign": "DL4JC", "password": "secret"}
+{"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2632545}
+{"cmd": "mmdvm_user_remove", "token": "...", "dmrid": 2631353}
+{"cmd": "mmdvm_user_list", "token": "..."}
+{"cmd": "mmdvm_tg_add", "token": "...", "tg": 26363, "module": "F", "ts": 2, "ttl": 900}
+{"cmd": "mmdvm_tg_remove", "token": "...", "tg": 26363}
+{"cmd": "mmdvm_tg_list", "token": "..."}
+{"cmd": "mmdvm_peer_list", "token": "..."}
+{"cmd": "clear_users", "token": "..."}
+```
+
+### Konfiguration per SIGHUP neu laden
+
+Der Reflektor kann seine Konfiguration im laufenden Betrieb neu laden, ohne Verbindungen zu trennen. Dazu `SIGHUP` an den urfd-Prozess schicken.
+
+**Wird bei SIGHUP neu geladen:**
+- TG-Zuordnungen (MMDVMClient und SvxReflector), dynamische TGs bleiben erhalten
+- Whitelist, Blacklist und Interlink-Datei
+- Zuordnung der transcodierten Module
+- Reflektor-Angaben (Rufzeichen, Sponsor, Land, URLs)
+- Parameter für die Datenbank-Aktualisierung
+
+**Braucht einen vollständigen Neustart:**
+- Änderungen der Modulliste (Module hinzufügen oder entfernen)
+- Protokolle ein- oder ausschalten, Ports ändern
+- Änderungen der IP-Bindung
+- Einstellungen der Admin-Oberfläche
+- Zuordnung des Echo-Moduls
+
+```bash
+# Docker (signal must reach urfd, not supervisord)
+docker exec urfd kill -HUP $(docker exec urfd pgrep urfd)
+
+# Bare metal
+kill -HUP $(cat /var/run/urfd.pid)
+```
+
+### Reflektor-Kopplung
+Kopplung mit URF-, XLX-, DCS- und M17-Reflektoren (mrefd). DNS-Namen werden unterstützt. Eingetragen wird die Kopplung in `urfd.interlink`:
+
+```
+# urfd.interlink
+# Format: <Callsign> <Address> <Modules> [Port] [Protocol]
+URF270 urf270.example.com EF
+XLX269 xlx269.example.com A
+DCS002 dcs002.xreflector.net S             # native DCS protocol (default)
+DCS002 dcs002.xreflector.net S XLX         # XLX protocol instead
+M17-QQQ m17-qqq.example.com AB             # mrefd >= 1.0 (port 17000)
+M17-QQQL m17-qqq.example.com AB            # legacy mrefd < 1.0
+```
+
+DCS-Einträge verwenden standardmäßig das native DCS-Protokoll (Port 30051). Mit angehängtem `XLX` wird stattdessen über XLX gekoppelt (Port 10002). Das Protokollfeld gibt es nur bei DCS-Einträgen.
+
+XLX- und DCS-Kopplungen können mit einem eigenen Rufzeichen auftreten (z.B. als XLX363 statt URF363):
+
+```ini
+# urfd.ini
+[XLXPeer]
+Enable = true               # required for XLX peers and DCS peers with XLX protocol
+Port = 10002
+# Callsign = XLX363         # optional: callsign for XLX peering
+
+[DCS]
+Port = 30051
+# Callsign = DCS363         # optional: callsign for native DCS peering
+
+[M17]
+# Callsign = M17-XXX        # required for mrefd peers: mrefd only accepts M17-XXX designators
+
+[URF]
+# InterlinkVersion = 4      # 4 (default) or 3 for legacy mode, see URF interlink 4 below
+```
+
+M17-Einträge brauchen eine Adresse (kein DHT) und auf beiden Seiten dieselben Module, und die `[M17] Callsign` dieses Reflektors muss in der `mrefd.interlink` des mrefd stehen.
+
+### Echo-Modul
+Eingebaute Echo-/Papagei-Funktion. Kann jedem Modul zugeordnet werden: Das Audio wird aufgenommen und nach 3 Sekunden Stille wiedergegeben.
+
+```ini
+[Modules]
+Modules = AFSZ
+
+[Echo]
+Enable = true
+Module = Z
+```
+
+Mit `Enable = false` wird es abgeschaltet, ohne die Konfiguration zu entfernen.
+
+M17-Clients erreichen das Echo-Modul von jedem verbundenen Modul aus, indem sie an `PARROT` (wie bei mrefd) oder `ECHO` senden. Die Wiedergabe ihrer eigenen Aufnahme bekommen sie dann auch auf ihrem verbundenen Modul.
+
+### M17-Modulwahl
+Ein M17-Client wählt sein Modul beim Verbinden: Das `CONN`- (oder `LSTN`-)Paket enthält den Modulbuchstaben, und der Client hört dann dieses Modul. Zum Wechseln trennt man die Verbindung und verbindet sich mit dem anderen Buchstaben neu, z.B. `URF363 B` als Reflektor in Pi-Star/WPSD, über die Modulauswahl in DroidStar oder mvoice, oder `URF363 B` als Ziel am M17-Funkgerät. Eine neue Verbindung ersetzt die alte mit demselben Rufzeichen und derselben IP.
+
+Eine Aussendung geht an das Modul im Ziel-Rufzeichen (`URF363 B`). Ein Client, der an ein anderes Modul sendet als das, mit dem er verbunden ist, spricht also dort, hört aber weiter sein eigenes Modul. Mit `PARROT` oder `ECHO` als Ziel erreicht man das Echo-Modul (siehe Echo-Modul).
+
+### M17 LSTN
+Reine Hör-Clients (LSTN-Pakete) werden angenommen und auf dem gewünschten Modul eingetragen. Darüber prüfen Überwachungsdienste wie dvref.com, ob ein Reflektor erreichbar ist. Sprache und Paketdaten von Hör-Clients werden verworfen, wie bei mrefd.
+
+### M17-Protokoll
+- **TYPE-Feld**: Sprachframes werden im alten und im V#3-Format des TYPE-Felds der M17-Spezifikation erkannt; verschlüsselte Streams werden in beiden verworfen.
+- **Paketmodus**: `M17P`-Pakete (z.B. SMS) werden gegen beide CRCs geprüft und unverändert an die anderen M17-Clients auf dem Modul des Absenders weitergeleitet.
+- **URF-Kopplung 4**: Der Stream-Header an URF-Partner enthält die Art der M17-META-Daten und die CAN, eine GPS-Position bleibt also auch über gekoppelte Reflektoren eine Position. Die Version wird pro Partner ausgehandelt: Nur Partner, die selbst 4 melden, bekommen die 2 zusätzlichen Bytes, Partner mit 3 (andere urfd-Forks) bekommen den unveränderten alten Header. `[URF] InterlinkVersion = 3` erzwingt den Legacy-Modus: Der Reflektor meldet 3 und schickt die Erweiterung nie.
+- **mrefd-Kopplung**: Module lassen sich mit mrefd-Reflektoren teilen, eingetragen als `M17-XXX <address> <modules> [port]` in `urfd.interlink` (mit angehängtem `L`, `M17-XXXL`, für ein altes mrefd < 1.0). urfd koppelt unter der M17-Kennung aus `[M17] Callsign = M17-XXX`; ohne sie ist die M17-Kopplung aus. Verbindungsaufbau, Keepalive, Sprache und Paketdaten folgen mrefd: Daten an ein mrefd >= 1.0 tragen das Modul als zusätzliches Byte, ein altes wird als `M17-XXX <Modul>` adressiert und bekommt keine Paketdaten. Wie bei mrefd wird ein Stream von einem mrefd nicht an ein anderes weitergegeben. Gekoppelte mrefds erscheinen als M17-Peers.
+- **Neu verbinden**: Ein `CONN`/`LSTN` ersetzt jede frühere Verbindung mit demselben Rufzeichen und derselben IP, ein Modulwechsel hinterlässt also keinen verwaisten Eintrag.
+- **META**: Die META-Bytes erreichen andere M17-Clients mit einem TYPE, der angibt, was sie enthalten (Text, GPS oder ECD), und mit der CAN der Quelle, eine GPS-Position erscheint also nicht mehr als Text. Eine GPS-Position wird in einen Maidenhead-Locator umgerechnet und in der Last-Heard-Liste (mit Link auf OpenStreetMap) und in `/json/stations` angezeigt.
+
+### Protokolle ein- und ausschalten
+Jedes Protokoll lässt sich einzeln ein- und ausschalten. Standard ist `true` (wie bisher).
+
+```ini
+[DPlus]
+Enable = false
+Port = 20001
+
+[P25]
+Enable = false
+Port = 41000
+```
+
+### Ausfallsicheres Laden der ID-Datenbanken
+Die DMR-ID- und die YSF-TX/RX-Datenbank überstehen einen Ausfall ihrer Quelle.
+
+```ini
+[DMR ID DB]
+Mode = http
+FilePath = /usr/local/etc/urfd/dmrid.dat
+# Comma separated: first entry is primary, the rest are tried in order
+URL = http://xlxapi.rlx.lu/api/exportdmr.php, https://radioid.net/static/user.csv, http://www.pistar.uk/downloads/DMRIds.dat
+```
+
+**Mehrere Quellen**: `URL` nimmt eine durch Komma getrennte Liste. Die Quellen werden der Reihe nach versucht, bis eine antwortet; wird eine Ersatzquelle verwendet, steht das im Log.
+
+**Trennzeichen**: Die Felder dürfen durch `;`, `,` oder Tabulator getrennt sein, die üblichen Anbieter funktionieren also unverändert: xlxapi (`id;call;name`), radioid.net-CSV (`id,call,first,last,…`) und Pi-Star `DMRIds.dat` (Tabulator). Die Reihenfolge der Felder ist überall gleich; Zeilen, die nicht mit einer ID beginnen, etwa eine CSV-Kopfzeile, werden übersprungen.
+
+**Download-Cache**: Jeder erfolgreiche Download wird in `<FilePath>.cache` gespiegelt. Antwortet beim Start keine Quelle, wird stattdessen der Cache geladen; die Datenbank ist also nie leer, nur weil ein Verzeichnis ausgefallen ist. Das ist getrennt von `FilePath`, das bei `Mode = both` die eigenen zusätzlichen Einträge des Betreibers enthält und nie überschrieben wird.
+
+Für die YSF-TX/RX-Daten ist keine zweite Quelle bekannt, dort ist der Cache der einzige Ersatz. Fehlende YSF-Frequenzen betreffen nur die Frequenzangabe bei Wires-X.
+
+### Erweiterte XML-Ausgabe
+Die XML-Statusdatei enthält jetzt:
+
+- **Reflektor-Angaben**: Rufzeichen, Land, Sponsor, Dashboard-URL, E-Mail
+- **Modul-Konfiguration**: Beschreibung, Anzahl verbundener Knoten, Transcodierung, DMR+-TG-ID, YSF-DG-ID, NXDN-RAN, NXDN-Ziel-ID (nur wenn `ModuleDstIdBase` gesetzt ist)
+- **Zuordnungen pro Modul**: Autolinks (YSF, NXDN, P25), TG-Zuordnungen (MMDVMClient, SvxReflector), D-Star-Client-Zuordnungen (DCSClient, DExtraClient, DPlusClient mit Verbindungsstatus), YSF-Client-Zuordnungen (YSFClient mit DG-ID)
+- **Aktive Protokolle**: Name und Port jedes eingeschalteten Protokolls
+- **Protokoll pro Station**: Über welches Protokoll eine Station gehört wurde (DCS, MMDVMClient, YSF usw.)
+- **Position pro Station**: `<Locator>`, `<Latitude>` und `<Longitude>` für Stationen, die eine M17-GPS-Position gesendet haben
+- **Kennzeichnung dynamischer TGs**: `<Dynamic>true</Dynamic>` und `<Remaining>` Sekunden für zur Laufzeit hinzugefügte TGs
+
+Modulnamen werden einmal in `urfd.ini` eingetragen und stehen automatisch im Dashboard zur Verfügung.
+
+Der JSON-Report enthält außerdem ein Array `DynamicTGs` mit Protokoll, TG, Modul und Restlaufzeit aller aktiven dynamischen Zuordnungen.
+
+### Dashboard v2.8.0
+Komplett neu gestaltet mit dunklem Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0).
+
+**Neue Seiten:**
+- **Active Users**: Verbundene Knoten pro Modul als Karten
+- **Overview Modules**: Modultabelle mit DMR+-IDs, YSF-DG-IDs, NXDN-RANs und -Ziel-IDs, Zuordnungen (statisch und dynamisch), Transcoder-Status, verbundenen Knoten. Spalten ausgeschalteter Protokolle werden ausgeblendet.
+- **Enabled Protocols**: Server-Protokolle mit Ports und Einordnung (Client-Protokolle wie MMDVMClient, SvxReflector und die D-Star-/YSF-Clients sind ausgeblendet, weil sie nach außen verbinden)
+
+**Funktionen:**
+- Dunkles Design mit CSS-Variablen
+- Tabellen für Peers, Repeater und Nutzer auch auf dem Handy lesbar
+- Last-Heard-Tabelle mit Protokollspalte, pulsierender TX-Anzeige und Modul
+- Locator von Stationen, die eine M17-GPS-Position senden, mit Link auf OpenStreetMap statt auf aprs.fi
+- MOTD-/Wartungsbanner über `$PageOptions['MOTD']` in config.inc.php
+- Modulnamen aus dem urfd-XML (eine einzige Quelle)
+- Kontakt-E-Mail gegen Bots verschleiert
+- QuadNet Live: eigene PHP-Proxy-Tabelle mit Suche und automatischer Aktualisierung (statt iframe)
+- Reflektorliste: Suche und Seitenaufteilung im Browser (25 pro Seite) mit Status-Punkten
+- QRZ-Links verwenden das Rufzeichen ohne Modul-Endung
+- **Admin-Panel** (versteckt): dynamische TG-Verwaltung mit Kerchunk-Knopf, Transcoder-Statistik, Live-Log, Protokoll-Steuerung. Zugang über das Pi-Symbol oder `?show=admin`.
+
+**Robust gegen einen Ausfall des Verzeichnisses**: Das Dashboard hängt nicht davon ab, dass `xlxapi.rlx.lu` erreichbar ist. Die Reflektorliste hat ein festes Timeout und wird auf der Platte zwischengespeichert (`<CacheDir>/reflectorlist.cache`). Ein frischer Eintrag liefert die Seite ganz ohne Netzwerkzugriff, ein veralteter hält die Liste am Laufen, solange das Verzeichnis ausgefallen ist. Seit v2.8.0 trägt das Dashboard den Reflektor nicht mehr im Verzeichnis ein; das macht der Reflektor selbst, siehe [CallingHome](#xlx-verzeichnis-callinghome).
+
+```php
+// pgs/config.inc.php
+$Directory['ServerURL'] = 'http://xlxapi.rlx.lu/api.php';
+$Directory['Timeout']   = 5;                    // Seconds before giving up on the directory server
+$Directory['CacheDir']  = '/var/lib/xlxd-ch';   // Reflector list cache
+```
+
+Ältere Konfigurationen ohne `$Directory` funktionieren weiter: Die Werte werden dann aus ihren `$CallingHome`-Einstellungen genommen.
+
+### JSON-API
+Nur lesende HTTP-Endpunkte unter `/json/`, ausgeliefert vom Dashboard:
+
+| Endpunkt | Liefert |
+|---|---|
+| `/json/metadata` | Dashboard-Version, Reflektor-Rufzeichen und -Version, öffentliche IPv4/IPv6, Sysop-E-Mail |
+| `/json/status` | Reflektor an/aus, Laufzeit, Zeitpunkte der letzten Aktualisierung |
+| `/json/reflector` | Vollständiger Reflektor-Datensatz mit Modulen und Angaben |
+| `/json/links` | Verbundene Knoten mit Rufzeichen, IP, Modul, Protokoll, Verbindungs- und Last-Heard-Zeit |
+| `/json/peers` | Gekoppelte Partner-Reflektoren |
+| `/json/stations` | Zuletzt gehörte Stationen mit Land; `locator`, `latitude` und `longitude`, wenn die Station eine M17-GPS-Position gesendet hat |
+| `/json/modulesinuse` | Module mit den Rufzeichen, die gerade darauf sind |
+
+Endpunkte für Listen liefern `[]`, wenn sie leer sind (`/json/stations` liefert `{"stations":[]}`); ein unbekannter Pfad liefert 404.
+
+**Anforderungen an den Webserver**: Die Endpunkte sind saubere Pfade, die in `json/index.php` verteilt werden; der Webserver muss `/json/<name>` also dorthin leiten.
+
+- **nginx**: Erledigt die mitgelieferte `nginx-dashboard.conf` mit einem Block `location /json/`. Ohne ihn fällt das allgemeine `try_files` auf die `index.php` des Dashboards zurück, und jeder Endpunkt antwortet mit `200` und einer HTML-Seite.
+- **Apache**: Verlässt sich auf `json/.htaccess`, die eine Standard-Installation von Debian ignoriert: `apache2.conf` setzt `AllowOverride None` für `/var/www/`, und `mod_rewrite` ist nicht aktiv. Ohne beides liefern die Endpunkte 404:
+
+```bash
+sudo a2enmod rewrite
+# and in /etc/apache2/apache2.conf, for the <Directory /var/www/> block:
+#   AllowOverride FileInfo
+sudo systemctl restart apache2
+```
+
+### D-Star-Slow-Data für transcodierte Streams
+Transcodierte Streams (DMR, YSF, SVX, M17, P25, USRP, Client-Protokolle -> D-Star) enthalten jetzt korrekte D-Star-Slow-Data:
+- **Header**: Rufzeichen des Anrufers (MY), Reflektor-Rufzeichen (RPT1/RPT2)
+- **Textnachricht**: Quell-Protokoll und TG/DG-ID/RAN/Modul
+- **Betreibername**: Steht das Rufzeichen in der DMR- oder NXDN-ID-Datenbank, wird der Name im Wechsel mit der Protokoll-/TG-Angabe angezeigt (je etwa 5 Sekunden)
+
+Beispiele der Textnachricht pro Protokoll:
+
+| Quelle | Slow-Data-Text |
+|--------|---------------|
+| MMDVMClient | `via DMR TG26363` |
+| SvxReflector | `via SVX TG317424` |
+| YSF (Server) | `via YSF DG28` |
+| NXDN | `via NXDN RAN6` |
+| DCSClient | `via DCS002 A` |
+| DExtraClient | `via XRF757 A` |
+| DPlusClient | `via REF001 C` |
+| YSFClient | `via YSF DG15` |
+| M17, P25, USRP, DMR+ | `via M17`, `via P25` usw. |
+
+Die D-Star-Client-Protokolle entnehmen den Namen des fremden Reflektors dem Hostnamen (z.B. `dcs002.xreflector.net` → `DCS002`) und hängen den Modulbuchstaben an. YSFClient hängt die DG-ID an, wenn eine eingestellt ist (sonst nur `via YSF`).
+
+Header und Textnachricht wechseln mit jedem Superframe (etwa 420 ms). Ist ein Betreibername bekannt, wechselt die Textnachricht etwa alle 5 Sekunden zwischen Protokoll-/TG-Angabe und Name:
+
+```
+[Header: DL4JC > URF363 S] → [via DCS002 A]   → [Header] → [via DCS002 A]   → ...
+                    (after ~5s)
+[Header: DL4JC > URF363 S] → [Jens-Christian]  → [Header] → [Jens-Christian]  → ...
+                    (after ~5s, back to via/info)
+```
+
+Die Namenssuche funktioniert für alle Protokolle: Jedes Rufzeichen mit Eintrag in der DMR-ID-Datenbank erscheint mit Namen auf D-Star-Funkgeräten.
+
+## Einführung
+
+Der URF Multi-protocol Gateway Reflector Server, **urfd**, ist Teil der Software für ein digitales Sprachnetz. Er unterstützt D-Star (DPlus, DCS, DExtra, G3), DMR (MMDVM, DMR+, MMDVMClient), M17, YSF, P25, NXDN, USRP (AllStar), SvxReflector (SvxLink-FM-Client) und SVXServer (SvxLink-FM-Server).
+
+Ein zentraler Bestandteil ist der hybride Transcoder [tcd](tcd/) im Ordner `tcd/` dieses Repositorys; Reflektor und Transcoder stammen also immer aus derselben Version. Der Reflektor lässt sich auch ohne Transcoder bauen, dann hören Clients aber nur andere Clients mit demselben Codec.
+
+Diese Version unterstützt den Betrieb mit IPv4 und IPv6 gleichzeitig (Dual-Stack).
+
+## Betrieb mit Docker
+
+Reflektor und Dashboard laufen in Docker, der Transcoder direkt mit systemd (die AMBE-USB-Geräte brauchen geringe Latenz), auf demselben Rechner oder auf einem zweiten. Details in [`docker/README.md`](docker/README.md).
+
+### Schnellstart
+
+`setup.sh` stellt ein paar Fragen, schreibt `urfd.ini`, die Dashboard-Konfiguration und `tcd.ini`, installiert bei Bedarf Docker und baut und startet alles. Ein erneuter Aufruf oder `sudo ./setup.sh update` aktualisiert und behält die Konfiguration. Die Schritt-für-Schritt-Anleitung steht in [docs/INSTALL.de.md](docs/INSTALL.de.md).
+
+```bash
+git clone https://github.com/jcmerg/urfd.git
+cd urfd
+sudo ./setup.sh
+```
+
+Von Hand, mit der Konfiguration in `/opt/urfd` (siehe die Kommentare in `docker/docker-compose.yml`):
+
+```bash
+cd docker
+docker compose build
+docker compose up -d
+```
+
+Mit der Bibliothek [md380_vocoder](https://github.com/jcmerg/md380_vocoder) braucht der Transcoder nur ein DVSI-Gerät, DMR/YSF läuft dann in Software.
+
+### Aufbau des Containers
+
+Im urfd-Container laufen zwei Dienste unter supervisord:
+- **urfd**: der Reflektor
+- **nginx + php-fpm**: Dashboard auf Port 8363
+
+### Konfigurationsdateien
+
+Die gesamte Konfiguration liegt in `/opt/urfd/config/` (als Volume eingebunden):
+- `urfd.ini`: Hauptkonfiguration des Reflektors (lässt sich per SIGHUP neu laden)
+- `urfd.interlink`: Kopplung (URF-, XLX-, DCS- und M17-Partner, mit DNS-Unterstützung)
+- `urfd.blacklist` / `urfd.whitelist`: Zugangskontrolle (wird per SIGHUP neu geladen)
+- `urfd.terminal`: Konfiguration für G3 (Icom Terminal/AP-Modus). Optionen: `address <public-ip>` (hinter NAT nötig), `modules <letters>` (erlaubte Reflektor-Module), `alias <callsign>` (zusätzliches Reflektor-Rufzeichen, das von Terminals angenommen wird, z.B. um sowohl `URFxxx` als auch `XLXxxx` anzunehmen; mehrfach möglich). Wird bei Änderung über `stat()` neu geladen.
+
+Dashboard-Konfiguration in `/opt/urfd/dashboard/config.inc.php` (in den Container eingebunden):
+- `$PageOptions['MOTD']`: Wartungsbanner (auf allen Seiten)
+- `$PageOptions['ContactEmail']`: Kontakt in der Fußzeile (verschleiert)
+- `$Directory`: XLX-Verzeichnisserver und Cache für die Reflektorliste (der Eintrag ins Verzeichnis ist `[CallingHome]` in `urfd.ini`)
+
+## Installation ohne Docker
+
+### Benötigte Pakete
+
+```bash
+sudo apt update && sudo apt upgrade
+sudo apt install git apache2 php build-essential nlohmann-json3-dev libcurl4-gnutls-dev libopus-dev libssl-dev
+```
+
+### OpenDHT (empfohlen)
+
+```bash
+sudo apt install libopendht-dev
+```
+
+Gibt es kein Paket, aus den Quellen bauen: [OpenDHT Wiki](https://github.com/savoirfairelinux/opendht/wiki/Build-the-library).
+
+### Bauen
+
+```bash
+git clone https://github.com/jcmerg/urfd.git
+cd urfd/reflector
+cp ../config/* .
+# Edit urfd.ini with your configuration
+make
+sudo make install
+```
+
+### Konfiguration
+
+In `urfd.ini` einstellen:
+- Reflektor-Rufzeichen und IP-Adressen
+- Module (A-Z, Lücken erlaubt)
+- Port und Module des Transcoders (Port 0, wenn es keinen Transcoder gibt)
+- Protokoll-Einstellungen (Ports, Ein/Aus, Autolink-Module)
+- Echo-Modul
+- TG-Zuordnungen für MMDVMClient (mehrere TGs pro Modul möglich)
+- SvxReflector-Verbindung und TG-Zuordnungen
+- Admin-Oberfläche (Port, Passwort, Bind-Adresse)
+- Datenbank-URLs für DMR-ID-, NXDN-ID- und YSF-TX/RX-Abfragen (durch Komma getrennt für Ersatzquellen, siehe [Ausfallsicheres Laden der ID-Datenbanken](#ausfallsicheres-laden-der-id-datenbanken))
+
+### Transcoder
+
+```bash
+sudo bash tcd/build.sh               # two or more AMBE devices
+sudo bash tcd/build.sh --with-md380  # a single DV3000, DMR/YSF in software
+```
+
+Installiert die Vocoder-Bibliotheken, baut tcd als Eigentümer des Klons und installiert es mit seiner systemd-Unit. Konfiguration in `/usr/local/etc/tcd.ini`, siehe [tcd/README.md](tcd/README.md).
+
+### Dashboard
+
+```bash
+sudo cp -r ~/urfd/dashboard /var/www/urf
+```
+
+In `pgs/config.inc.php` E-Mail und Admin einstellen. Modulnamen werden aus der XML-Ausgabe von urfd gelesen. Für das Admin-Panel `$Admin['Enable'] = true` setzen und dasselbe Passwort wie in `urfd.ini` eintragen.
+
+## Verwaltungswerkzeuge
+
+### radmin
+
+Verwaltungswerkzeug, interaktiv und für einzelne Befehle. Erkennt selbst, ob der Reflektor in Docker oder als systemd-Dienst läuft.
+
+```bash
+# Interactive menu
+./radmin
+
+# Single commands
+./radmin status          # Show deployment status + git log
+./radmin restart         # Restart container or service
+./radmin stop            # Stop container or service
+./radmin start           # Start container or service
+./radmin logs            # Follow logs (Ctrl-C to exit)
+./radmin reload          # Send SIGHUP (hot-reload config)
+./radmin check           # Run inicheck (quiet mode)
+./radmin build           # Run build.sh (Docker) or make (bare metal)
+
+# With custom ini path
+./radmin /path/to/urfd.ini
+```
+
+Reihenfolge der Erkennung: laufender Docker-Container `urfd` → gestoppter Docker-Container → systemd-Dienst → nicht installiert.
+
+### inicheck
+
+Prüft die Syntax von `urfd.ini` und die Querbezüge (z.B. müssen TG-Module in `[Modules]` stehen, transcodierte Protokolle brauchen einen Transcoder, das Echo-Modul muss ein eingerichtetes Modul sein).
+
+```bash
+cd reflector
+make inicheck
+./inicheck -q urfd.ini   # Errors and warnings only
+./inicheck -n urfd.ini   # Also print public config keys
+./inicheck -v urfd.ini   # Print all keys (including internal)
+```
+
+Exit-Code 0 = OK, 1 = Fehler gefunden. Warnungen (fehlende optionale Felder) führen nicht zu einem Exit-Code ungleich 0.
+
+## Kopplung / Peering
+
+In `urfd.interlink` werden vier Arten der Kopplung unterstützt:
+
+| Art | Präfix | Standard-Port | Protokoll | Voraussetzung |
+|-----|--------|---------------|-----------|---------------|
+| URF-Partner | `URF` | 10017 | URF nativ | - |
+| XLX-Partner | `XLX` | 10002 | XLX | `[XLXPeer] Enable = true` |
+| DCS-Partner | `DCS` | 30051 | DCS nativ | - |
+| DCS-Partner (XLX) | `DCS` + `XLX` | 10002 | XLX | `[XLXPeer] Enable = true` |
+| M17-Partner (mrefd) | `M17-` | 17000 | M17-Kopplung | `[M17] Callsign = M17-XXX` |
+| M17-Partner (altes mrefd < 1.0) | `M17-…L` | 17000 | M17-Kopplung | `[M17] Callsign = M17-XXX` |
+
+DNS-Namen werden beim Laden über `getaddrinfo()` aufgelöst. Beide Seiten müssen sich gegenseitig in ihrer Interlink-Datei eintragen. Kopplung über DHT (ohne IP-Adresse) ist für URF-Partner möglich, wenn OpenDHT eingeschaltet ist, nicht für M17-Partner.
+
+URF-Partner handeln die Version der Kopplung aus: urfd meldet 4 und ergänzt im Stream-Header die Art der M17-META-Daten und die CAN für Partner, die ebenfalls 4 melden; Partner mit 3 (andere urfd-Forks) bekommen den alten Header. Mit `[URF] InterlinkVersion = 3` meldet dieser Reflektor 3 und schickt die Erweiterung nie.
+
+## Firewall
+
+Benötigte Ports (nur die der eingeschalteten Protokolle öffnen):
+
+| Port | Protokoll | Dienst |
+|------|-----------|--------|
+| 80/tcp | HTTP | Dashboard |
+| 8363/tcp | HTTP | Dashboard (Docker) |
+| 8880/udp | DMR+ | DMO-Modus |
+| 10002/udp | XLXPeer | XLX-/DCS-Kopplung |
+| 10017/udp | URF | URF-Kopplung |
+| 10100/tcp | TC | Transcoder |
+| 10101/tcp | Admin | Admin-Socket (nur lokal) |
+| 12345-12346/udp | G3 | Icom Terminal |
+| 17000/udp | M17 | M17-Protokoll und mrefd-Kopplung |
+| 20001/udp | DPlus | D-Star DPlus |
+| 30001/udp | DExtra | D-Star DExtra |
+| 30051/udp | DCS | D-Star DCS |
+| 32000/udp | USRP | AllStar |
+| 40000/udp | G3 | Icom-Terminal-Daten |
+| 41000/udp | P25 | P25-Protokoll |
+| 41400/udp | NXDN | NXDN-Protokoll |
+| 42000/udp | YSF | YSF/C4FM-Protokoll |
+| 5300/tcp+udp | SvxReflector | SvxLink (ausgehender Client) |
+| 5300/tcp+udp | SVXServer | SvxLink (eingehender Server) |
+| 62030/udp | MMDVM | DMR MMDVM |
+
+## YSF
+
+URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). YSF-Nutzer verbinden sich über Hotspot-Software (Pi-Star/WPSD), die URF-Reflektoren über die XLX-API findet. Eine Registrierung bei ysfreflector.de ist nicht nötig. Mit `EnableDGID = true` können Nutzer das Modul über DG-ID-Werte wechseln (10=A, 11=B, ... 35=Z).
+
+## Änderungen gegenüber dem Original
+
+### Protokoll-Anbindungen
+- **MMDVMClient**: Vollständiger MMDVM-Client für BrandMeister-/DMR+-Master: mehrere TGs pro Modul (primär TX/RX, sekundär nur RX), Timeslots, Ersatz-DMR-ID, Erzeugung des Options-Strings
+- **BrandMeister-API**: Optionale Anbindung an die REST API v2: Abgleich beim Start behält dynamische TGs (entfernt nur TGs, die weder in der Konfiguration noch in der Laufzeit-Zuordnung stehen), TGs per API statt per Kerchunk hinzufügen und entfernen, eingestellt über `BrandMeisterApiKey`
+- **SvxReflector**: TCP/UDP-Client für SvxLink-FM-Server: OPUS-Codec, Audio in beide Richtungen, einstellbare RX/TX-Verstärkung, SELECT_TG-Protokoll, Trennung bei TCP-Sendefehler mit sofortiger Neuverbindung
+- **SVXServer**: SvxReflector-V2-Server: nimmt SvxLink-Knoten mit HMAC-SHA1-Anmeldung an, OPUS-Audio, Modulwahl über TGs, Anmeldung pro Nutzer, Nutzer-/TG-Verwaltung zur Laufzeit über die Admin-API
+- **DCS-Kopplung**: Native DCS-Kopplung von Reflektor zu Reflektor, mit PeerCallsign und Protokollfeld in der Interlink-Datei
+- **D-Star-Client-Protokolle**: DCSClient, DExtraClient, DPlusClient: Verbindung mit fremden D-Star-Reflektoren als Client-Knoten mit Modul-zu-Modul-Zuordnung, dynamisch über die Admin-API, Protokoll-Sperren, im Dashboard sichtbar
+- **YSF-Client-Protokoll**: YSFClient: Verbindung mit fremden YSF-Reflektoren mit optionaler DG-ID, dynamische Zuordnung über die Admin-API, Reflektor-Rufzeichen im YSF-Feld "Radio"
+
+### Verwaltung zur Laufzeit
+- **Admin-Oberfläche**: JSON-over-TCP-Socket und Web-Dashboard: dynamische TG-Verwaltung, Protokolle neu verbinden, Transcoder-Statistik, Live-Log, Protokoll-Sperren, ein Thread pro Client mit 5 s Leerlauf-Timeout
+- **Protokoll-Sperren zur Laufzeit**: Beliebige Protokoll-Paare in beide Richtungen im Admin-Dashboard sperren und freigeben: threadsicher mit shared_mutex, per Klick entfernbar, Rücksetzen auf die Konfiguration, wird nicht gespeichert (gilt nach Neustart nicht mehr)
+- **Dynamische TG-Verwaltung**: TGs zur Laufzeit mit einstellbarer Laufzeit hinzufügen und entfernen, Timer über alle Protokolle hinweg erneuert, Aktivierung per BM-API oder Kerchunk, SELECT_TG(0) beim Ablauf der SVX-TGs
+- **Neu laden per SIGHUP**: TG-Zuordnungen, Whitelist/Blacklist/Interlink und Transcoder-Module neu laden, ohne Verbindungen zu trennen: threadsicher über sigwait, bei Fehlern mit Rückgängigmachen
+
+### Audio und Transcodierung
+- **NXDN-Modulwahl**: Modulwahl über die RAN (Radio Access Number): RAN 1-26 = Modul A-Z, mit getauschter RAN 1 und RAN des AutoLinkModule, sodass RAN 1 das AutoLinkModule erreicht; RAN 0 = AutoLinkModule. Alternativ Wahl über die Ziel-ID (`ModuleDstIdBase`, Ziel-ID base+1…base+26 = A-Z) für Clients ohne RAN, ausgewertet beim Verbindungs-Poll und bei jeder Aussendung, mit der Ziel-ID des Moduls in ausgehenden Frames. NXDN-ID-Auflösung über die NXDN-Datenbank mit DMR-Datenbank als Ersatz. FallbackNxdnId für unbekannte Anrufer (ohne Einstellung wird verworfen). Nicht initialisiertes `m_uiNXDNid` im Standardkonstruktor von CCallsign behoben.
+- **D-Star-Slow-Data**: Transcodierte Streams enthalten Rufzeichen des Anrufers, Protokoll-/TG-/RAN-/Modulangabe und den Betreibernamen aus der DMR- und NXDN-ID-Datenbank, im Wechsel alle etwa 5 Sekunden. Angezeigt wird die tatsächliche Quell-TG (nicht die primäre/statische), damit es bei mehreren TGs stimmt. Client-Protokolle zeigen Name und Modul des fremden Reflektors (z.B. `via DCS002 A`), YSFClient die DG-ID
+- **Getrennte SVX- und USRP-Codecs**: Unabhängige Codec-Pfade (`ECodecType::svx` und `ECodecType::usrp`) mit getrennter Verstärkung: SVX in urfd.ini, USRP in tcd.ini
+- **MMDVM Dual-Slot**: Jeder Timeslot (TS1/TS2) verbindet sich unabhängig mit seinem eigenen Reflektor-Modul, ein Hotspot kann also auf zwei Timeslots gleichzeitig zwei Module empfangen. Das Dashboard zeigt beide verbundenen Module pro Client.
+- **MMDVM bei NAT-Neuzuordnung**: Verbindet sich ein Hotspot mit neuem UDP-Quellport neu (NAT), wird der alte Eintrag anhand der exakten DMR-ID ersetzt. Die Modulverbindungen der Slots bleiben erhalten. Mehrere Clients mit verschiedenen DMR-IDs (auch Endungen) hinter derselben IP werden unterstützt.
+- **MMDVM Late-Entry**: Ermittelt die DMR-ID aus dem Rufzeichen des laufenden Streams (bevorzugt die zwischengespeicherte ID des Quell-Protokolls vor der Datenbank), damit lassen sich Sperren mitten im Stream aufheben
+- **Kein Eigenecho**: MMDVMClient leitet nichts zu BrandMeister zurück, was von dort kam
+
+### Dashboard und Ausgabe
+- **Protokollnamen**: Einheitliche Namen in der Oberfläche: `MMDVM` = direkte Hotspot-Verbindungen, `MMDVMClient` = Verbindung zu BrandMeister/Master-Server (früher hießen beide je nach Stelle "MMDVM")
+- **Dashboard v2.6.0**: Neugestaltung im dunklen Design, Admin-Panel, Modulübersicht mit TG-Zuordnungen und NXDN-RAN, Spalten ausgeschalteter Protokolle ausgeblendet, Protokollliste, QuadNet-Live-Proxy, Reflektorliste mit Suche und Seitenaufteilung
+- **Dashboard v2.6.1**: Übersteht einen Ausfall des XLX-Verzeichnisses. Feste Timeouts bei jeder ausgehenden Anfrage, CallingHome-Fehler werden ins Log geschrieben, statt die Seite abzubrechen, Reflektor- und Peer-Listen aus einem Cache auf der Platte, Admin-API nicht mehr hinter der PHP-Session-Sperre aufgereiht
+- **Dashboard v2.7.0**: Locator-Spalte für Stationen, die eine M17-GPS-Position senden, auch in `/json/stations`
+- **Dashboard v2.8.0**: Kein CallingHome mehr, der Reflektor trägt sich selbst ein; die Reflektorliste liest `$Directory` (mit Rückfall auf alte `$CallingHome`-Einstellungen); `/json/metadata` nimmt die Dashboard-URL aus dem XML des Reflektors
+- **Erweitertes XML/JSON**: Modul-Zuordnungen (statisch und dynamisch mit Laufzeit), Reflektor-Angaben, Protokollliste, Protokoll pro Nutzer, Array der dynamischen TGs
+- **Anzeige der Protokoll-Sperren**: Aktive Sperren als anklickbare Markierungen im Admin-Panel
+
+### Transcoder (tcd)
+- **In diesem Repository**: tcd liegt mit seiner Historie in `tcd/`; es baut gegen die gemeinsamen urfd-Quellen (`TCPacketDef.h`, `TCSocket.*`) aus `../reflector`, beide Seiten sprechen also immer dasselbe Protokoll
+- **Serieller Zugriff ohne libftd2xx**: AMBE-Geräte über den Kernel-Treiber `ftdi_sio` und `/dev/serial/by-id` (POSIX-Anbindung von Jason Kendall), RTS/CTS-Flusskontrolle, USB-Latenz-Timer auf 1 ms; Geräte, die ein älterer libftd2xx-tcd vom Treiber gelöst hat, werden beim Start wieder gebunden; ein verlorenes Gerät startet tcd über systemd neu
+- **Geräteauswahl**: `DeviceSerial` muss exakt passen: USB-Seriennummer, libftd2xx-Form mit Port-Buchstabe, Name unter by-id oder Gerätedatei; `tcd --list-devices` zeigt sie an
+- **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
+
+### Infrastruktur
+- **CallingHome im Reflektor**: `[CallingHome]` in `urfd.ini` trägt den Reflektor mit denselben Daten und derselben Hash-Datei wie bisher das Dashboard im XLX-Verzeichnis ein, auch ohne Dashboard
+- **Sauberes Beenden**: urfd beendet sich bei SIGTERM in etwa 2 Sekunden. Vorher warteten die Router-Threads der Module ewig auf Pakete, Protokolle wurden gelöscht, während ihre Threads noch liefen (ein Absturz, der nur nicht auffiel, weil Docker urfd vorher abschoss), und die ID-Datenbank-Threads schliefen je bis zu 10 s; `docker stop` endete so immer mit einem Kill
+- **Setup-Script**: `setup.sh` installiert und aktualisiert Reflektor und Transcoder, schreibt die Konfiguration aus den Vorlagen und prüft sie mit inicheck; Docker Compose baut aus jedem Klon, Daten in `$URFD_DATA` (Standard `/opt/urfd`)
+- **Echo-Modul**: Eingebauter Papagei, ein- und ausschaltbar
+- **M17 LSTN**: Reine Hör-Clients für Überwachungsdienste, die nicht senden dürfen
+- **mrefd-Kopplung**: Module mit M17-Reflektoren teilen (`M17-XXX` in `urfd.interlink`, `[M17] Callsign`), auch mit alten mrefd
+- **URF-Kopplung 4**: Art der M17-META-Daten und CAN im URF-Stream-Header, pro Partner ausgehandelt mit Rückfall auf 3; `[URF] InterlinkVersion = 3` für den Legacy-Modus
+- **M17-Kompatibilität**: V#3-TYPE-Feld, Weiterleitung im Paketmodus (SMS), `PARROT`/`ECHO` als Ziel für das Echo-Modul, neue Verbindung ersetzt die alte, META-Art und CAN bleiben erhalten, GPS-Position als Locator
+- **Robuste Transcoder-Verbindung**: TCP-Keepalive, nicht blockierendes poll, Warteschlangen leeren bei Verbindungsabbruch, automatische Neuverbindung nach Netzausfällen
+- **Wiederholung beim Datenbank-Download**: Wiederholung mit wachsender Pause, wenn das erste Laden scheitert (verhindert leere Datenbanken nach kurzen Fehlern)
+- **Ersatzquellen für Datenbanken**: `URL` nimmt eine durch Komma getrennte Liste, der Reihe nach versucht; das Trennzeichen (`;`, `,`, Tabulator) wird pro Zeile erkannt, die üblichen Anbieter funktionieren also unverändert; jeder erfolgreiche Download wird in `<FilePath>.cache` gespiegelt und geladen, wenn keine Quelle antwortet
+- **Dienst-Optimierungen**: Echtzeit-Scheduling und CPU-Priorität für Sprache
+- **Threadsicheres Logging**: Atomares cout über ostringstream
+- **Threadsichere Datenbankabfragen**: DMR-/NXDN-ID-Abfragen in CodecStream halten während des Zugriffs die nötigen Sperren und vermeiden so Konflikte mit der Aktualisierung im Hintergrund
+- **P25 aufgeräumt**: Totes festes `P25_MODULE_ID` entfernt, P25 verwendet durchgängig `AutoLinkModule`. Debug-Ausgaben abgesichert.
+- **YSF-Korrekturen**: Prüfung auf WiresX-Pakete vor den Sprach-Parser verlegt (CONN_REQ-Datenframes wurden als Sprache verarbeitet). CONN_REQ nimmt Raum-IDs 4001-4026 und direkte Indizes 1-26 an (war fest 0). DX_RESP-Status `'3'` (kompatibel mit YSFGateway, war das undokumentierte `'5'`). ALL_RESP-Byte `0x26` (war `0x29`). Nullzeiger in `YSFPayload::getSource()` behoben (prüfte das falsche Element). Hinweis: Der Raumwechsel über WiresX braucht direkte YSF-Clients, MMDVMHost fängt CONN_REQ lokal ab. Die DG-ID ist der wichtigste Weg der Modulwahl.
+- **DCS-Server-Korrektur**: "EEEE"-Statuspakete (35 Byte) von ircDDBGateway-Clients werden ignoriert, statt als unbekannt im Log zu landen. Die 9-Byte-Variante des Keepalive wird angenommen.
+- **Übernommen von [dbehnke/urfd](https://github.com/dbehnke/urfd)**: Bereinigung von Rufzeichen, Behebung von YSF-Radio-ID-Kollisionen, Durchsetzung der Transcoder-Modul-ID, Modulwahl per DG-ID
+
+## Copyright
+
+- Copyright (c) 2016 Jean-Luc Deltombe LX3JL und Luc Engelmann LX1IQ
+- Copyright (c) 2022 Doug McLain AD8DP und Thomas A. Early N7TAE
+- Copyright (c) 2024 Thomas A. Early N7TAE
+- Copyright (c) 2025-2026 Jens-Christian Merg DL4JC (Erweiterungen des URF363-Forks)
+- tcd: Copyright (c) 2021 Thomas A. Early N7TAE; POSIX-Anbindung von Jason Kendall (2026); Erweiterungen des Forks Jens-Christian Merg DL4JC
