@@ -1,8 +1,8 @@
-# URF363 - Universal Digital Voice Reflector und Transcoder
+# urfd-ng - Universal Digital Voice Reflector und Transcoder
 
 [English](README.md) | **Deutsch**
 
-Fork von [urfd](https://github.com/n7tae/urfd) mit erweiterten Funktionen für das Reflektor-Projekt URF363. Enthält den hybriden Transcoder [tcd](tcd/) und ein Setup-Script, das beides installiert.
+Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
 **urfd 4.3.2-dht** | tcd 0.2.1 | Dashboard v2.8.0
 
@@ -12,7 +12,7 @@ Fork von [urfd](https://github.com/n7tae/urfd) mit erweiterten Funktionen für d
 git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.sh
 ```
 
-## Neu in diesem Fork
+## Neu in urfd-ng
 
 ### Setup-Script und Transcoder
 `setup.sh` installiert nach ein paar Fragen den Reflektor (in Docker, mit Dashboard) und den Transcoder (mit systemd), auf einem Rechner oder auf zwei verteilt, und aktualisiert beide auch. Der Transcoder liegt in [`tcd/`](tcd/), Reflektor und Transcoder stammen also immer aus derselben Version. tcd spricht die AMBE-Sticks über den Kernel-Treiber `ftdi_sio` mit einem USB-Latenz-Timer von 1 ms an und braucht damit den libftd2xx-Treiber nicht mehr, den ftdichip.com nicht mehr per Script herunterladen lässt. Siehe [docs/INSTALL.de.md](docs/INSTALL.de.md) und [tcd/README.md](tcd/README.md).
@@ -853,5 +853,5 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - Copyright (c) 2016 Jean-Luc Deltombe LX3JL und Luc Engelmann LX1IQ
 - Copyright (c) 2022 Doug McLain AD8DP und Thomas A. Early N7TAE
 - Copyright (c) 2024 Thomas A. Early N7TAE
-- Copyright (c) 2025-2026 Jens-Christian Merg DL4JC (Erweiterungen des URF363-Forks)
-- tcd: Copyright (c) 2021 Thomas A. Early N7TAE; POSIX-Anbindung von Jason Kendall (2026); Erweiterungen des Forks Jens-Christian Merg DL4JC
+- Copyright (c) 2025-2026 Jens-Christian Merg DL4JC (Erweiterungen von urfd-ng)
+- tcd: Copyright (c) 2021 Thomas A. Early N7TAE; POSIX-Anbindung von Jason Kendall (2026); Erweiterungen von urfd-ng Jens-Christian Merg DL4JC

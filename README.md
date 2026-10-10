@@ -1,8 +1,8 @@
-# URF363 - Universal Digital Voice Reflector and Transcoder
+# urfd-ng - Universal Digital Voice Reflector and Transcoder
 
 **English** | [Deutsch](README.de.md)
 
-Fork of [urfd](https://github.com/n7tae/urfd) with extended features for the URF363 reflector project. It includes the hybrid transcoder [tcd](tcd/) and a setup script that installs both.
+Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
 **urfd 4.3.2-dht** | tcd 0.2.1 | Dashboard v2.8.0
 
@@ -12,7 +12,7 @@ Fork of [urfd](https://github.com/n7tae/urfd) with extended features for the URF
 git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.sh
 ```
 
-## What's New in This Fork
+## What's New in urfd-ng
 
 ### Setup Script and Transcoder
 `setup.sh` installs the reflector (Docker, with the dashboard) and the transcoder (systemd), on one machine or split across two, after a few questions; it also updates them. The transcoder lives in [`tcd/`](tcd/), so reflector and transcoder always come from the same version. tcd uses the AMBE sticks through the kernel's `ftdi_sio` driver with the USB latency timer at 1 ms, so it no longer needs the libftd2xx driver, which ftdichip.com no longer lets scripts download. See [docs/INSTALL.md](docs/INSTALL.md) and [tcd/README.md](tcd/README.md).
@@ -874,5 +874,5 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - Copyright (c) 2016 Jean-Luc Deltombe LX3JL and Luc Engelmann LX1IQ
 - Copyright (c) 2022 Doug McLain AD8DP and Thomas A. Early N7TAE
 - Copyright (c) 2024 Thomas A. Early N7TAE
-- Copyright (c) 2025-2026 Jens-Christian Merg DL4JC (URF363 fork extensions)
-- tcd: Copyright (c) 2021 Thomas A. Early N7TAE; POSIX serial backend by Jason Kendall (2026); fork extensions Jens-Christian Merg DL4JC
+- Copyright (c) 2025-2026 Jens-Christian Merg DL4JC (urfd-ng extensions)
+- tcd: Copyright (c) 2021 Thomas A. Early N7TAE; POSIX serial backend by Jason Kendall (2026); urfd-ng extensions Jens-Christian Merg DL4JC
