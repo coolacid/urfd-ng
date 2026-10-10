@@ -21,7 +21,9 @@
 #include <sstream>
 #include <future>
 #include <atomic>
-#include <ftd2xx.h>
+#include <memory>
+#include <cstdint>
+#include "DeviceIO.h"
 
 #include "PacketQueue.h"
 #include "DVSIPacket.h"
@@ -50,8 +52,7 @@ public:
 protected:
 	const Encoding type;
 	Edvtype devtype;
-	FT_HANDLE ftHandle;
-	EVENT_HANDLE m_rxEvent;
+	std::unique_ptr<IDeviceIO> device;
 	std::atomic<unsigned int> buffer_depth;
 	std::mutex buffer_mutex;
 	std::condition_variable buffer_cv;
@@ -59,8 +60,6 @@ protected:
 	CPacketQueue input_queue;
 	std::future<void> feedFuture, readFuture;
 	std::string description, productid;
-	std::atomic<int32_t> m_outputGainNum{256};
-	int m_statsIndex = -1;
 
 	bool ConfigureVocoder(uint8_t pkt_ch, Encoding type, int8_t in_gain, int8_t out_gain);
 	bool checkResponse(SDV_Packet &responsePacket, uint8_t response) const;
@@ -68,7 +67,9 @@ protected:
 	bool InitDevice();
 	void FeedDevice();
 	void ReadDevice();
-	void FTDI_Error(const char *where, FT_STATUS status) const;
+	void FTDI_Error(const char *where, int status) const;
+		std::atomic<int32_t> m_outputGainNum{256};
+		int m_statsIndex = -1;
 	void dump(const char *title, const void *data, int length) const;
 
 	// pure virtual methods unique to the device type
