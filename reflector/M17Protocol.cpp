@@ -146,6 +146,10 @@ void CM17Protocol::Task(void)
 			}
 			g_Reflector.ReleaseClients();
 		}
+		else if ( IsValidPacketModePacket(Buffer) )
+		{
+			OnPacketModePacketIn(Buffer, Ip);
+		}
 		else
 		{
 			// invalid packet
@@ -271,6 +275,45 @@ void CM17Protocol::HandleQueue(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
+// packet mode helpers
+
+void CM17Protocol::OnPacketModePacketIn(const CBuffer &Buffer, const CIp &Ip)
+{
+	CCallsign src;
+	src.CodeIn(Buffer.data() + 10);
+
+	CClients *clients = g_Reflector.GetClients();
+	std::shared_ptr<CClient>sender = clients->FindClient(Ip, EProtocol::m17);
+	if ( sender != nullptr )
+	{
+		const char module = sender->GetReflectorModule();
+		if ( g_GateKeeper.MayTransmit(src, Ip, EProtocol::m17, module) )
+		{
+			std::cout << "M17 packet mode data (type " << unsigned(Buffer.data()[34]) << ") on module " << module << " from " << src;
+			// SMS: print the text, up to the terminating zero
+			if ( 0x05U == Buffer.data()[34] )
+			{
+				std::string text;
+				for ( auto p = Buffer.data() + 35; p < Buffer.data() + Buffer.size() - 2 && *p; p++ )
+					text += isprint(*p) ? char(*p) : '.';
+				std::cout << ": \"" << text << "\"";
+			}
+			std::cout << std::endl;
+
+			// forward it unchanged to all other M17 clients linked to the module
+			auto it = clients->begin();
+			std::shared_ptr<CClient>client = nullptr;
+			while ( (client = clients->FindNextClient(EProtocol::m17, it)) != nullptr )
+			{
+				if ( (client != sender) && !client->IsAMaster() && (client->GetReflectorModule() == module) )
+					Send(Buffer, client->GetIp());
+			}
+		}
+	}
+	g_Reflector.ReleaseClients();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
 // keepalive helpers
 
 void CM17Protocol::HandleKeepalives(void)
@@ -390,6 +433,20 @@ bool CM17Protocol::IsValidDvPacket(const CBuffer &Buffer, std::unique_ptr<CDvHea
 	return false;
 }
 
+
+bool CM17Protocol::IsValidPacketModePacket(const CBuffer &Buffer) const
+{
+	uint8_t tag[] = { 'M', '1', '7', 'P' };
+
+	// tag + LSF (28) + LSF CRC (2) + payload (type, data, CRC: 3..825)
+	if ( (Buffer.size() < 37) || (Buffer.size() > 859) || (0 != Buffer.Compare(tag, 4)) )
+		return false;
+
+	const uint8_t *p = Buffer.data();
+	const size_t len = Buffer.size();
+	return (m17crc.CalcCRC(p + 4, 28) == ((p[32] << 8) | p[33])) &&
+	       (m17crc.CalcCRC(p + 34, len - 36) == ((p[len - 2] << 8) | p[len - 1]));
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // packet encoding helpers

@@ -59,12 +59,16 @@ protected:
 	// stream helpers
 	void OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &, const CIp &);
 
+	// packet mode helpers
+	void OnPacketModePacketIn(const CBuffer &, const CIp &);
+
 	// packet decoding helpers
 	bool IsValidConnectPacket(const CBuffer &, CCallsign &, char &);
 	bool IsValidListenPacket(const CBuffer &, CCallsign &, char &);
 	bool IsValidDisconnectPacket(const CBuffer &, CCallsign &);
 	bool IsValidKeepAlivePacket(const CBuffer &, CCallsign &);
 	bool IsValidDvPacket(const CBuffer &, std::unique_ptr<CDvHeaderPacket> &, std::unique_ptr<CDvFramePacket> &);
+	bool IsValidPacketModePacket(const CBuffer &) const;
 
 	// packet encoding helpers
 	void EncodeKeepAlivePacket(CBuffer &);
