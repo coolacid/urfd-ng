@@ -4,7 +4,7 @@
 
 Fork of [urfd](https://github.com/n7tae/urfd) with extended features for the URF363 reflector project. It includes the hybrid transcoder [tcd](tcd/) and a setup script that installs both.
 
-**urfd 4.3.1-dht** | tcd 0.2.0 | Dashboard v2.8.0
+**urfd 4.3.2-dht** | tcd 0.2.1 | Dashboard v2.8.0
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 

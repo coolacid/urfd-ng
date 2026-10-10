@@ -400,6 +400,11 @@ bool CTCServer::acceptone()
 	setsockopt(newfd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
 	setsockopt(newfd, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
 
+	// Send every frame at once: with Nagle, a frame waits for the ACK of the
+	// previous one, which the peer delays until it has data of its own to send
+	int nodelay = 1;
+	setsockopt(newfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
 	{ std::ostringstream s; s << "File descriptor " << newfd << " opened TCP port for module '" << mod << "' on " << their_addr; std::cout << s.str() << std::endl; }
 
 	m_Pfd[pos].fd = newfd;
@@ -518,6 +523,10 @@ bool CTCClient::Connect(char module, bool blocking)
 	setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
 	setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
 	setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
+
+	// Send every frame at once, see CTCServer::acceptone
+	int nodelay = 1;
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
 	{ std::ostringstream s; s << "File descriptor " << fd << " on " << ip << " opened for module '" << module << "'"; std::cout << s.str() << std::endl; }
 
