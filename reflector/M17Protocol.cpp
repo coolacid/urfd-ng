@@ -67,8 +67,16 @@ void CM17Protocol::Task(void)
 		// crack the packet
 		if ( IsValidDvPacket(Buffer, Header, Frame) )
 		{
+			MapEchoDestination(*Header);
+
+			// listen-only clients may not transmit
+			if ( IsListenOnlyClient(Ip) )
+			{
+				if ( Frame->IsLastPacket() )
+					std::cout << "M17 listen-only client at " << Ip << " transmitted as " << Header->GetMyCallsign() << ", ignored" << std::endl;
+			}
 			// callsign muted?
-			if ( g_GateKeeper.MayTransmit(Header->GetMyCallsign(), Ip, EProtocol::m17, Header->GetRpt2Module()) )
+			else if ( g_GateKeeper.MayTransmit(Header->GetMyCallsign(), Ip, EProtocol::m17, Header->GetRpt2Module()) )
 			{
 				OnDvHeaderPacketIn(Header, Ip);
 
@@ -99,8 +107,18 @@ void CM17Protocol::Task(void)
 					// acknowledge the request
 					Send("ACKN", Ip);
 
+					// a new link replaces any earlier one from this node, e.g. on another module
+					CClients *clients = g_Reflector.GetClients();
+					std::vector<std::shared_ptr<CClient>> old;
+					auto it = clients->begin();
+					std::shared_ptr<CClient>client = nullptr;
+					while ( (client = clients->FindNextClient(Callsign, Ip, EProtocol::m17, it)) != nullptr )
+						old.push_back(client);
+					for ( auto &c : old )
+						clients->RemoveClient(c);
+
 					// create the client and append
-					g_Reflector.GetClients()->AddClient(std::make_shared<CM17Client>(Callsign, Ip, ToLinkModule));
+					clients->AddClient(std::make_shared<CM17Client>(Callsign, Ip, ToLinkModule, isListen));
 					g_Reflector.ReleaseClients();
 				}
 				else
@@ -256,7 +274,7 @@ void CM17Protocol::HandleQueue(void)
 				while ( (client = clients->FindNextClient(EProtocol::m17, it)) != nullptr )
 				{
 					// is this client busy ?
-					if ( !client->IsAMaster() && (client->GetReflectorModule() == module) )
+					if ( !client->IsAMaster() && ((client->GetReflectorModule() == module) || IsEchoPlaybackFor(*client, module)) )
 					{
 						// set the destination
 						client->GetCallsign().CodeOut(frame.lich.addr_dst);
@@ -275,6 +293,46 @@ void CM17Protocol::HandleQueue(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
+// client helpers
+
+bool CM17Protocol::IsListenOnlyClient(const CIp &Ip)
+{
+	std::shared_ptr<CClient>client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17);
+	const bool listenOnly = client && std::static_pointer_cast<CM17Client>(client)->IsListenOnly();
+	g_Reflector.ReleaseClients();
+	return listenOnly;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+// echo helpers
+
+// M17 clients test their signal by sending to PARROT (as on mrefd) or ECHO,
+// whatever module they are linked to: send that to the echo module instead
+void CM17Protocol::MapEchoDestination(CDvHeaderPacket &Header) const
+{
+	const char echo = g_Reflector.GetEchoModule();
+	const auto dst = Header.GetRpt2Callsign().GetBase();
+	if ( (' ' != echo) && ((0 == dst.compare("PARROT")) || (0 == dst.compare("ECHO"))) )
+		Header.SetRpt2Module(echo);
+}
+
+// the echo module plays a recording back to its module only, so a caller
+// linked elsewhere also gets the playback of their own recording
+bool CM17Protocol::IsEchoPlaybackFor(const CClient &client, char module) const
+{
+	if ( (module != g_Reflector.GetEchoModule()) || (client.GetReflectorModule() == module) )
+		return false;
+
+	auto item = m_StreamsCache.find(module);
+	if ( item == m_StreamsCache.end() )
+		return false;
+
+	// the echo thread sends with stream ids 0xEC00-0xECFF and the caller as UR
+	const CDvHeaderPacket &header = item->second.m_dvHeader;
+	return (header.GetStreamId() >= 0xEC00) && (header.GetStreamId() <= 0xECFF) && (header.GetUrCallsign().GetBase() == client.GetCallsign().GetBase());
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
 // packet mode helpers
 
 void CM17Protocol::OnPacketModePacketIn(const CBuffer &Buffer, const CIp &Ip)
@@ -284,7 +342,11 @@ void CM17Protocol::OnPacketModePacketIn(const CBuffer &Buffer, const CIp &Ip)
 
 	CClients *clients = g_Reflector.GetClients();
 	std::shared_ptr<CClient>sender = clients->FindClient(Ip, EProtocol::m17);
-	if ( sender != nullptr )
+	if ( (sender != nullptr) && std::static_pointer_cast<CM17Client>(sender)->IsListenOnly() )
+	{
+		std::cout << "M17 listen-only client " << sender->GetCallsign() << " sent packet mode data, ignored" << std::endl;
+	}
+	else if ( sender != nullptr )
 	{
 		const char module = sender->GetReflectorModule();
 		if ( g_GateKeeper.MayTransmit(src, Ip, EProtocol::m17, module) )
@@ -411,15 +473,15 @@ bool CM17Protocol::IsValidDvPacket(const CBuffer &Buffer, std::unique_ptr<CDvHea
 {
 	uint8_t tag[] = { 'M', '1', '7', ' ' };
 
-	if ( (Buffer.size() == sizeof(SM17Frame)) && (0 == Buffer.Compare(tag, sizeof(tag))) && (0x4U == (0x1CU & Buffer[19])) )
-	// Buffer[19] is the low-order byte of the uint16_t frametype.
-	// the 0x1CU mask (00011100 binary) just lets us see:
-	// 1. the encryptions bytes (mask 0x18U) which must be zero, and
-	// 2. the msb of the 2-bit payload type (mask 0x4U) which must be set. This bit set means it's voice or voice+data.
-	// An masked result of 0x4U means the payload contains Codec2 voice data and there is no encryption.
+	if ( (Buffer.size() == sizeof(SM17Frame)) && (0 == Buffer.Compare(tag, sizeof(tag))) )
 	{
 		// Make the M17 header
 		CM17Packet m17(Buffer.data());
+
+		// only unencrypted Codec2 voice, in either TYPE layout
+		if ( (ECodecType::none == m17.GetCodecType()) || m17.IsEncrypted() )
+			return false;
+
 		// get the header
 		header = std::unique_ptr<CDvHeaderPacket>(new CDvHeaderPacket(m17));
 

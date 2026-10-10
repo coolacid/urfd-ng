@@ -76,6 +76,7 @@ public:
 
 	// check
 	bool IsValidModule(char c) const                { return m_Modules.npos!=m_Modules.find(c); }
+	char GetEchoModule(void) const                  { return m_EchoModule; }
 
 	// protocol access (for admin socket)
 	CProtocols &GetProtocols(void)                  { return m_Protocols; }

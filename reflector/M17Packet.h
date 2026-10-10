@@ -24,6 +24,7 @@
 #include <memory>
 
 #include "Callsign.h"
+#include "TCPacketDef.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // aliases
@@ -63,6 +64,8 @@ public:
 	char GetDestModule() const;
 	uint16_t GetFrameNumber() const;
 	uint16_t GetFrameType() const;
+	ECodecType GetCodecType() const;
+	bool IsEncrypted() const;
 	const uint8_t *GetPayload() const;
 	const uint8_t *GetNonce() const;
 	void SetPayload(const uint8_t *newpayload);

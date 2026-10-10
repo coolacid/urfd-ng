@@ -106,18 +106,7 @@ CDvFramePacket::CDvFramePacket(const CM17Packet &m17) : CPacket(m17)
 	memset(m_uiDvSync,     0, sizeof(m_uiDvSync));
 	memcpy(m_TCPack.m17, m17.GetPayload(), sizeof(m_TCPack.m17));
 	memcpy(m_Nonce,      m17.GetNonce(),   sizeof(m_Nonce));
-	switch (0x6U & m17.GetFrameType())
-	{
-		case 0x4U:
-			m_TCPack.codec_in = ECodecType::c2_3200;
-			break;
-		case 0x6U:
-			m_TCPack.codec_in = ECodecType::c2_1600;
-			break;
-		default:
-			m_TCPack.codec_in = ECodecType::none;
-			break;
-	}
+	m_TCPack.codec_in = m17.GetCodecType();
 }
 
 // p25 constructor

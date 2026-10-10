@@ -59,6 +59,13 @@ protected:
 	// stream helpers
 	void OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &, const CIp &);
 
+	// client helpers
+	bool IsListenOnlyClient(const CIp &);
+
+	// echo helpers
+	void MapEchoDestination(CDvHeaderPacket &) const;
+	bool IsEchoPlaybackFor(const CClient &, char) const;
+
 	// packet mode helpers
 	void OnPacketModePacketIn(const CBuffer &, const CIp &);
 

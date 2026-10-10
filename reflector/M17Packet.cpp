@@ -54,6 +54,32 @@ uint16_t CM17Packet::GetFrameType() const
 	return ntohs(m17.lich.frametype);
 }
 
+// The TYPE field comes in two layouts. The V#3 layout has the payload type in the
+// top nibble (never zero), the legacy layout leaves that nibble empty.
+//   legacy: bit 0 stream, bits 1-2 data type (2 = 3200, 3 = 1600), bits 3-4 encryption
+//   V#3:    bits 12-15 payload (2 = 3200, 3 = 1600), bits 9-11 encryption
+
+ECodecType CM17Packet::GetCodecType() const
+{
+	const uint16_t t = GetFrameType();
+	const unsigned payload = (0xF000U & t) ? (t >> 12) : (0x3U & (t >> 1));
+	switch (payload)
+	{
+		case 2U:
+			return ECodecType::c2_3200;
+		case 3U:
+			return ECodecType::c2_1600;
+		default:
+			return ECodecType::none;
+	}
+}
+
+bool CM17Packet::IsEncrypted() const
+{
+	const uint16_t t = GetFrameType();
+	return (0xF000U & t) ? (0 != (0x7U & (t >> 9))) : (0 != (0x3U & (t >> 3)));
+}
+
 const uint8_t *CM17Packet::GetPayload() const
 {
 	return m17.payload;
