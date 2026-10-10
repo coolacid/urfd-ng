@@ -2,7 +2,7 @@
 
 Fork of [urfd](https://github.com/nostar/urfd) with extended features for the URF363 reflector project.
 
-**Version 3.3.0-dht** | Dashboard v2.6.1
+**Version 3.4.0-dht** | Dashboard v2.6.1
 
 ## What's New in This Fork
 
@@ -396,8 +396,15 @@ Module = Z
 
 Set `Enable = false` to disable without removing the configuration.
 
+M17 clients reach the echo module from whatever module they are linked to by transmitting to `PARROT` (as on mrefd) or `ECHO`; the playback of their own recording is sent back to them on their linked module as well.
+
 ### M17 LSTN Support
-M17 listen-only clients (LSTN packets) are accepted and registered as normal clients. This enables monitoring services like dvref.com to check reflector availability.
+M17 listen-only clients (LSTN packets) are accepted and registered on the requested module. This enables monitoring services like dvref.com to check reflector availability. Voice and packet mode data from a listen-only client are dropped, as on mrefd.
+
+### M17 Protocol
+- **TYPE field**: Voice frames are recognised in both the legacy and the V#3 TYPE layout of the M17 specification; encrypted streams are dropped in both.
+- **Packet mode**: `M17P` packets (e.g. SMS) are checked against both CRCs and forwarded unchanged to the other M17 clients on the sender's module.
+- **Relinking**: A `CONN`/`LSTN` replaces any earlier link of the same callsign and IP, so switching modules does not leave a stale entry behind.
 
 ### Protocol Enable Flags
 All protocols can now be individually enabled/disabled. Default is `true` (backwards-compatible).
@@ -769,7 +776,8 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 
 ### Infrastructure
 - **Echo module**: Built-in parrot with enable/disable flag
-- **M17 LSTN support**: Listen-only M17 clients for monitoring services
+- **M17 LSTN support**: Listen-only M17 clients for monitoring services, which may not transmit
+- **M17 compatibility**: V#3 TYPE field, packet mode (SMS) forwarding, `PARROT`/`ECHO` destination to the echo module, relinking replaces the old link
 - **Transcoder resilience**: TCP keepalive, non-blocking poll, queue drain on disconnect, automatic reconnect after network outages
 - **Database HTTP retry**: Retry with backoff on failed initial load (prevents empty databases after transient errors)
 - **Database fallback sources**: `URL` accepts a comma separated list, tried in order; field separator (`;`, `,`, tab) is detected per line so the common publishers work unchanged; every successful download is mirrored to `<FilePath>.cache` and loaded when no source answers
