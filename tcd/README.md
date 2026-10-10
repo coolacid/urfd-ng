@@ -2,7 +2,7 @@
 
 **English** | [Deutsch](README.de.md)
 
-**Version 0.2.1** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.2** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd converts voice between the digital modes on a URF reflector, so a D-Star user hears a DMR user and the other way round. It uses DVSI AMBE hardware for D-Star (AMBE) and DMR/YSF (AMBE2+), and software vocoders for M17 (Codec2), P25/NXDN (IMBE) and, optionally, DMR/YSF (MD380). The reflector hands the audio of its transcoded modules to tcd over TCP and gets every other mode back.
 
@@ -183,6 +183,7 @@ DMR to DMR/YSF audio normally passes through as AMBE2+ without being decoded, so
 | Key | Template | Meaning |
 |---|---|---|
 | `Monitor` | `true` | web dashboard and stats socket on/off |
+| `MonitorBindAddress` | `127.0.0.1` | address of web dashboard and stats socket; `0.0.0.0` opens them to the network (no password, the page can change and save levels, so only on a trusted LAN) |
 | `MonitorHttpPort` | `8080` | web dashboard |
 | `MonitorStatsPort` | `8081` | stats socket (JSON, for `tcdmon`) |
 | `StatsLog` | `false` | per-stream CSV files for AGC tuning |
@@ -221,7 +222,7 @@ The gain limits are asymmetric on purpose: attenuating is safe, amplifying also 
 
 ### Web dashboard
 
-`http://<tcd-host>:8080`:
+`http://localhost:8080` on the tcd machine, from elsewhere through `ssh -L 8080:localhost:8080 <tcd-host>`, or `http://<tcd-host>:8080` with `MonitorBindAddress = 0.0.0.0`:
 
 - signal flow of the active path with live levels at each stage
 - VU meters before and after the AGC, with peak hold
@@ -293,6 +294,7 @@ journalctl -u tcd -f
 - **Renamed keys**: `DmrGainIn/Out` (was `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (was `UsrpRxGain/TxGain`), gains extended to ±40 dB
 
 ### Reliability
+- **Monitor on loopback by default**: `MonitorBindAddress` (default `127.0.0.1`) for the web dashboard and stats socket, which have no password
 - **Optional MD380**: without it, two AMBE devices are needed and re-encode is unavailable
 - **Performance**: blocking reads with a timeout instead of busy polling, about 5 % CPU on a Raspberry Pi
 - **Thread safety**: lock around the IMBE vocoder, SIGPIPE ignored for clean reconnects

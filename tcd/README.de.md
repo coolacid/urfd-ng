@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.2.1** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.2** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -183,6 +183,7 @@ Audio von DMR nach DMR/YSF läuft normalerweise als AMBE2+ durch, ohne dekodiert
 | Schlüssel | Vorlage | Bedeutung |
 |---|---|---|
 | `Monitor` | `true` | Web-Dashboard und Statistik-Socket ein/aus |
+| `MonitorBindAddress` | `127.0.0.1` | Adresse von Web-Dashboard und Statistik-Socket; `0.0.0.0` öffnet sie ins Netz (ohne Passwort, die Seite kann Pegel ändern und speichern, also nur im vertrauenswürdigen LAN) |
 | `MonitorHttpPort` | `8080` | Web-Dashboard |
 | `MonitorStatsPort` | `8081` | Statistik-Socket (JSON, für `tcdmon`) |
 | `StatsLog` | `false` | CSV-Dateien pro Stream zum Einstellen der AGC |
@@ -221,7 +222,7 @@ Die Grenzen sind absichtlich ungleich: Absenken ist unkritisch, Anheben hebt auc
 
 ### Web-Dashboard
 
-`http://<tcd-host>:8080`:
+`http://localhost:8080` auf dem tcd-Rechner, von anderswo über `ssh -L 8080:localhost:8080 <tcd-host>`, oder `http://<tcd-host>:8080` mit `MonitorBindAddress = 0.0.0.0`:
 
 - Signalweg des aktiven Pfads mit Live-Pegeln an jeder Stufe
 - VU-Meter vor und nach der AGC, mit Spitzenwert-Anzeige
@@ -293,6 +294,7 @@ journalctl -u tcd -f
 - **Umbenannte Schlüssel**: `DmrGainIn/Out` (war `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (war `UsrpRxGain/TxGain`), Verstärkungen erweitert auf ±40 dB
 
 ### Zuverlässigkeit
+- **Monitor standardmäßig nur lokal**: `MonitorBindAddress` (Standard `127.0.0.1`) für Web-Dashboard und Statistik-Socket, die kein Passwort haben
 - **MD380 optional**: Ohne ihn sind zwei AMBE-Geräte nötig, und Neukodieren gibt es nicht
 - **Leistung**: blockierendes Lesen mit Timeout statt Dauerabfrage, etwa 5 % CPU auf einem Raspberry Pi
 - **Threadsicherheit**: Sperre um den IMBE-Vocoder, SIGPIPE ignoriert für saubere Neuverbindungen

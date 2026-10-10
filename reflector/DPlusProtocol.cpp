@@ -419,6 +419,8 @@ bool CDplusProtocol::IsValidDvHeaderPacket(const CBuffer &Buffer, std::unique_pt
 
 bool CDplusProtocol::IsValidDvFramePacket(const CBuffer &Buffer, std::unique_ptr<CDvFramePacket> &dvframe)
 {
+	if (Buffer.size() < 29)
+		return false;
 	if (0==memcmp(Buffer.data()+2, "DSVT", 4) && 0x80u==Buffer.data()[1] && 0x20u==Buffer.data()[6] && 0x20u==Buffer.data()[10])
 	{
 		auto size = Buffer.size();

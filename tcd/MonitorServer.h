@@ -16,7 +16,7 @@ public:
 	CMonitorServer();
 	~CMonitorServer();
 
-	bool Start(uint16_t http_port, uint16_t stats_port);
+	bool Start(const std::string &bind, uint16_t http_port, uint16_t stats_port);
 	void Stop();
 	bool IsRunning() const { return m_running.load(); }
 
@@ -37,6 +37,7 @@ private:
 	std::string BuildStatsJson();
 
 	std::atomic<bool> m_running{false};
+	std::string m_bind{"127.0.0.1"};
 	uint16_t m_httpPort{8080};
 	uint16_t m_statsPort{8081};
 	std::future<void> m_httpFuture;

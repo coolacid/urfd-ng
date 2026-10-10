@@ -217,10 +217,15 @@ void CBuffer::DebugDumpAscii(std::ofstream &debugout) const
 
 void CBuffer::Dump(const std::string &title)
 {
-	std::cout << title << ":" << std::endl;
+	// unknown packets from anyone end up here, so only their start is shown
+	const unsigned int shown = 64U;
+	std::cout << title << ":";
+	if (m_data.size() > shown)
+		std::cout << " (first " << shown << " of " << m_data.size() << " bytes)";
+	std::cout << std::endl;
 
 	unsigned int offset = 0U;
-	unsigned int length = m_data.size();
+	unsigned int length = (m_data.size() > shown) ? shown : (unsigned int)m_data.size();
 
 	while (length > 0U) {
 		std::string output;

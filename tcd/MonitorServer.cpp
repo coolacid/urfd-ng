@@ -34,8 +34,15 @@ CMonitorServer::~CMonitorServer()
 	Stop();
 }
 
-bool CMonitorServer::Start(uint16_t http_port, uint16_t stats_port)
+bool CMonitorServer::Start(const std::string &bind, uint16_t http_port, uint16_t stats_port)
 {
+	struct in_addr test;
+	if (1 != inet_pton(AF_INET, bind.c_str(), &test))
+	{
+		std::cerr << "Monitor: MonitorBindAddress '" << bind << "' is not an IPv4 address, monitor not started" << std::endl;
+		return false;
+	}
+	m_bind = bind;
 	m_httpPort = http_port;
 	m_statsPort = stats_port;
 	m_running = true;
@@ -43,7 +50,7 @@ bool CMonitorServer::Start(uint16_t http_port, uint16_t stats_port)
 	m_httpFuture = std::async(std::launch::async, &CMonitorServer::HttpThread, this);
 	m_statsFuture = std::async(std::launch::async, &CMonitorServer::StatsThread, this);
 
-	std::cout << "Monitor: HTTP on port " << m_httpPort
+	std::cout << "Monitor: HTTP on " << m_bind << " port " << m_httpPort
 	          << ", Stats on port " << m_statsPort << std::endl;
 	return true;
 }
@@ -325,7 +332,7 @@ void CMonitorServer::HttpThread()
 	mg_mgr_init(&mgr);
 
 	char listen_url[64];
-	snprintf(listen_url, sizeof(listen_url), "http://0.0.0.0:%u", m_httpPort);
+	snprintf(listen_url, sizeof(listen_url), "http://%s:%u", m_bind.c_str(), m_httpPort);
 	mg_http_listen(&mgr, listen_url, HttpHandler, NULL);
 
 	uint64_t last_push = 0;
@@ -373,7 +380,7 @@ void CMonitorServer::StatsThread()
 	struct sockaddr_in addr{};
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(m_statsPort);
-	addr.sin_addr.s_addr = INADDR_ANY;
+	inet_pton(AF_INET, m_bind.c_str(), &addr.sin_addr);
 
 	if (bind(listenFd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
 	{

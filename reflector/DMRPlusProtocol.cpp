@@ -393,6 +393,8 @@ bool CDmrplusProtocol::IsValidDisconnectPacket(const CBuffer &Buffer, CCallsign 
 
 bool CDmrplusProtocol::IsValidDvHeaderPacket(const CIp &Ip, const CBuffer &Buffer, std::unique_ptr<CDvHeaderPacket> &Header)
 {
+	if ( Buffer.size() != 72 )
+		return false;
 	uint8_t uiPacketType = Buffer.data()[8];
 	if ( (Buffer.size() == 72)  && ( uiPacketType == 2 ) )
 	{
@@ -431,6 +433,8 @@ bool CDmrplusProtocol::IsValidDvHeaderPacket(const CIp &Ip, const CBuffer &Buffe
 
 bool CDmrplusProtocol::IsValidDvFramePacket(const CIp &Ip, const CBuffer &Buffer, std::array<std::unique_ptr<CDvFramePacket>, 3> &frames)
 {
+	if ( Buffer.size() != 72 )
+		return false;
 	uint8_t uiPacketType = Buffer.data()[8];
 	if ( (Buffer.size() == 72)  && ((uiPacketType == 1) || (uiPacketType == 3)) )
 	{

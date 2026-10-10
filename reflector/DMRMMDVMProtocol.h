@@ -146,7 +146,8 @@ protected:
 
 	// auth helpers
 	static uint32_t ResolveBaseId(uint32_t extId) { return (extId > 9999999) ? extId / 100 : extId; }
-	bool VerifyAuthHash(uint32_t rawDmrId, const uint8_t *clientHash);
+	bool VerifyAuthHash(uint32_t rawDmrId, const CIp &Ip, const uint8_t *clientHash);
+	static std::string PendingAuthKey(uint32_t rawDmrId, const CIp &Ip);
 	void CleanupPendingAuth();
 
 	// INI persistence for user management
@@ -154,7 +155,7 @@ protected:
 	bool IniRemoveUser(uint32_t baseId);
 
 	// RPTC config parsing
-	void ParseConfigPacket(const CBuffer &, const CIp &);
+	bool ParseConfigPacket(const CBuffer &, const CIp &);
 
 protected:
 	// for keep alive
@@ -178,7 +179,7 @@ protected:
 		uint32_t salt;
 		std::chrono::steady_clock::time_point created;
 	};
-	std::unordered_map<uint32_t, SPendingAuthEntry> m_PendingAuth;  // rawDmrId -> salt
+	std::unordered_map<std::string, SPendingAuthEntry> m_PendingAuth;  // "rawDmrId@ip:port" -> salt
 	std::mt19937 m_Rng;
 
 	// user passwords — base DMR ID -> password

@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.3.4-dht** | tcd 0.2.1 | Dashboard v2.8.1
+**urfd 4.3.5-dht** | tcd 0.2.2 | Dashboard v2.8.2
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -295,7 +295,7 @@ Runtime management via a JSON-based TCP socket, accessible through the dashboard
 Enable = true
 Port = 10101
 Password = yoursecretpassword
-# BindAddress = 127.0.0.1      # Default: loopback only
+# BindingAddress = 127.0.0.1      # Default: loopback only
 ```
 
 Dashboard config (`config.inc.php`):
@@ -303,7 +303,7 @@ Dashboard config (`config.inc.php`):
 $Admin['Enable']   = true;
 $Admin['Host']     = '127.0.0.1';
 $Admin['Port']     = 10101;
-$Admin['Password'] = 'yoursecretpassword';  # must match urfd.ini
+# Log in on the admin page with the [Admin] Password from urfd.ini
 ```
 
 **Features:**
@@ -506,8 +506,8 @@ Module names are configured once in `urfd.ini` and automatically available in th
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.8.1
-Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1).
+### Dashboard v2.8.2
+Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2).
 
 **New pages:**
 - **Active Users** - Connected nodes per module in card layout
@@ -838,6 +838,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
 - **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
+- **Dashboard v2.8.2**: The admin password is no longer kept in `config.inc.php` (`setup.sh update` removes old copies); the admin page logs in with the `urfd.ini` password
 - **Dashboard v2.8.1**: Everything from outside is escaped (the `show` parameter, the reflector list from the XLX directory, hotspot and node data on the admin page, callsigns and filters); the admin API accepts only requests from its own page (JSON and `X-Requested-With`, no CORS), its session cookie is `HttpOnly` and `SameSite=Strict` and renewed at login
 - **Dashboard v2.8.0**: No CallingHome any more, the reflector registers itself; the reflector list reads `$Directory` (falling back to old `$CallingHome` settings); `/json/metadata` takes the dashboard URL from the reflector's XML
 - **Extended XML/JSON**: Module mappings (static + dynamic with TTL), reflector metadata, protocol list, per-user protocol info, dynamic TG array
@@ -850,6 +851,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **Hardening (4.3.5)**: DPlus and DMR+ check the packet size before reading it; the JSON report survives callsigns that aren't valid UTF-8; unknown packets are logged with their first 64 bytes only; an MMDVM login salt belongs to the DMR ID and the address that asked for it, and a config packet from a hotspot that isn't logged in gets no answer; `setup.sh` makes `urfd.ini` readable by root only and gives `xlxd-ch` to the dashboard instead of everyone (`update` fixes existing installations)
 - **Security fixes (4.3.4)**: the SVX server takes UDP only from the address of the node's TCP connection (the client id is a counter, anyone could send audio as a node or take its audio over), gives a connection 30 s from connecting to log in and lets at most 8 wait at a time; the SvxReflector client takes audio only from its reflector; P25 frames shorter than their IMBE data are dropped (bytes past the packet went out as audio); the admin socket reads SVX nodes from a copy; Docker keeps at most 5 × 10 MB of log
 - **Security fixes (4.3.3)**: only reflectors listed in `urfd.interlink` may peer (an empty file let anyone peer over URF and XLX); the MMDVM client accepts packets only from its master, which it looks up again at every login (any packet used to redirect the BrandMeister link, with the next password hash going to the sender); hotspot config is kept only for logged-in hotspots and read under a lock; the admin socket refuses logins for 2 s after a wrong password, makes 128-bit tokens and no longer dies on a failing command; no misleading `MMDVMPort` error at startup without `[MMDVM]`
 - **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data and hash file the dashboard used, without needing the dashboard

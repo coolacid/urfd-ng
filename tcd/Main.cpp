@@ -90,14 +90,14 @@ int main(int argc, char *argv[])
 			g_Stats.config.dmr_gain_mode.store((int)mode);
 		}
 		g_Stats.config.ambe_gain_db.store(g_Conf.GetAmbeGainDb());
-		g_Monitor.Start(g_Conf.GetMonitorHttpPort(), g_Conf.GetMonitorStatsPort());
+		g_Monitor.Start(g_Conf.GetMonitorBindAddress(), g_Conf.GetMonitorHttpPort(), g_Conf.GetMonitorStatsPort());
 	}
 
 	// Start stats CSV logger
 	g_StatsLog.Configure(g_Conf.GetStatsLogEnabled(), g_Conf.GetStatsLogDir(), g_Conf.GetStatsLogRetain());
 	g_StatsLog.Start();
 
-	std::cout << "Hybrid Transcoder version 0.2.1 successfully started" << std::endl;
+	std::cout << "Hybrid Transcoder version 0.2.2 successfully started" << std::endl;
 
 	pause();
 

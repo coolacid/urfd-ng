@@ -998,7 +998,6 @@ bool CConfigure::ReadData(const std::string &path)
 		if (GetBoolean(g_Keys.mmdvm.enable))
 		{
 			isDefined(ErrorLevel::fatal, JMMDVM, JPORT, g_Keys.mmdvm.port, rval);
-			isDefined(ErrorLevel::mild, JMMDVM, "FallbackDmrId", g_Keys.mmdvm.fallbackdmrid, rval);
 			// Validate TG mappings: modules must be configured
 			if (data.contains(g_Keys.modules.modules))
 			{

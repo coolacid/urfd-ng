@@ -52,6 +52,7 @@ public:
 	float GetAGCNoiseGate(void) const   { return agc_noisegate; }
 
 	// Monitor
+	const std::string &GetMonitorBindAddress(void) const { return monitor_bind; }
 	uint16_t GetMonitorHttpPort(void) const  { return monitor_http_port; }
 	uint16_t GetMonitorStatsPort(void) const { return monitor_stats_port; }
 	bool     GetMonitorEnabled(void) const   { return monitor_enabled; }
@@ -78,6 +79,7 @@ private:
 	float agc_maxgain_down = 24.0f;   // max attenuation (dB)
 	float agc_noisegate    = -55.0f;  // noise gate threshold (dBFS)
 	bool     monitor_enabled    = true;
+	std::string monitor_bind    = "127.0.0.1";   // the monitor has no password
 	uint16_t monitor_http_port  = 8080;
 	uint16_t monitor_stats_port = 8081;
 	bool        statslog_enabled = false;

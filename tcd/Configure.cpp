@@ -51,6 +51,7 @@
 #define AGCMAXGAINDOWN "AGCMaxGainDown"
 #define AGCNOISEGATE   "AGCNoiseGate"
 #define MONITORENABLE  "Monitor"
+#define MONITORBIND    "MonitorBindAddress"
 #define MONITORHTTP    "MonitorHttpPort"
 #define MONITORSTATS   "MonitorStatsPort"
 #define STATSLOG       "StatsLog"
@@ -197,6 +198,8 @@ bool CConfigure::ReadData(const std::string &path)
 			agc_noisegate = std::stof(value);
 		else if (0 == key.compare(MONITORENABLE))
 			monitor_enabled = IS_TRUE(value[0]);
+		else if (0 == key.compare(MONITORBIND))
+			monitor_bind = value;
 		else if (0 == key.compare(MONITORHTTP))
 			monitor_http_port = (uint16_t)std::stoul(value);
 		else if (0 == key.compare(MONITORSTATS))
@@ -269,7 +272,7 @@ bool CConfigure::ReadData(const std::string &path)
 	else
 		std::cout << "AGC = disabled" << std::endl;
 	if (monitor_enabled)
-		std::cout << "Monitor = HTTP:" << monitor_http_port << " Stats:" << monitor_stats_port << std::endl;
+		std::cout << "Monitor = " << monitor_bind << ", HTTP:" << monitor_http_port << " Stats:" << monitor_stats_port << std::endl;
 
 	return false;
 }

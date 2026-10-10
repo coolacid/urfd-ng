@@ -289,7 +289,6 @@ ask_transcoder() {
 write_urfd_config() {
     info "Writing the reflector configuration to $CFG_DIR"
     mkdir -p "$CFG_DIR" "$DATA_DIR/dashboard" "$DATA_DIR/xlxd-ch"
-    chmod 777 "$DATA_DIR/xlxd-ch"   # written by the dashboard (www-data) in the container
     local ini="$CFG_DIR/urfd.ini"
     cp "$REPO_DIR/config/urfd.ini" "$ini"
     for f in urfd.interlink urfd.whitelist urfd.blacklist urfd.terminal; do
@@ -359,15 +358,29 @@ write_urfd_config() {
     set_php "$php" "PageOptions['ContactEmail']" "$(php_str "$EMAIL")"
     if [ -n "$ADMIN_PASSWORD" ]; then
         set_php "$php" "Admin['Enable']" true
-        set_php "$php" "Admin['Password']" "$(php_str "$ADMIN_PASSWORD")"
     fi
-    # the reflector registers itself ([CallingHome] in urfd.ini); the dashboard's stays off
+    # the reflector registers itself in the XLX directory ([CallingHome] in urfd.ini)
     if [ "$CALLHOME" = true ]; then
         set_ini "$ini" CallingHome Enable true
         set_ini "$ini" CallingHome Country "$CH_COUNTRY"
         set_ini "$ini" CallingHome Comment "${CH_COMMENT:0:100}"
     fi
     chown 33:33 "$php"   # www-data in the container
+    secure_files
+}
+
+# urfd.ini holds the admin, hotspot and BrandMeister passwords, so only root
+# (urfd in the container) reads it; the dashboard (www-data, uid 33) owns its
+# state directory instead of everyone being able to write there
+secure_files() {
+    chmod 600 "$CFG_DIR/urfd.ini"
+    chown 33:33 "$DATA_DIR/xlxd-ch"
+    chmod 755 "$DATA_DIR/xlxd-ch"
+    # older dashboards kept a copy of the admin password, it is not used any more
+    local php="$DATA_DIR/dashboard/config.inc.php"
+    if [ -f "$php" ] && grep -q "^\$Admin\['Password'\]" "$php"; then
+        sed -i "/^\$Admin\['Password'\]/d" "$php"
+    fi
 }
 
 write_tcd_config() {
@@ -478,7 +491,8 @@ EOF
    Configuration:  $TCD_INI
    After changes:  systemctl restart tcd
    Logs:           journalctl -u tcd -f
-   Monitor:        http://$(local_ip):8080   or 'tcdmon' in a terminal
+   Monitor:        'tcdmon' in a terminal, or http://localhost:8080 on this machine
+                   (MonitorBindAddress in tcd.ini opens it to the network)
 EOF
     fi
     cat <<EOF
@@ -547,6 +561,7 @@ update() {
     if [ "$have_urfd" = true ]; then
         install_docker
         migrate_callinghome
+        secure_files
         build_urfd
         # the dashboard version shown in the footer lives in the kept config
         local ver

@@ -52,7 +52,8 @@ static uint8_t g_DmrSyncMSData[]     = { 0x0D,0x5D,0x7F,0x77,0xFD,0x75,0x70 };
 
 bool CDmrmmdvmProtocol::Initialize(const char *type, const EProtocol ptype, const uint16_t port, const bool has_ipv4, const bool has_ipv6)
 {
-	m_DefaultId = g_Configure.GetUnsigned(g_Keys.mmdvm.fallbackdmrid);
+	// optional, 0 or left out drops callers without a DMR ID
+	m_DefaultId = g_Configure.Contains(g_Keys.mmdvm.fallbackdmrid) ? g_Configure.GetUnsigned(g_Keys.mmdvm.fallbackdmrid) : 0;
 	// RequireAuth defaults to true; only disabled when explicitly set to false
 	m_RequireAuth = !g_Configure.GetData().contains(g_Keys.mmdvm.requireauth) || g_Configure.GetBoolean(g_Keys.mmdvm.requireauth);
 	// base class
@@ -179,7 +180,7 @@ void CDmrmmdvmProtocol::Task(void)
 			{
 				// acknowledge the request with per-connection salt
 				uint32_t salt = m_Rng();
-				m_PendingAuth[rawDmrId] = { salt, std::chrono::steady_clock::now() };
+				m_PendingAuth[PendingAuthKey(rawDmrId, Ip)] = { salt, std::chrono::steady_clock::now() };
 				EncodeConnectAckPacket(&Buffer, Callsign, salt);
 				Send(Buffer, Ip);
 			}
@@ -196,7 +197,7 @@ void CDmrmmdvmProtocol::Task(void)
 			std::cout << "MMDVM: auth from " << Callsign << " at " << Ip << std::endl;
 
 			// verify authentication
-			bool authOk = m_RequireAuth ? VerifyAuthHash(rawDmrId, Buffer.data() + 8) : true;
+			bool authOk = m_RequireAuth ? VerifyAuthHash(rawDmrId, Ip, Buffer.data() + 8) : true;
 
 			if (authOk && g_GateKeeper.MayLink(Callsign, Ip, EProtocol::dmrmmdvm))
 			{
@@ -271,12 +272,13 @@ void CDmrmmdvmProtocol::Task(void)
 		}
 		else if ( IsValidConfigPacket(Buffer, &Callsign, Ip) )
 		{
-			// parse config before ACK (EncodeAckPacket overwrites the buffer)
-			ParseConfigPacket(Buffer, Ip);
-
-			// acknowledge the request
-			EncodeAckPacket(&Buffer, Callsign);
-			Send(Buffer, Ip);
+			// parse config before ACK (EncodeAckPacket overwrites the buffer);
+			// only a logged in hotspot gets an answer
+			if ( ParseConfigPacket(Buffer, Ip) )
+			{
+				EncodeAckPacket(&Buffer, Callsign);
+				Send(Buffer, Ip);
+			}
 		}
 		else if ( IsValidKeepAlivePacket(Buffer, &Callsign) )
 		{
@@ -1452,10 +1454,17 @@ void CDmrmmdvmProtocol::AppendDmrRptrIdToBuffer(CBuffer *buffer, uint32_t id) co
 ////////////////////////////////////////////////////////////////////////////////////////
 // auth helpers
 
-bool CDmrmmdvmProtocol::VerifyAuthHash(uint32_t rawDmrId, const uint8_t *clientHash)
+// a salt belongs to the DMR ID and the address that asked for it, so that
+// nobody can replace the salt of someone else's login
+std::string CDmrmmdvmProtocol::PendingAuthKey(uint32_t rawDmrId, const CIp &Ip)
 {
-	// find the pending auth salt for this DMR ID
-	auto it = m_PendingAuth.find(rawDmrId);
+	return std::to_string(rawDmrId) + "@" + Ip.GetAddress() + ":" + std::to_string(Ip.GetPort());
+}
+
+bool CDmrmmdvmProtocol::VerifyAuthHash(uint32_t rawDmrId, const CIp &Ip, const uint8_t *clientHash)
+{
+	// find the pending auth salt for this DMR ID and address
+	auto it = m_PendingAuth.find(PendingAuthKey(rawDmrId, Ip));
 	if (it == m_PendingAuth.end())
 	{
 		std::cerr << "MMDVM: auth failed for DMR ID " << rawDmrId << " - no pending auth" << std::endl;
@@ -1723,9 +1732,9 @@ bool CDmrmmdvmProtocol::IniRemoveUser(uint32_t baseId)
 ////////////////////////////////////////////////////////////////////////////////////////
 // RPTC config parsing
 
-void CDmrmmdvmProtocol::ParseConfigPacket(const CBuffer &Buffer, const CIp &Ip)
+bool CDmrmmdvmProtocol::ParseConfigPacket(const CBuffer &Buffer, const CIp &Ip)
 {
-	if (Buffer.size() < 302) return;
+	if (Buffer.size() < 302) return false;
 
 	SPeerInfo info;
 	uint32_t uiRptrId = MAKEDWORD(MAKEWORD(Buffer.data()[7],Buffer.data()[6]),MAKEWORD(Buffer.data()[5],Buffer.data()[4]));
@@ -1758,7 +1767,7 @@ void CDmrmmdvmProtocol::ParseConfigPacket(const CBuffer &Buffer, const CIp &Ip)
 	const bool loggedIn = (nullptr != g_Reflector.GetClients()->FindClient(Ip, EProtocol::dmrmmdvm));
 	g_Reflector.ReleaseClients();
 	if (!loggedIn)
-		return;
+		return false;
 
 	{
 		std::lock_guard<std::mutex> lock(m_PeerInfoMutex);
@@ -1767,4 +1776,5 @@ void CDmrmmdvmProtocol::ParseConfigPacket(const CBuffer &Buffer, const CIp &Ip)
 
 	std::cout << "MMDVM: config from " << info.callsign << ": " << info.softwareId
 	          << " @ " << info.location << " (" << info.rxFreq << "/" << info.txFreq << " Hz)" << std::endl;
+	return true;
 }

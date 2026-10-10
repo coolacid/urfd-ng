@@ -11,7 +11,7 @@ $PageOptions = array();
 //  Dashboard Settings
 //############################################################################
 
-$PageOptions['DashboardVersion'] = '2.8.1';
+$PageOptions['DashboardVersion'] = '2.8.2';
 
 // Contact email shown in the footer (obfuscated against bots via JS)
 $PageOptions['ContactEmail']     = 'your_email@example.com';
@@ -96,14 +96,14 @@ $Service['XMLFile'] = '/var/log/xlxd.xml';
 
 //############################################################################
 //  Admin Interface
-//  Connects to the urfd admin socket for runtime management
-//  Password must match the [Admin] Password in urfd.ini
+//  Connects to the urfd admin socket for runtime management.
+//  Log in on the admin page with the [Admin] Password from urfd.ini;
+//  the dashboard keeps no copy of it.
 //############################################################################
 
 $Admin['Enable']   = false;
 $Admin['Host']     = '127.0.0.1';
 $Admin['Port']     = 10101;
-$Admin['Password'] = 'changeme';
 
 //############################################################################
 //  XLX Directory

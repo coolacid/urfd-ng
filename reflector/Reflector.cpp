@@ -572,7 +572,9 @@ void CReflector::MaintenanceThread()
 			jsonFile.open(jsonpath, std::ios::out | std::ios::trunc);
 			if (jsonFile.is_open())
 			{
-				jsonFile << jreport.dump();
+				// callsigns come from packets and need not be valid UTF-8, which dump()
+				// would throw on, ending urfd
+				jsonFile << jreport.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 				jsonFile.close();
 			}
 		}

@@ -111,7 +111,7 @@ The reflector then reports to the directory every 5 minutes; `docker logs urfd |
 | Restart the reflector | `docker restart urfd` |
 | Transcoder log | `journalctl -u tcd -f` |
 | Restart the transcoder | `sudo systemctl restart tcd` |
-| Transcoder monitor | `http://<machine>:8080` in a browser, or `tcdmon` in a terminal |
+| Transcoder monitor | `tcdmon` in a terminal, or `http://localhost:8080` in a browser on that machine (from another computer: `ssh -L 8080:localhost:8080 <machine>`, or `MonitorBindAddress = 0.0.0.0` in `tcd.ini` on a trusted LAN) |
 
 The update keeps your configuration. It pulls the new version, rebuilds and restarts.
 
