@@ -359,6 +359,10 @@ bool CP25Protocol::IsValidDvPacket(const CIp &Ip, const CBuffer &Buffer, std::un
 			break;
 		}
 
+		// the IMBE frame (11 bytes) has to be inside the packet
+		if ( Buffer.size() < size_t(offset) + 11U )
+			return false;
+
 		frame = std::unique_ptr<CDvFramePacket>(new CDvFramePacket(&(Buffer.data()[offset]), m_uiStreamId, last));
 		return true;
 	}

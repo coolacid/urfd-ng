@@ -82,6 +82,8 @@ protected:
 		enum class EAuthState { expect_proto_ver, expect_auth_response, connected };
 
 		int tcpFd = -1;
+		CIp tcpAddr;              // address of the TCP connection, UDP must come from it
+		CTimer connectTimer;      // since accept, for the login deadline
 		uint32_t clientId = 0;
 		std::string callsign;
 		EAuthState authState = EAuthState::expect_proto_ver;
@@ -174,6 +176,12 @@ protected:
 	// peers indexed by clientId
 	std::unordered_map<uint32_t, SSvxPeer> m_Peers;
 	std::unordered_map<int, uint32_t> m_FdToClientId;  // tcpFd -> clientId
+
+	// m_Peers belongs to the protocol thread, the admin socket gets this copy
+	void UpdatePeerSnapshot(void);
+	mutable std::mutex m_SnapshotMutex;
+	std::vector<SConnectedPeer> m_PeerSnapshot;
+	CTimer m_SnapshotTimer;
 	std::atomic<uint32_t> m_NextClientId;
 
 	// per-user passwords (callsign -> password), protected by m_PasswordMutex

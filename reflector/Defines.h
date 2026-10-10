@@ -139,6 +139,8 @@ enum class EProtocol { any, none, dextra, dplus, dcs, g3, xlxpeer, urf, dmrplus,
 #define SVXS_TCP_KEEPALIVE_TIMEOUT     30                                  // in seconds
 #define SVXS_UDP_KEEPALIVE_PERIOD      15                                  // in seconds
 #define SVXS_UDP_KEEPALIVE_TIMEOUT     60                                  // in seconds
+#define SVXS_AUTH_TIMEOUT              30                                  // in seconds from connecting to logged in
+#define SVXS_MAX_PENDING               8                                   // connections not logged in yet
 
 // G3 Terminal
 #define G3_PRESENCE_PORT                12346                               // UDP port

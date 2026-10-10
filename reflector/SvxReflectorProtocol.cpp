@@ -655,6 +655,11 @@ void CSvxReflectorProtocol::Task(void)
 				else
 				{
 					do {
+						// only the reflector's own audio, from its address
+						CIp from(ip);
+						from.SetPort(m_ServerIp.GetPort());
+						if (from != m_ServerIp)
+							continue;
 						m_UdpLastReceiveTimer.start();
 						if (buffer.size() >= 2)
 						{

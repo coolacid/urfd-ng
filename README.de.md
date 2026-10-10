@@ -4,7 +4,7 @@
 
 Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
-**urfd 4.3.3-dht** | tcd 0.2.1 | Dashboard v2.8.1
+**urfd 4.3.4-dht** | tcd 0.2.1 | Dashboard v2.8.1
 
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
@@ -829,6 +829,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **Sicherheitskorrekturen (4.3.4)**: Der SVX-Server nimmt UDP nur von der Adresse der TCP-Verbindung des Knotens an (die Client-ID ist ein Zähler, jeder hätte als Knoten Audio senden oder dessen Audio übernehmen können), gibt einer Verbindung 30 s ab Aufbau für die Anmeldung und lässt höchstens 8 gleichzeitig warten; der SvxReflector-Client nimmt Audio nur von seinem Reflektor an; P25-Frames, die kürzer als ihre IMBE-Daten sind, werden verworfen (Bytes hinter dem Paket gingen als Audio hinaus); der Admin-Socket liest die SVX-Knoten aus einer Kopie; Docker hält höchstens 5 × 10 MB Log
 - **Sicherheitskorrekturen (4.3.3)**: Koppeln dürfen nur die in `urfd.interlink` eingetragenen Reflektoren (bei leerer Datei durfte jeder über URF und XLX koppeln); der MMDVM-Client nimmt Pakete nur noch von seinem Master an und löst dessen Adresse bei jeder Anmeldung neu auf (vorher lenkte jedes beliebige Paket die BrandMeister-Anbindung um, samt dem Passwort-Hash der nächsten Anmeldung); Hotspot-Angaben werden nur für angemeldete Hotspots gespeichert und unter einer Sperre gelesen; der Admin-Socket lehnt nach einem falschen Passwort 2 s lang alle Anmeldungen ab, erzeugt 128-Bit-Token und stürzt bei einem fehlschlagenden Befehl nicht mehr ab; keine irreführende `MMDVMPort`-Fehlermeldung beim Start ohne `[MMDVM]`
 - **CallingHome im Reflektor**: `[CallingHome]` in `urfd.ini` trägt den Reflektor mit denselben Daten und derselben Hash-Datei wie bisher das Dashboard im XLX-Verzeichnis ein, auch ohne Dashboard
 - **Sauberes Beenden**: urfd beendet sich bei SIGTERM in etwa 2 Sekunden. Vorher warteten die Router-Threads der Module ewig auf Pakete, Protokolle wurden gelöscht, während ihre Threads noch liefen (ein Absturz, der nur nicht auffiel, weil Docker urfd vorher abschoss), und die ID-Datenbank-Threads schliefen je bis zu 10 s; `docker stop` endete so immer mit einem Kill

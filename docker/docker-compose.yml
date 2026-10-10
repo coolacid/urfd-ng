@@ -38,6 +38,12 @@ services:
       - ${URFD_DATA:-/opt/urfd}/xlxd-ch:/var/lib/xlxd-ch
       # XML status file shared between urfd and the dashboard
       - urfd-xml:/var/log
+    # keep the log from filling the disk on a reflector that runs for months
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       test: ["CMD", "pgrep", "urfd"]
       interval: 30s

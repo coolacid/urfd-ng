@@ -269,6 +269,21 @@ void CSvxProtocol::TcpAccept(void)
 	int fd = accept(m_TcpListenFd, (struct sockaddr *)&clientAddr, &addrLen);
 	if (fd < 0) return;
 
+	char ipstr[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &clientAddr.sin_addr, ipstr, sizeof(ipstr));
+
+	// only a few connections may be waiting for their login at a time
+	size_t pending = 0;
+	for (const auto &[id, p] : m_Peers)
+		if (p.authState != SSvxPeer::EAuthState::connected)
+			pending++;
+	if (pending >= SVXS_MAX_PENDING)
+	{
+		std::cerr << "SVXServer: too many connections without login, refusing " << ipstr << std::endl;
+		close(fd);
+		return;
+	}
+
 	// Set non-blocking
 	fcntl(fd, F_SETFL, O_NONBLOCK);
 
@@ -277,6 +292,8 @@ void CSvxProtocol::TcpAccept(void)
 
 	SSvxPeer peer;
 	peer.tcpFd = fd;
+	peer.tcpAddr = CIp(AF_INET, 0, ipstr);
+	peer.connectTimer.start();
 	peer.clientId = clientId;
 	peer.authState = SSvxPeer::EAuthState::expect_proto_ver;
 	peer.tcpLastRecvTimer.start();
@@ -285,8 +302,6 @@ void CSvxProtocol::TcpAccept(void)
 	m_Peers[clientId] = std::move(peer);
 	m_FdToClientId[fd] = clientId;
 
-	char ipstr[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &clientAddr.sin_addr, ipstr, sizeof(ipstr));
 	std::cout << "SVXServer: new TCP connection from " << ipstr << " (clientId=" << clientId << ")" << std::endl;
 }
 
@@ -751,8 +766,19 @@ void CSvxProtocol::OnUdpPacket(const CBuffer &buffer, const CIp &ip)
 	if (it == m_Peers.end()) return;
 	SSvxPeer &peer = it->second;
 
-	// Only accept UDP from authenticated peers
+	// Only accept UDP from authenticated peers, and only from where they are:
+	// the client id is a small counter, anyone could guess it
 	if (peer.authState != SSvxPeer::EAuthState::connected) return;
+	if (peer.udpDiscovered)
+	{
+		if (ip != peer.udpEndpoint) return;
+	}
+	else
+	{
+		CIp from(ip);
+		from.SetPort(peer.tcpAddr.GetPort());
+		if (from != peer.tcpAddr) return;
+	}
 
 	// UDP endpoint discovery
 	if (!peer.udpDiscovered)
@@ -1354,8 +1380,8 @@ void CSvxProtocol::Task(void)
 			}
 			else
 			{
-				// Auth timeout — 30 seconds to complete handshake
-				if (peer.tcpLastRecvTimer.time() >= 30)
+				// a fixed time from connecting to logging in, sending bytes doesn't extend it
+				if (peer.connectTimer.time() >= SVXS_AUTH_TIMEOUT)
 				{
 					std::cerr << "SVXServer: auth timeout for clientId=" << id << std::endl;
 					deadPeers.push_back(id);
@@ -1372,7 +1398,14 @@ void CSvxProtocol::Task(void)
 	// 6. Check stream timeouts
 	CheckStreamsTimeout();
 
-	// 7. Expire dynamic TGs
+	// 7. Peer list for the admin socket
+	if (m_SnapshotTimer.time() >= 1)
+	{
+		UpdatePeerSnapshot();
+		m_SnapshotTimer.start();
+	}
+
+	// 8. Expire dynamic TGs
 	{
 		auto now = std::chrono::steady_clock::now();
 		std::lock_guard<std::mutex> lock(m_TGMutex);
@@ -1684,7 +1717,7 @@ std::vector<std::string> CSvxProtocol::GetUsers(void) const
 	return users;
 }
 
-std::vector<CSvxProtocol::SConnectedPeer> CSvxProtocol::GetConnectedPeers() const
+void CSvxProtocol::UpdatePeerSnapshot(void)
 {
 	std::vector<SConnectedPeer> result;
 	for (const auto &[id, peer] : m_Peers)
@@ -1698,5 +1731,13 @@ std::vector<CSvxProtocol::SConnectedPeer> CSvxProtocol::GetConnectedPeers() cons
 		cp.nodeInfo = peer.nodeInfo;
 		result.push_back(std::move(cp));
 	}
-	return result;
+	std::lock_guard<std::mutex> lock(m_SnapshotMutex);
+	m_PeerSnapshot = std::move(result);
+}
+
+// called from the admin socket thread, at most a second old
+std::vector<CSvxProtocol::SConnectedPeer> CSvxProtocol::GetConnectedPeers() const
+{
+	std::lock_guard<std::mutex> lock(m_SnapshotMutex);
+	return m_PeerSnapshot;
 }

@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.3.3-dht** | tcd 0.2.1 | Dashboard v2.8.1
+**urfd 4.3.4-dht** | tcd 0.2.1 | Dashboard v2.8.1
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -850,6 +850,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **Security fixes (4.3.4)**: the SVX server takes UDP only from the address of the node's TCP connection (the client id is a counter, anyone could send audio as a node or take its audio over), gives a connection 30 s from connecting to log in and lets at most 8 wait at a time; the SvxReflector client takes audio only from its reflector; P25 frames shorter than their IMBE data are dropped (bytes past the packet went out as audio); the admin socket reads SVX nodes from a copy; Docker keeps at most 5 × 10 MB of log
 - **Security fixes (4.3.3)**: only reflectors listed in `urfd.interlink` may peer (an empty file let anyone peer over URF and XLX); the MMDVM client accepts packets only from its master, which it looks up again at every login (any packet used to redirect the BrandMeister link, with the next password hash going to the sender); hotspot config is kept only for logged-in hotspots and read under a lock; the admin socket refuses logins for 2 s after a wrong password, makes 128-bit tokens and no longer dies on a failing command; no misleading `MMDVMPort` error at startup without `[MMDVM]`
 - **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data and hash file the dashboard used, without needing the dashboard
 - **Clean shutdown**: urfd stops within about 2 seconds on SIGTERM. Before, the module router threads waited for packets forever, protocols were deleted while their threads still ran (a crash, hidden because Docker killed urfd first) and the ID database threads slept up to 10 s each, so `docker stop` always ended in a kill
