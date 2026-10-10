@@ -355,7 +355,7 @@ kill -HUP $(cat /var/run/urfd.pid)
 ```
 
 ### Reflector Interlinking
-Peer with URF, XLX and DCS reflectors. DNS hostnames are supported. Configure interlinking in `urfd.interlink`:
+Peer with URF, XLX, DCS and M17 (mrefd) reflectors. DNS hostnames are supported. Configure interlinking in `urfd.interlink`:
 
 ```
 # urfd.interlink
@@ -364,6 +364,8 @@ URF270 urf270.example.com EF
 XLX269 xlx269.example.com A
 DCS002 dcs002.xreflector.net S             # native DCS protocol (default)
 DCS002 dcs002.xreflector.net S XLX         # XLX protocol instead
+M17-QQQ m17-qqq.example.com AB             # mrefd >= 1.0 (port 17000)
+M17-QQQL m17-qqq.example.com AB            # legacy mrefd < 1.0
 ```
 
 DCS entries default to native DCS protocol (port 30051). Append `XLX` to use XLX peering (port 10002) instead. The protocol field is only supported for DCS entries.
@@ -380,7 +382,15 @@ Port = 10002
 [DCS]
 Port = 30051
 # Callsign = DCS363         # optional: callsign for native DCS peering
+
+[M17]
+# Callsign = M17-XXX        # required for mrefd peers: mrefd only accepts M17-XXX designators
+
+[URF]
+# InterlinkVersion = 4      # 4 (default) or 3 for legacy mode, see URF interlink 4 below
 ```
+
+M17 entries need an address (no DHT), the same modules on both sides, and this reflector's `[M17] Callsign` listed in the mrefd's `mrefd.interlink`.
 
 ### Echo Module
 Built-in echo/parrot function. Assign it to any module - audio is recorded and played back after 3 seconds of silence.
@@ -397,6 +407,11 @@ Module = Z
 Set `Enable = false` to disable without removing the configuration.
 
 M17 clients reach the echo module from whatever module they are linked to by transmitting to `PARROT` (as on mrefd) or `ECHO`; the playback of their own recording is sent back to them on their linked module as well.
+
+### M17 Module Selection
+An M17 client picks its module when it links: the `CONN` (or `LSTN`) packet carries the module letter, and the client then hears that module. To change modules, unlink and link again with the other letter, e.g. `URF363 B` as the reflector in Pi-Star/WPSD, the module selector in DroidStar or mvoice, or `URF363 B` as the destination on an M17 radio. A new link replaces the old one of the same callsign and IP.
+
+A transmission goes to the module in its destination callsign (`URF363 B`), so a client that sends to another module than it is linked to talks there but keeps hearing its own module. `PARROT` or `ECHO` as the destination reaches the echo module (see Echo Module).
 
 ### M17 LSTN Support
 M17 listen-only clients (LSTN packets) are accepted and registered on the requested module. This enables monitoring services like dvref.com to check reflector availability. Voice and packet mode data from a listen-only client are dropped, as on mrefd.
@@ -458,14 +473,15 @@ The XML status file now includes:
 - **Per-module mappings**: autolinks (YSF, NXDN, P25), TG mappings (MMDVMClient, SvxReflector), D-Star client mappings (DCSClient, DExtraClient, DPlusClient with connection status), YSF client mappings (YSFClient with DG-ID)
 - **Enabled protocols**: name and port for each active protocol
 - **Per-station protocol**: which protocol a user was heard on (DCS, MMDVMClient, YSF, etc.)
+- **Per-station position**: `<Locator>`, `<Latitude>` and `<Longitude>` for stations that sent an M17 GNSS position
 - **Dynamic TG indicators**: `<Dynamic>true</Dynamic>` and `<Remaining>` seconds for runtime-added TGs
 
 Module names are configured once in `urfd.ini` and automatically available in the dashboard.
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.6.1
-Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1).
+### Dashboard v2.7.0
+Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0).
 
 **New pages:**
 - **Active Users** - Connected nodes per module in card layout
@@ -476,6 +492,7 @@ Complete redesign with dark mode theme (v2.6.0), hardened against directory outa
 - Dark mode with CSS custom properties
 - Mobile-responsive tables for peers, repeaters, users
 - Last Heard table with protocol column, pulsing TX indicator, module display
+- Locator of stations that send an M17 GNSS position, linked to OpenStreetMap, in place of the aprs.fi link
 - MOTD/maintenance banner via `$PageOptions['MOTD']` in config.inc.php
 - Module names read from urfd XML (single source of truth)
 - Contact email obfuscated against bots
@@ -602,7 +619,7 @@ The urfd container runs three services via supervisord:
 
 All configuration is in `/opt/urfd/config/` (mounted as volume):
 - `urfd.ini` - Main reflector configuration (supports SIGHUP reload)
-- `urfd.interlink` - Peer linking (URF, XLX, DCS peers with DNS support)
+- `urfd.interlink` - Peer linking (URF, XLX, DCS and M17 peers with DNS support)
 - `urfd.blacklist` / `urfd.whitelist` - Access control (reloaded on SIGHUP)
 - `urfd.terminal` - G3 (Icom Terminal/AP mode) configuration. Options: `address <public-ip>` (required behind NAT), `modules <letters>` (allowed reflector modules), `alias <callsign>` (additional reflector callsign accepted from terminals, e.g. to accept both `URFxxx` and `XLXxxx`; repeatable). Hot-reloaded via `stat()` on file change.
 
@@ -702,7 +719,7 @@ Exit code 0 = OK, 1 = errors found. Warnings (missing optional fields) don't cau
 
 ## Interlink / Peering
 
-Three types of peering are supported in `urfd.interlink`:
+Four types of peering are supported in `urfd.interlink`:
 
 | Type | Prefix | Default Port | Protocol | Requires |
 |------|--------|-------------|----------|----------|
@@ -710,8 +727,12 @@ Three types of peering are supported in `urfd.interlink`:
 | XLX Peer | `XLX` | 10002 | XLX | `[XLXPeer] Enable = true` |
 | DCS Peer | `DCS` | 30051 | DCS native | - |
 | DCS Peer (XLX) | `DCS` + `XLX` | 10002 | XLX | `[XLXPeer] Enable = true` |
+| M17 Peer (mrefd) | `M17-` | 17000 | M17 interlink | `[M17] Callsign = M17-XXX` |
+| M17 Peer (legacy mrefd < 1.0) | `M17-…L` | 17000 | M17 interlink | `[M17] Callsign = M17-XXX` |
 
-DNS hostnames are resolved via `getaddrinfo()` at load time. Both sides must list each other in their interlink files. DHT-based peering (no IP needed) is supported for URF peers when OpenDHT is enabled.
+DNS hostnames are resolved via `getaddrinfo()` at load time. Both sides must list each other in their interlink files. DHT-based peering (no IP needed) is supported for URF peers when OpenDHT is enabled, not for M17 peers.
+
+URF peers negotiate the interlink version: urfd announces 4 and adds the M17 META type and CAN to the stream header for peers that announce 4 too; peers announcing 3 (other urfd forks) get the legacy header. `[URF] InterlinkVersion = 3` makes this reflector announce 3 and never send the extension.
 
 ## Firewall
 
@@ -727,7 +748,7 @@ Required ports (only open ports for enabled protocols):
 | 10100/tcp | TC | Transcoder |
 | 10101/tcp | Admin | Admin socket (loopback only) |
 | 12345-12346/udp | G3 | Icom Terminal |
-| 17000/udp | M17 | M17 protocol |
+| 17000/udp | M17 | M17 protocol and mrefd interlinking |
 | 20001/udp | DPlus | D-Star DPlus |
 | 30001/udp | DExtra | D-Star DExtra |
 | 30051/udp | DCS | D-Star DCS |

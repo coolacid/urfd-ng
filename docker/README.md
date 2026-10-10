@@ -17,7 +17,7 @@ docker compose -f docker-compose.yml up -d
 
 ## Configuration
 
-Mount your config directory to `/usr/local/etc/urfd`. Must contain at least `urfd.ini`. See the main [urfd documentation](../docs/) for details.
+Mount your config directory to `/usr/local/etc/urfd`. Must contain at least `urfd.ini`. See the main [README](../README.md) and the commented templates in [config/](../config/) for details.
 
 ### PHP tuning
 
