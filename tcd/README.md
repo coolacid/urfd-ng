@@ -10,9 +10,9 @@ tcd is a hybrid transcoder for the [URF reflector](https://github.com/jcmerg/urf
 
 - Linux (systemd-based, Debian/Ubuntu recommended)
 - [imbe_vocoder](https://github.com/jcmerg/imbe_vocoder) library
-- [libftd2xx](https://ftdichip.com/drivers/d2xx-drivers/) FTDI driver
 - DVSI AMBE hardware (see Device Configurations below)
 - [md380_vocoder](https://github.com/jcmerg/md380_vocoder) *(optional — required only when building with `md380=true`)*
+ 
 
 ### Hardware Requirements by Build Type
 
@@ -79,13 +79,13 @@ Modules = AFS           # up to 3 with DV3003 pair
 
 ## Device Discovery
 
-List connected FTDI devices and their serial numbers:
+List connected AMBE devices and their USB serials (POSIX):
 
 ```bash
 tcd --list-devices
 ```
 
-If you have other FTDI devices (USB serial adapters etc.), use `DeviceSerial` in tcd.ini to whitelist your AMBE device by serial number. The tcd automatically unbinds ftdi_sio from AMBE devices at startup.
+If you have multiple USB serial devices, use `DeviceSerial` in `tcd.ini` to whitelist your AMBE device by USB serial number. tcd uses `/dev/serial/by-id` and standard POSIX serial APIs; it does not require or install the libftd2xx (D2XX) driver and does not unbind kernel drivers.
 
 ## Build & Install
 

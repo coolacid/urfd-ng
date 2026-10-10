@@ -160,15 +160,14 @@ bool CDV3003::SendAudio(const uint8_t channel, const int16_t *audio) const
 	for (int i=0; i<160; i++)
 		p.payload.audio.samples[i] = htons(audio[i]);
 
-	const DWORD size = packet_size(p);
-	DWORD written;
-	auto status = FT_Write(ftHandle, &p, size, &written);
-	if (FT_OK != status)
+	const size_t size = packet_size(p);
+	ssize_t written = device->Write(&p, size);
+	if (written < 0)
 	{
-		FTDI_Error("Error writing audio packet", status);
+		FTDI_Error("Error writing audio packet", errno);
 		return true;
 	}
-	else if (size != written)
+	else if ((size_t)written != size)
 	{
 		std::cerr << "Incomplete Speech Packet write on " << description << std::endl;
 		return true;
@@ -187,15 +186,14 @@ bool CDV3003::SendData(const uint8_t channel, const uint8_t *data) const
 	p.payload.ambe.num_bits = 72U;
 	memcpy(p.payload.ambe.data, data, 9);
 
-	const DWORD size = packet_size(p);
-	DWORD written;
-	auto status = FT_Write(ftHandle, &p, size, &written);
-	if (FT_OK != status)
+	const size_t size = packet_size(p);
+	ssize_t written = device->Write(&p, size);
+	if (written < 0)
 	{
-		FTDI_Error("Error writing AMBE Packet", status);
+		FTDI_Error("Error writing AMBE Packet", errno);
 		return true;
 	}
-	else if (size != written)
+	else if ((size_t)written != size)
 	{
 		std::cerr << "Incomplete AMBE Packet write on " << description << std::endl;
 		return true;
