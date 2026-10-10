@@ -80,7 +80,6 @@ protected:
 	static void ApplyGain(int16_t *samples, int count, int32_t num);
 	bool DiscoverFtdiDevices(std::list<std::pair<std::string, std::string>> &found);
 	bool IsAmbeDevice(const std::string &desc);
-	void UnbindAllFtdiSio();
 	bool InitVocoders();
 	// processing threads
 	void ReadReflectorThread();

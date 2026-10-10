@@ -4,10 +4,15 @@
 #include <unistd.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <linux/serial.h>
+#include <climits>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 
 class PosixDevice : public IDeviceIO {
@@ -17,8 +22,10 @@ public:
 
     bool Open(const std::string &id, std::string &outDescription) override
     {
-        // id expected to be a device node path like /dev/ttyUSB0 or a symlink-resolved path
-        fd_ = ::open(id.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
+        // id expected to be a device node path like /dev/ttyUSB0 or a symlink-resolved path.
+        // Open non-blocking, so the open does not wait for carrier detect on an adapter
+        // that wires it; blocking mode comes back once CLOCAL is set below.
+        fd_ = ::open(id.c_str(), O_RDWR | O_NOCTTY | O_SYNC | O_NONBLOCK);
         if (fd_ < 0) {
             std::cerr << "PosixDevice: open(" << id << ") failed: " << strerror(errno) << std::endl;
             return false;
@@ -59,6 +66,15 @@ public:
             Close();
             return false;
         }
+
+        const int fl = fcntl(fd_, F_GETFL);
+        if (fl < 0 || fcntl(fd_, F_SETFL, fl & ~O_NONBLOCK) < 0) {
+            std::cerr << "PosixDevice: could not switch " << id << " to blocking mode: " << strerror(errno) << std::endl;
+            Close();
+            return false;
+        }
+
+        SetLowLatency(id);
 
         outDescription = id;
         return true;
@@ -175,13 +191,85 @@ public:
         return (tcsetattr(fd_, TCSANOW, &tty) == 0);
     }
 
-    bool SetFlowControl(int /*flow*/) override
+    // non-zero flow: RTS/CTS hardware handshake, as the AMBE devices use
+    bool SetFlowControl(int flow) override
     {
-        // Not implemented; could set CRTSCTS
-        return true;
+        if (fd_ < 0) return false;
+        struct termios tty;
+        if (tcgetattr(fd_, &tty) != 0) return false;
+        if (flow)
+            tty.c_cflag |= CRTSCTS;
+        else
+            tty.c_cflag &= ~CRTSCTS;
+        return (tcsetattr(fd_, TCSANOW, &tty) == 0);
+    }
+
+    int BytesAvailable() override
+    {
+        if (fd_ < 0) return -1;
+        int n = 0;
+        return (ioctl(fd_, FIONREAD, &n) == 0) ? n : -1;
+    }
+
+    int WaitReadable(int ms) override
+    {
+        if (fd_ < 0) return -1;
+        struct pollfd pfd = { fd_, POLLIN, 0 };
+        const int rv = poll(&pfd, 1, ms);
+        if (rv < 0)
+            return (EINTR == errno) ? 0 : -1;
+        if (0 == rv)
+            return 0;
+        if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL))
+            return -1;	// unplugged or reset
+        return 1;
+    }
+
+    void Abort() override
+    {
+        if (fd_ < 0) return;
+        // a write blocked by RTS/CTS flow control returns once the output is
+        // dropped and the descriptor no longer blocks
+        const int fl = fcntl(fd_, F_GETFL);
+        if (fl >= 0)
+            fcntl(fd_, F_SETFL, fl | O_NONBLOCK);
+        tcflush(fd_, TCIOFLUSH);
     }
 
 private:
+    // The AMBE packets are small and timed: ftdi_sio holds received bytes for up
+    // to its latency timer, 16 ms by default, before passing them on. Ask for
+    // low latency (ftdi_sio then uses 1 ms), and set the timer through sysfs too.
+    void SetLowLatency(const std::string &id)
+    {
+        struct serial_struct ser;
+        if (ioctl(fd_, TIOCGSERIAL, &ser) == 0) {
+            ser.flags |= ASYNC_LOW_LATENCY;
+            if (ioctl(fd_, TIOCSSERIAL, &ser) != 0)
+                std::cerr << "PosixDevice: low latency request for " << id << " failed: " << strerror(errno) << std::endl;
+        }
+
+        char real[PATH_MAX];
+        if (nullptr == realpath(id.c_str(), real))
+            return;
+        std::string tty(real);
+        tty = tty.substr(tty.rfind('/') + 1);
+        const std::string timer = "/sys/bus/usb-serial/devices/" + tty + "/latency_timer";
+        {
+            std::ofstream out(timer);
+            if (out)
+                out << "1";
+        }
+        std::ifstream in(timer);
+        int ms = -1;
+        if (in >> ms) {
+            if (ms > 1)
+                std::cerr << "WARNING: " << tty << " USB latency timer is " << ms << " ms, expect audio timing problems; run tcd as root or set " << timer << " to 1" << std::endl;
+            else
+                std::cout << tty << " USB latency timer: " << ms << " ms" << std::endl;
+        }
+    }
+
     int fd_;
     int read_timeout_tenths_;
 };

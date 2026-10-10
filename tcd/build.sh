@@ -7,8 +7,10 @@
 #   sudo bash tcd/build.sh               # build without md380 (requires ≥2 AMBE devices)
 #   sudo bash tcd/build.sh --with-md380  # build with md380 software vocoder
 #
+# The AMBE devices are used through the kernel's ftdi_sio serial driver
+# (/dev/serial/by-id), no FTDI D2XX library is needed.
+#
 # Dependencies (auto-installed):
-#   - libftd2xx (FTDI driver) — from ftdichip.com
 #   - libimbe_vocoder — from jcmerg/imbe_vocoder
 #   - libmd380_vocoder (only with --with-md380) — armhf native (jcmerg/md380_vocoder)
 #                        or x86_64/aarch64 via dynarmic (jcmerg/md380_vocoder_dynarmic)
@@ -31,9 +33,6 @@ BUILDDIR="/tmp/tcd-build"
 IMBE_REPO="https://github.com/jcmerg/imbe_vocoder.git"
 MD380_ARM_REPO="https://github.com/jcmerg/md380_vocoder.git"
 MD380_X64_REPO="https://github.com/jcmerg/md380_vocoder_dynarmic.git"
-FTDI_URL_X64="https://ftdichip.com/wp-content/uploads/2025/03/libftd2xx-linux-x86_64-1.4.33.tgz"
-FTDI_URL_ARM32="https://ftdichip.com/wp-content/uploads/2025/03/libftd2xx-linux-arm-v7-hf-1.4.33.tgz"
-FTDI_URL_ARM64="https://ftdichip.com/wp-content/uploads/2025/03/libftd2xx-linux-arm-v8-1.4.33.tgz"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect actual toolchain target, not kernel arch (handles armhf-on-aarch64)
@@ -68,40 +67,7 @@ mkdir -p "$BUILDDIR"
 cd "$BUILDDIR"
 
 # ---------------------------------------------------------------
-# 1. libftd2xx (FTDI USB driver)
-# ---------------------------------------------------------------
-if [ ! -f /usr/local/include/ftd2xx.h ]; then
-    echo "Installing libftd2xx..."
-    if [ "$ARCH" = "x86_64" ]; then
-        FTDI_URL="$FTDI_URL_X64"
-    elif [ "$ARCH" = "aarch64" ]; then
-        FTDI_URL="$FTDI_URL_ARM64"
-    elif [ "$ARCH" = "armhf" ]; then
-        FTDI_URL="$FTDI_URL_ARM32"
-    else
-        echo "ERROR: Unsupported architecture $ARCH for libftd2xx"
-        exit 1
-    fi
-    curl -sL "$FTDI_URL" -o ftdi.tgz
-    tar xzf ftdi.tgz
-    # Find the extracted directory (varies by version: release/, linux-x86_64/, etc.)
-    FTDI_DIR=$(tar tzf ftdi.tgz | head -1 | cut -d/ -f1)
-    cp "$FTDI_DIR"/libftd2xx.so /usr/local/lib/
-    # Symlink versioned name instead of duplicating the binary
-    FTDI_VER=$(ls "$FTDI_DIR"/libftd2xx.so.* 2>/dev/null | head -1 | xargs basename)
-    if [ -n "$FTDI_VER" ]; then
-        ln -sf libftd2xx.so /usr/local/lib/"$FTDI_VER"
-    fi
-    cp "$FTDI_DIR"/ftd2xx.h "$FTDI_DIR"/WinTypes.h /usr/local/include/
-    ldconfig
-    rm -rf "$FTDI_DIR" ftdi.tgz
-    echo "libftd2xx installed"
-else
-    echo "libftd2xx: already installed"
-fi
-
-# ---------------------------------------------------------------
-# 2. libimbe_vocoder (P25 IMBE codec)
+# 1. libimbe_vocoder (P25 IMBE codec)
 # ---------------------------------------------------------------
 if [ ! -f /usr/local/lib/libimbe_vocoder.a ]; then
     echo "Building imbe_vocoder..."
@@ -121,7 +87,7 @@ else
 fi
 
 # ---------------------------------------------------------------
-# 3. libmd380_vocoder (DMR/YSF software codec) — only with --with-md380
+# 2. libmd380_vocoder (DMR/YSF software codec) — only with --with-md380
 # ---------------------------------------------------------------
 if [ "$WITH_MD380" = "true" ]; then
     if [ ! -f /usr/local/lib/libmd380_vocoder.a ]; then
@@ -171,7 +137,7 @@ else
 fi
 
 # ---------------------------------------------------------------
-# 4. Build tcd from this repository
+# 3. Build tcd from this repository
 # ---------------------------------------------------------------
 cd "$TCD_DIR"
 
@@ -184,7 +150,7 @@ else
 fi
 
 # ---------------------------------------------------------------
-# 5. Install
+# 4. Install
 # ---------------------------------------------------------------
 echo "Installing..."
 if systemctl is-active --quiet tcd 2>/dev/null; then

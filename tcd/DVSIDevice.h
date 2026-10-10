@@ -22,11 +22,10 @@
 #include <future>
 #include <atomic>
 #include <memory>
-#include <cstdint>
-#include "DeviceIO.h"
 
 #include "PacketQueue.h"
 #include "DVSIPacket.h"
+#include "DeviceIO.h"
 
 class CDVDevice
 {
@@ -60,6 +59,8 @@ protected:
 	CPacketQueue input_queue;
 	std::future<void> feedFuture, readFuture;
 	std::string description, productid;
+	std::atomic<int32_t> m_outputGainNum{256};
+	int m_statsIndex = -1;
 
 	bool ConfigureVocoder(uint8_t pkt_ch, Encoding type, int8_t in_gain, int8_t out_gain);
 	bool checkResponse(SDV_Packet &responsePacket, uint8_t response) const;
@@ -67,9 +68,7 @@ protected:
 	bool InitDevice();
 	void FeedDevice();
 	void ReadDevice();
-	void FTDI_Error(const char *where, int status) const;
-		std::atomic<int32_t> m_outputGainNum{256};
-		int m_statsIndex = -1;
+	void FTDI_Error(const char *where, int err) const;
 	void dump(const char *title, const void *data, int length) const;
 
 	// pure virtual methods unique to the device type

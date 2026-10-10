@@ -85,7 +85,7 @@ List connected AMBE devices and their USB serials (POSIX):
 tcd --list-devices
 ```
 
-If you have multiple USB serial devices, use `DeviceSerial` in `tcd.ini` to whitelist your AMBE device by USB serial number. tcd uses `/dev/serial/by-id` and standard POSIX serial APIs; it does not require or install the libftd2xx (D2XX) driver and does not unbind kernel drivers.
+If you have multiple USB serial devices, use `DeviceSerial` in `tcd.ini` to whitelist your AMBE device. It must match exactly: the USB serial number, the libftd2xx style serial with the port letter of multi-port devices (e.g. `DA1234A`), the `/dev/serial/by-id` name or the device node. tcd uses `/dev/serial/by-id` and the kernel's `ftdi_sio` driver with the USB latency timer at 1 ms; it does not need the libftd2xx (D2XX) driver. Devices that an older, libftd2xx based tcd left unbound from `ftdi_sio` are bound back at startup.
 
 ## Build & Install
 
@@ -112,7 +112,7 @@ sudo bash tcd/build.sh               # without md380 (requires ≥2 AMBE devices
 sudo bash tcd/build.sh --with-md380  # with md380 (1 AMBE device sufficient)
 ```
 
-The script installs the libraries tcd needs (libftd2xx, imbe_vocoder, md380_vocoder), builds tcd from this repository, installs the binary and the systemd service, and restarts the service if it was running.
+The script installs the libraries tcd needs (imbe_vocoder, and md380_vocoder with `--with-md380`), builds tcd from this repository, installs the binary and the systemd service, and restarts the service if it was running.
 
 Edit `/usr/local/etc/tcd.ini` after install (see Configuration below).
 
@@ -358,7 +358,7 @@ sudo journalctl -u tcd -f          # follow logs
 ### Hardware & Device Support
 - **Mixed-mode DV3000+DV3003**: Concurrent 2-module transcoding with per-channel codec configuration
 - **DV3003 D-Star support**: PKT_COMPAND fix, 350-byte flush, per-channel encoding
-- **FTDI robustness**: Auto-unbind ftdi_sio at startup, device whitelist by serial number, buffer flush on overflow
+- **Serial backend**: AMBE devices through the kernel ftdi_sio driver and `/dev/serial/by-id` (POSIX backend by Jason Kendall), USB latency timer set to 1 ms, no libftd2xx; device whitelist by serial number, buffer flush on overflow
 - **SVX codec path**: Separate `ECodecType::svx` for independent SVX audio handling
 
 ### Audio Processing
@@ -376,7 +376,7 @@ sudo journalctl -u tcd -f          # follow logs
 
 ### Reliability
 - **Optional MD380**: Build with `md380=true` / `--with-md380` to enable; without it, ≥2 AMBE devices are required and DMR re-encode is unavailable
-- **Performance**: FTDI event notification instead of busy-poll, condition variables, ~5% CPU on Pi
+- **Performance**: blocking reads with timeout instead of busy-poll, condition variables, ~5% CPU on Pi
 - **Thread safety**: Mutex around IMBE vocoder, SIGPIPE ignored for clean reconnection
 - **Error handling**: SendToReflector retry with backoff, graceful queue overflow, ReadDevice timeout recovery
 - **Reconnect backoff**: Exponential backoff (0.5s → 5s max) when reflector is unreachable, prevents log spam and CPU waste

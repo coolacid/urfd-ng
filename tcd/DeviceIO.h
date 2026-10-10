@@ -23,6 +23,12 @@ public:
     virtual bool SetFlowControl(int flow) = 0;
     // Set read timeout in tenths of a second (VTIME). Return true if supported.
     virtual bool SetReadTimeout(int tenths) { (void)tenths; return false; }
+    // bytes waiting in the receive buffer, -1 on error
+    virtual int BytesAvailable() = 0;
+    // wait up to ms milliseconds for received data: 1 data, 0 timeout, -1 the device is gone
+    virtual int WaitReadable(int ms) = 0;
+    // make pending and future reads and writes return at once, for shutting down
+    virtual void Abort() = 0;
 };
 
 // Factory for POSIX device implementation (implemented in DeviceIO_posix.cpp)

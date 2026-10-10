@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
 	g_StatsLog.Configure(g_Conf.GetStatsLogEnabled(), g_Conf.GetStatsLogDir(), g_Conf.GetStatsLogRetain());
 	g_StatsLog.Start();
 
-	std::cout << "Hybrid Transcoder version 0.1.1 successfully started" << std::endl;
+	std::cout << "Hybrid Transcoder version 0.2.0 successfully started" << std::endl;
 
 	pause();
 
