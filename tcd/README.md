@@ -89,40 +89,45 @@ If you have other FTDI devices (USB serial adapters etc.), use `DeviceSerial` in
 
 ## Build & Install
 
-### Quick start (build.sh)
+tcd lives in the `tcd/` folder of the [urfd repository](https://github.com/jcmerg/urfd). It builds against the urfd sources it shares (`TCPacketDef.h`, `TCSocket.*`, ...) from `../reflector`, so reflector and transcoder always come from the same version.
+
+### Quick start (setup.sh)
+
+The easiest way is the setup script in the repository root. It asks a few questions, writes `tcd.ini` (and `urfd.ini` if the reflector runs on the same machine), builds and starts everything. See [docs/INSTALL.md](../docs/INSTALL.md).
 
 ```bash
-git clone https://github.com/jcmerg/tcd.git
-cd tcd
-sudo bash build.sh               # without md380 (requires ≥2 AMBE devices)
-sudo bash build.sh --with-md380  # with md380 (1 AMBE device sufficient)
+git clone https://github.com/jcmerg/urfd.git
+cd urfd
+sudo ./setup.sh
 ```
 
-The script clones/updates both tcd and urfd repos (tcd has symlinks to urfd source files), builds and installs the binary, and restarts the service.
+### build.sh
+
+To only build and install tcd:
+
+```bash
+git clone https://github.com/jcmerg/urfd.git
+cd urfd
+sudo bash tcd/build.sh               # without md380 (requires ≥2 AMBE devices)
+sudo bash tcd/build.sh --with-md380  # with md380 (1 AMBE device sufficient)
+```
+
+The script installs the libraries tcd needs (libftd2xx, imbe_vocoder, md380_vocoder), builds tcd from this repository, installs the binary and the systemd service, and restarts the service if it was running.
 
 Edit `/usr/local/etc/tcd.ini` after install (see Configuration below).
 
 ### Manual build
 
-```bash
-git clone https://github.com/jcmerg/tcd.git
-git clone https://github.com/jcmerg/urfd.git
-cd tcd
-cp config/* .
-```
-
-Edit configuration:
-- `tcd.ini` — set ServerAddress, Modules, DeviceSerial, gain values
-- `tcd.mk` — set `md380 = true` to enable the MD380 software vocoder
-- `tcd.service` — already configured for `/usr/local/bin/tcd`
-
-Build and install:
+With the libraries installed:
 
 ```bash
-make -j$(nproc)           # without md380 (default)
+cd urfd/tcd
+make -j$(nproc)             # without md380 (default)
 make -j$(nproc) md380=true  # with md380 software vocoder
 sudo make install
 ```
+
+`config/tcd.ini` is the commented template for `/usr/local/etc/tcd.ini`, `config/tcd.service` the systemd unit.
 
 ## Configuration (tcd.ini)
 

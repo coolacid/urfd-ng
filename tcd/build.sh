@@ -1,18 +1,19 @@
 #!/bin/bash
-# Build and install tcd from source
+# Build and install tcd from this repository
 # Automatically installs all dependencies, builds and deploys.
-# Run as root or with sudo.
+# Run as root or with sudo. setup.sh in the repository root calls this.
 #
 # Usage:
-#   sudo bash build.sh               # build without md380 (requires ≥2 AMBE devices)
-#   sudo bash build.sh --with-md380  # build with md380 software vocoder
+#   sudo bash tcd/build.sh               # build without md380 (requires ≥2 AMBE devices)
+#   sudo bash tcd/build.sh --with-md380  # build with md380 software vocoder
 #
 # Dependencies (auto-installed):
 #   - libftd2xx (FTDI driver) — from ftdichip.com
 #   - libimbe_vocoder — from jcmerg/imbe_vocoder
 #   - libmd380_vocoder (only with --with-md380) — armhf native (jcmerg/md380_vocoder)
 #                        or x86_64/aarch64 via dynarmic (jcmerg/md380_vocoder_dynarmic)
-#   - urfd (for shared TCPacketDef.h/TCSocket.h)
+# The urfd sources tcd shares (TCPacketDef.h, TCSocket.*, ...) come from
+# ../reflector in the same repository.
 
 set -e
 
@@ -25,9 +26,8 @@ for arg in "$@"; do
     esac
 done
 
+TCD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILDDIR="/tmp/tcd-build"
-TCD_REPO="https://github.com/jcmerg/tcd.git"
-URFD_REPO="https://github.com/jcmerg/urfd.git"
 IMBE_REPO="https://github.com/jcmerg/imbe_vocoder.git"
 MD380_ARM_REPO="https://github.com/jcmerg/md380_vocoder.git"
 MD380_X64_REPO="https://github.com/jcmerg/md380_vocoder_dynarmic.git"
@@ -171,31 +171,9 @@ else
 fi
 
 # ---------------------------------------------------------------
-# 4. Clone/update source repos
+# 4. Build tcd from this repository
 # ---------------------------------------------------------------
-if [ -d tcd/.git ]; then
-    echo "Updating tcd..."
-    cd tcd && git checkout -- . && git pull && cd ..
-else
-    rm -rf tcd
-    echo "Cloning tcd..."
-    git clone --depth 1 "$TCD_REPO"
-fi
-
-if [ -d urfd/.git ]; then
-    echo "Updating urfd..."
-    cd urfd && git checkout -- . && git pull && cd ..
-else
-    rm -rf urfd
-    echo "Cloning urfd..."
-    git clone --depth 1 "$URFD_REPO"
-fi
-
-# ---------------------------------------------------------------
-# 5. Build tcd
-# ---------------------------------------------------------------
-cd "$BUILDDIR/tcd"
-cp config/* .
+cd "$TCD_DIR"
 
 echo "Compiling tcd..."
 make clean
@@ -206,7 +184,7 @@ else
 fi
 
 # ---------------------------------------------------------------
-# 6. Install
+# 5. Install
 # ---------------------------------------------------------------
 echo "Installing..."
 if systemctl is-active --quiet tcd 2>/dev/null; then

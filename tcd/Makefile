@@ -4,8 +4,8 @@ include tcd.mk
 
 GCC = g++
 
-# Shared source files from urfd
-URFD_DIR ?= ../urfd/reflector
+# Shared source files from urfd, in the same repository
+URFD_DIR ?= ../reflector
 URFD_FILES = IP.cpp IP.h TCPacketDef.h TCSocket.cpp TCSocket.h Timer.h Golay24128.cpp Golay24128.h
 
 ifeq ($(debug), true)
@@ -79,7 +79,7 @@ clean :
 # The install and uninstall targets need to be run by root
 install : all
 	cp $(EXE) $(MON) $(BINDIR)
-	cp $(EXE).service /etc/systemd/system/
+	cp config/$(EXE).service /etc/systemd/system/
 	systemctl enable $(EXE)
 	systemctl daemon-reload
 	systemctl start $(EXE)
