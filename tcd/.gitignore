@@ -1,0 +1,28 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Files
+tcd.*
+
+# Visual Studio
+.vscode
+
+# Executables
+tcd
+
+# Shared files copied from urfd during build
+IP.cpp
+IP.h
+TCPacketDef.h
+TCSocket.cpp
+TCSocket.h
+Timer.h
+Golay24128.cpp
+Golay24128.h
+monitor_html.cpp
