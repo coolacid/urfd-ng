@@ -298,6 +298,7 @@ journalctl -u tcd -f
 - **Thread safety**: lock around the IMBE vocoder, SIGPIPE ignored for clean reconnects
 - **Error handling**: retries towards the reflector with backoff, dropping on queue overflow, timeout recovery while reading
 - **Reconnect backoff**: 0.5 s growing to 5 s while the reflector is unreachable
+- **No Nagle delay**: `TCP_NODELAY` on the reflector connection; a frame returns after about 23 ms instead of 60 ms
 - **Build**: part of the urfd repository, `build.sh` builds as the checkout owner
 
 ## Copyright

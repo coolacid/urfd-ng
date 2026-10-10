@@ -851,6 +851,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 ### Infrastructure
 - **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data and hash file the dashboard used, without needing the dashboard
 - **Clean shutdown**: urfd stops within about 2 seconds on SIGTERM. Before, the module router threads waited for packets forever, protocols were deleted while their threads still ran (a crash, hidden because Docker killed urfd first) and the ID database threads slept up to 10 s each, so `docker stop` always ended in a kill
+- **Transcoder link without Nagle delay**: `TCP_NODELAY` on both ends of the urfd–tcd connection. Before, a transcoded frame waited for the reflector's delayed ACK, which only came with the next DMR burst; a frame now returns after about 23 ms instead of 60 ms (URF363, measured at the reflector)
 - **Setup script**: `setup.sh` installs and updates reflector and transcoder, writes the configuration from the templates and checks it with inicheck; Docker compose builds from any checkout, data in `$URFD_DATA` (default `/opt/urfd`)
 - **Echo module**: Built-in parrot with enable/disable flag
 - **M17 LSTN support**: Listen-only M17 clients for monitoring services, which may not transmit

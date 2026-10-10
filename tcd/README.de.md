@@ -298,6 +298,7 @@ journalctl -u tcd -f
 - **Threadsicherheit**: Sperre um den IMBE-Vocoder, SIGPIPE ignoriert für saubere Neuverbindungen
 - **Fehlerbehandlung**: Wiederholung zum Reflektor mit wachsender Pause, Verwerfen bei Überlauf der Warteschlange, Erholung bei Timeouts beim Lesen
 - **Wachsende Pause beim Neuverbinden**: 0,5 s bis 5 s, solange der Reflektor nicht erreichbar ist
+- **Keine Nagle-Verzögerung**: `TCP_NODELAY` auf der Verbindung zum Reflektor; ein Frame ist nach etwa 23 ms statt 60 ms zurück
 - **Build**: Teil des urfd-Repositorys, `build.sh` baut als Eigentümer des Klons
 
 ## Copyright

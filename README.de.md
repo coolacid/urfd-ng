@@ -830,6 +830,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 ### Infrastruktur
 - **CallingHome im Reflektor**: `[CallingHome]` in `urfd.ini` trägt den Reflektor mit denselben Daten und derselben Hash-Datei wie bisher das Dashboard im XLX-Verzeichnis ein, auch ohne Dashboard
 - **Sauberes Beenden**: urfd beendet sich bei SIGTERM in etwa 2 Sekunden. Vorher warteten die Router-Threads der Module ewig auf Pakete, Protokolle wurden gelöscht, während ihre Threads noch liefen (ein Absturz, der nur nicht auffiel, weil Docker urfd vorher abschoss), und die ID-Datenbank-Threads schliefen je bis zu 10 s; `docker stop` endete so immer mit einem Kill
+- **Transcoder-Verbindung ohne Nagle-Verzögerung**: `TCP_NODELAY` an beiden Enden der Verbindung urfd–tcd. Vorher wartete ein transcodierter Frame auf das verzögerte ACK des Reflektors, das erst mit dem nächsten DMR-Bündel kam; ein Frame ist jetzt nach etwa 23 ms statt 60 ms zurück (URF363, am Reflektor gemessen)
 - **Setup-Script**: `setup.sh` installiert und aktualisiert Reflektor und Transcoder, schreibt die Konfiguration aus den Vorlagen und prüft sie mit inicheck; Docker Compose baut aus jedem Klon, Daten in `$URFD_DATA` (Standard `/opt/urfd`)
 - **Echo-Modul**: Eingebauter Papagei, ein- und ausschaltbar
 - **M17 LSTN**: Reine Hör-Clients für Überwachungsdienste, die nicht senden dürfen
