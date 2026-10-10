@@ -158,6 +158,9 @@ bool CReflector::Start(void)
 		std::cerr << "Cannot start the dashboard data report thread: " << e.what() << '\n';
 	}
 
+	// register in the XLX directory, if switched on
+	m_CallingHome.Start();
+
 	// start echo thread
 	if (m_EchoModule != ' ')
 	{
@@ -259,13 +262,17 @@ void CReflector::Stop(void)
 		m_MaintenanceFuture.get();
 	}
 
+	m_CallingHome.Stop();
+
 	// stop echo thread
 	if ( m_EchoFuture.valid() )
 	{
 		m_EchoFuture.get();
 	}
 
-	// stop & delete all router thread
+	// stop & delete all router threads; they wait for packets, so wake them
+	for (auto &stream : m_Stream)
+		stream.second->Shutdown();
 	for (auto c : m_Modules)
 	{
 		if (m_RouterFuture[c].valid())
@@ -432,8 +439,10 @@ void CReflector::RouterThread(const char ThisModule)
 	const auto streamIn = pitem->second;
 	while (keep_running)
 	{
-		// wait until something shows up
+		// wait until something shows up, nullptr when shutting down
 		auto packet = streamIn->PopWait();
+		if (!packet)
+			break;
 
 		packet->SetPacketModule(ThisModule);
 

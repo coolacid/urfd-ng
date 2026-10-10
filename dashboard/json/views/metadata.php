@@ -1,8 +1,9 @@
 <?php
 
-$Url = @parse_url($CallingHome['MyDashBoardURL']);
-$Net4 = @dns_get_record($Url['host'], DNS_A);
-$Net6 = @dns_get_record($Url['host'], DNS_AAAA);
+// the dashboard's address as the reflector reports it (DashboardUrl in urfd.ini)
+$Host = @parse_url((string)$Reflector->GetDashboardURL(), PHP_URL_HOST);
+$Net4 = $Host ? @dns_get_record($Host, DNS_A) : false;
+$Net6 = $Host ? @dns_get_record($Host, DNS_AAAA) : false;
 
 /*** add metadata to payload ***/
 $payload = array(

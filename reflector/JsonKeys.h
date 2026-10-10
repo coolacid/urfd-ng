@@ -80,6 +80,9 @@ struct SJsonKeys {
 	struct ECHO { const std::string enable, module; }
 	echo { "EchoEnable", "EchoModule" };
 
+	struct CALLINGHOME { const std::string enable, country, comment, hashfile, overrideip, server, pushdelay, timeout; }
+	callinghome { "chEnable", "chCountry", "chComment", "chHashFile", "chOverrideIP", "chServer", "chPushDelay", "chTimeout" };
+
 	struct FILES { const std::string pid, xml, json, white, black, interlink, terminal; }
 	files { "pidFilePath", "xmlFilePath", "jsonFilePath", "whitelistFilePath", "blacklistFilePath", "interlinkFilePath", "g3TerminalFilePath" };
 	struct MMDVMCLIENT { const std::string enable, address, port, localport, dmrid, password, callsign, latitude, longitude, location, description, url, rxfreq, txfreq, software, firmware, fallbackdmrid, blockprotocols, bmapikey; }

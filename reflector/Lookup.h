@@ -19,6 +19,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <future>
 #include <iostream>
 #include <string>
@@ -77,4 +78,7 @@ protected:
 
 	std::atomic<bool> keep_running;
 	std::future<void> m_Future;
+	// LookupClose() wakes the thread from its pause between checks
+	std::mutex m_WakeMutex;
+	std::condition_variable m_Wake;
 };

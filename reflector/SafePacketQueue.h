@@ -70,11 +70,14 @@ public:
 	}
 
 	// If the queue is empty, wait until an element is available.
+	// Returns nullptr once Shutdown() was called and the queue is empty.
 	T PopWait(void)
 	{
 		std::unique_lock<std::mutex> lock(m);
 		while(q.empty())
 		{
+			if (shutdown)
+				return nullptr;
 			// release lock as long as the wait and reacquire it afterwards.
 			c.wait(lock);
 		}
@@ -89,8 +92,17 @@ public:
 		return q.empty();
 	}
 
+	// wakes every PopWait(), which then returns nullptr instead of waiting
+	void Shutdown(void)
+	{
+		std::lock_guard<std::mutex> lock(m);
+		shutdown = true;
+		c.notify_all();
+	}
+
 private:
 	std::queue<T> q;
 	mutable std::mutex m;
 	std::condition_variable c;
+	bool shutdown = false;
 };

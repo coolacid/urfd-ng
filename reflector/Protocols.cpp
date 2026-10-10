@@ -220,7 +220,16 @@ CProtocol *CProtocols::FindByType(EProtocol type)
 
 void CProtocols::Close(void)
 {
+	// take them out under the lock, but stop them without it: a protocol thread
+	// may still be waiting for this lock, and stopping waits for that thread
+	std::list<std::unique_ptr<CProtocol>> protocols;
 	m_Mutex.lock();
-	m_Protocols.clear();
+	protocols.swap(m_Protocols);
 	m_Mutex.unlock();
+
+	// stop each protocol's threads while the object is whole; deleting it first left
+	// its thread running on a half destroyed object ("pure virtual method called")
+	for (auto &protocol : protocols)
+		protocol->Close();
+	protocols.clear();
 }

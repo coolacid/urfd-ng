@@ -55,7 +55,11 @@ std::vector<std::string> LookupSplitFields(const std::string &line, char delim)
 
 void CLookup::LookupClose()
 {
-	keep_running = false;
+	{
+		std::lock_guard<std::mutex> lock(m_WakeMutex);
+		keep_running = false;
+	}
+	m_Wake.notify_all();
 	if (m_Future.valid())
 		m_Future.get();
 }
@@ -141,8 +145,9 @@ void CLookup::Thread()
 			m_ContentLoaded = true;
 		}
 
-		// now wait for 10 seconds
-		std::this_thread::sleep_for(std::chrono::seconds(10));
+		// now wait for 10 seconds, or until LookupClose()
+		std::unique_lock<std::mutex> lock(m_WakeMutex);
+		m_Wake.wait_for(lock, std::chrono::seconds(10), [this] { return !keep_running; });
 	}
 }
 

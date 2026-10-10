@@ -111,14 +111,26 @@ function FetchReflectorList($ServerURL, $Timeout = 5, $CacheFile = null, $CacheT
 	return false;
 }
 
-// Convenience wrapper for the pages: derives timeout and cache location from the
-// CallingHome config. The cache lives beside the hash file, which is already a
-// writable, persistent directory.
-function GetReflectorList($CallingHome) {
-	$dir = isset($CallingHome['HashFile']) ? dirname($CallingHome['HashFile']) : sys_get_temp_dir();
-	return FetchReflectorList($CallingHome['ServerURL'],
-	                          isset($CallingHome['Timeout']) ? (int)$CallingHome['Timeout'] : 5,
-	                          $dir.'/reflectorlist.cache');
+// XLX directory settings for the reflector list. Configs from before the
+// reflector took over CallingHome have them in $CallingHome, with the cache
+// beside the hash file. The current template no longer sets $CallingHome, so
+// if it is there it comes from the operator and wins over the template's
+// $Directory defaults (e.g. an old ../config.inc.php override).
+function DirectoryConfig() {
+	global $Directory, $CallingHome;
+	$new = (isset($Directory) && is_array($Directory)) ? $Directory : array();
+	$old = (isset($CallingHome) && is_array($CallingHome)) ? $CallingHome : array();
+	return array(
+		'ServerURL' => $old['ServerURL'] ?? $new['ServerURL'] ?? 'http://xlxapi.rlx.lu/api.php',
+		'Timeout'   => (int)($old['Timeout'] ?? $new['Timeout'] ?? 5),
+		'CacheDir'  => isset($old['HashFile']) ? dirname($old['HashFile']) : ($new['CacheDir'] ?? '/var/lib/xlxd-ch'),
+	);
+}
+
+// Convenience wrapper for the pages.
+function GetReflectorList() {
+	$c = DirectoryConfig();
+	return FetchReflectorList($c['ServerURL'], $c['Timeout'], $c['CacheDir'].'/reflectorlist.cache');
 }
 
 // Inline notice for pages whose remote data source is unavailable.

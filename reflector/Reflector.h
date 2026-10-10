@@ -27,6 +27,7 @@
 #include "Peers.h"
 #include "Protocols.h"
 #include "PacketStream.h"
+#include "CallingHome.h"
 
 #ifndef NO_DHT
 #include "dht-values.h"
@@ -127,6 +128,7 @@ protected:
 
 	// objects
 	CUsers     m_Users;            // sorted list of lastheard stations
+	CCallingHome m_CallingHome;    // XLX directory registration, if switched on
 	CClients   m_Clients;          // list of linked repeaters/nodes/peers's modules
 	CPeers     m_Peers;            // list of linked peers
 	CProtocols m_Protocols;        // list of supported protocol handlers

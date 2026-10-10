@@ -22,7 +22,6 @@ if (!class_exists('Node')) require_once("./pgs/class.node.php");
 if (!class_exists('xReflector')) require_once("./pgs/class.reflector.php");
 if (!class_exists('Station')) require_once("./pgs/class.station.php");
 if (!class_exists('Peer')) require_once("./pgs/class.peer.php");
-if (!class_exists('Interlink')) require_once("./pgs/class.interlink.php");
 
 $Reflector = new xReflector();
 $Reflector->SetFlagFile("./pgs/country.csv");
@@ -31,52 +30,7 @@ $Reflector->SetXMLFile($Service['XMLFile']);
 
 $Reflector->LoadXML();
 
-if ($CallingHome['Active']) {
-
-    $CallHomeNow = false;
-    if (!file_exists($CallingHome['HashFile'])) {
-        $Hash = CreateCode(16);
-        $LastSync = 0;
-        $Ressource = @fopen($CallingHome['HashFile'], "w");
-        if ($Ressource) {
-            @fwrite($Ressource, "<?php\n");
-            @fwrite($Ressource, "\n" . '$LastSync = ' . time() . ';');
-            @fwrite($Ressource, "\n" . '$Hash     = "' . $Hash . '";');
-            @fwrite($Ressource, "\n\n" . '?>');
-            @fclose($Ressource);
-            @exec("chmod 777 " . $CallingHome['HashFile']);
-            $CallHomeNow = true;
-        }
-    } else {
-        include($CallingHome['HashFile']);
-        if ($LastSync < (time() - $CallingHome['PushDelay'])) {
-            $Ressource = @fopen($CallingHome['HashFile'], "w");
-            if ($Ressource) {
-                @fwrite($Ressource, "<?php\n");
-                @fwrite($Ressource, "\n" . '$LastSync = ' . time() . ';');
-                @fwrite($Ressource, "\n" . '$Hash     = "' . $Hash . '";');
-                @fwrite($Ressource, "\n\n" . '?>');
-                @fclose($Ressource);
-            }
-            $CallHomeNow = true;
-        }
-    }
-
-    // The ?callhome override is for the local supervisor job only — otherwise any
-    // visitor could force an outbound request per page view and tie up fpm workers.
-    $CallHomeForced = isset($_GET['callhome'])
-                   && in_array($_SERVER['REMOTE_ADDR'] ?? '', array('127.0.0.1', '::1'), true);
-
-    if ($CallHomeNow || $CallHomeForced) {
-        $Reflector->SetCallingHome($CallingHome, $Hash);
-        $Reflector->ReadInterlinkFile();
-        $Reflector->PrepareInterlinkXML();
-        $Reflector->PrepareReflectorXML();
-        $Reflector->CallHome();
-    }
-} else {
-    $Hash = "";
-}
+// The reflector registers itself in the XLX directory ([CallingHome] in urfd.ini).
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -206,15 +160,6 @@ if ($CallingHome['Active']) {
             // Display MOTD / maintenance banner from config
             if (isset($PageOptions['MOTD']) && trim($PageOptions['MOTD']) !== '') {
                 echo '<div class="motd-banner">' . htmlspecialchars(trim($PageOptions['MOTD'])) . '</div>';
-            }
-
-            if ($CallingHome['Active']) {
-                if (!is_readable($CallingHome['HashFile']) && (!is_writeable($CallingHome['HashFile']))) {
-                    echo '
-         <div class="error">
-            your private hash in ' . $CallingHome['HashFile'] . ' could not be created, please check your config file and the permissions for the defined folder.
-         </div>';
-                }
             }
 
             switch ($_GET['show']) {

@@ -30,9 +30,12 @@ public:
 	~CCurlGet();
 	// the contents of the URL will be appended to the stringstream.
 	CURLcode GetURL(const std::string &url, std::stringstream &ss, long timeout = 30, long connecttimeout = 10);
+	// POST one url-encoded form field, the answer is appended to ss and the HTTP status put in http
+	CURLcode PostForm(const std::string &url, const std::string &field, const std::string &value, std::stringstream &ss, long &http, long timeout = 30);
 	// Call once at shutdown, after every thread that may use CCurlGet has been
 	// joined. Never call it while transfers can still be running.
 	static void GlobalCleanup();
 private:
 	static size_t data_write(void* buf, size_t size, size_t nmemb, void* userp);
+	static CURLcode Prepare(CURL *curl, const std::string &url, std::stringstream &ss, long timeout, long connecttimeout);
 };

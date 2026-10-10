@@ -1,6 +1,6 @@
 <?php
 
-$Reflectors = GetReflectorList($CallingHome);
+$Reflectors = GetReflectorList();
 
 if ($Reflectors === false) {
    echo DirectoryUnavailableNotice();

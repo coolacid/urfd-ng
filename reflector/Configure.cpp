@@ -82,6 +82,7 @@
 #define JSPONSOR                 "Sponsor"
 #define JSYSOPEMAIL              "SysopEmail"
 #define JTRANSCODER              "Transcoder"
+#define JCALLINGHOME             "CallingHome"
 #define JTXPORT                  "TxPort"
 #define JURF                     "URF"
 #define JENABLEDGID              "EnableDGID"
@@ -188,6 +189,8 @@ bool CConfigure::ReadData(const std::string &path)
 				section = ESection::ip;
 			else if (0 == hname.compare(JTRANSCODER))
 				section = ESection::tc;
+			else if (0 == hname.compare(JCALLINGHOME))
+				section = ESection::callinghome;
 			else if (0 == hname.compare(JMODULES))
 				section = ESection::modules;
 			else if (0 == hname.compare(JDPLUS))
@@ -310,6 +313,32 @@ bool CConfigure::ReadData(const std::string &path)
 				{
 					data[g_Keys.ip.ipv6address] = value;
 				}
+				else
+					badParam(key);
+				break;
+			case ESection::callinghome:
+				if (0 == key.compare(JENABLE))
+					data[g_Keys.callinghome.enable] = IS_TRUE(value[0]);
+				else if (0 == key.compare("Country"))
+					data[g_Keys.callinghome.country] = value;
+				else if (0 == key.compare("Comment"))
+				{
+					// the directory takes 100 characters; cut between UTF-8 sequences
+					size_t pos = 0;
+					for (int chars = 0; pos < value.size() && chars < 100; chars++)
+						do pos++; while (pos < value.size() && 0x80 == (0xC0 & (unsigned char)value[pos]));
+					data[g_Keys.callinghome.comment] = value.substr(0, pos);
+				}
+				else if (0 == key.compare("HashFile"))
+					data[g_Keys.callinghome.hashfile] = value;
+				else if (0 == key.compare("OverrideIP"))
+					data[g_Keys.callinghome.overrideip] = value;
+				else if (0 == key.compare("Server"))
+					data[g_Keys.callinghome.server] = value;
+				else if (0 == key.compare("PushDelay"))
+					data[g_Keys.callinghome.pushdelay] = getUnsigned(value, "CallingHome PushDelay", 60, 86400, 300);
+				else if (0 == key.compare("Timeout"))
+					data[g_Keys.callinghome.timeout] = getUnsigned(value, "CallingHome Timeout", 1, 60, 5);
 				else
 					badParam(key);
 				break;
@@ -1125,6 +1154,13 @@ bool CConfigure::ReadData(const std::string &path)
 				rval = true;
 			}
 		}
+	}
+
+	// CallingHome, only checked when it is switched on
+	if (data.contains(g_Keys.callinghome.enable) && GetBoolean(g_Keys.callinghome.enable))
+	{
+		isDefined(ErrorLevel::mild, JCALLINGHOME, "Country", g_Keys.callinghome.country, rval);
+		isDefined(ErrorLevel::mild, JCALLINGHOME, "Comment", g_Keys.callinghome.comment, rval);
 	}
 
 	// Echo

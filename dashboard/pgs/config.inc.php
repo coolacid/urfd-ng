@@ -4,14 +4,14 @@
 //############################################################################
 
 $Service     = array();
-$CallingHome = array();
+$Directory   = array();
 $PageOptions = array();
 
 //############################################################################
 //  Dashboard Settings
 //############################################################################
 
-$PageOptions['DashboardVersion'] = '2.7.0';
+$PageOptions['DashboardVersion'] = '2.8.0';
 
 // Contact email shown in the footer (obfuscated against bots via JS)
 $PageOptions['ContactEmail']     = 'your_email@example.com';
@@ -106,25 +106,15 @@ $Admin['Port']     = 10101;
 $Admin['Password'] = 'changeme';
 
 //############################################################################
-//  CallingHome (XLX Directory Registration)
+//  XLX Directory
 //
-//  Registers the reflector at xlxapi.rlx.lu so it appears in Pi-Star,
-//  WPSD and other hotspot software. Runs automatically every 5 minutes
-//  via the supervisor callhome process in Docker deployments.
-//  Set Active to false to disable registration.
+//  The reflector list pages read the XLX directory. Registering this
+//  reflector there is done by the reflector itself: [CallingHome] in urfd.ini.
 //############################################################################
 
-$CallingHome['Active']            = false;
-$CallingHome['MyDashBoardURL']    = 'http://your-dashboard.example.com';
-$CallingHome['ServerURL']         = 'http://xlxapi.rlx.lu/api.php';  // Do not change
-$CallingHome['PushDelay']         = 300;                              // Seconds between pushes
-$CallingHome['Timeout']           = 5;                                // Seconds before giving up on the directory server
-$CallingHome['Country']           = 'Germany';
-$CallingHome['Comment']           = 'URF Reflector';                  // Max 100 characters
-$CallingHome['HashFile']          = '/var/lib/xlxd-ch/callinghome.php';
-$CallingHome['LastCallHomefile']  = '/var/lib/xlxd-ch/lastcallhome.php';
-$CallingHome['OverrideIPAddress'] = '';                                // Blank = auto-detect
-$CallingHome['InterlinkFile']     = '/usr/local/etc/urfd/urfd.interlink';
+$Directory['ServerURL'] = 'http://xlxapi.rlx.lu/api.php';   // Do not change
+$Directory['Timeout']   = 5;                                 // Seconds before giving up on the directory server
+$Directory['CacheDir']  = '/var/lib/xlxd-ch';                // Reflector list cache, writable by the web server
 
 //############################################################################
 //  External config override

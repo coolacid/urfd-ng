@@ -76,7 +76,9 @@ path, section, key, value = sys.argv[1:5]
 lines = open(path).read().split('\n')
 start = next((i for i, l in enumerate(lines) if l.strip() == '[' + section + ']'), None)
 if start is None:
-    lines += ['', '[' + section + ']', key + ' = ' + value]
+    # append the section, keeping the file's final newline
+    tail = [''] if lines and lines[-1] == '' else []
+    lines = (lines[:-1] if tail else lines) + ['', '[' + section + ']', key + ' = ' + value] + tail
 else:
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('[')), len(lines))
     active = re.compile(r'^\s*' + re.escape(key) + r'\s*=')
@@ -108,7 +110,7 @@ PY
 }
 
 # set_php FILE KEY VALUE -- set $KEY = VALUE; in the dashboard config, e.g.
-# set_php config.inc.php "CallingHome['Active']" "true"
+# set_php config.inc.php "Admin['Enable']" "true"
 set_php() {
     python3 - "$@" <<'PY'
 import re, sys
@@ -249,8 +251,8 @@ ask_reflector() {
 ask_tc_modules() {
     echo
     echo "Transcoded modules get audio converted between all modes. Each one needs"
-    echo "AMBE capacity: one DV3000 stick (with the MD380 software vocoder) handles 1 module,"
-    echo "DV3000+DV3003 handle 2, two DV3003 up to 3."
+    echo "AMBE capacity: one device (with the MD380 software vocoder) handles 1 module,"
+    echo "DV3000+DV3003 handle 2, two DV3000 1, two DV3003 up to 3."
     ask TC_MODULES "Transcoded modules" "${MODULES:0:1}" "^[$MODULES]{1,3}$" "1 to 3 letters out of $MODULES."
 }
 
@@ -266,13 +268,13 @@ ask_transcoder() {
     fi
     echo
     echo "Which AMBE hardware is plugged in?"
-    echo "  1) a single DV3000 / ThumbDV / AMBE3000 stick   (DMR/YSF then runs in software, MD380)"
-    echo "  2) a DV3003, two DV3000, or DV3000 + DV3003"
+    echo "  1) one device: a DV3000 / ThumbDV or a DV3003   (DMR/YSF then runs in software, MD380)"
+    echo "  2) two devices: DV3000 + DV3003, two DV3000 or two DV3003"
     ask HW "Choice" "1" '^[12]$' "Please enter 1 or 2."
     if [ "$HW" = "1" ]; then
         TCD_MD380=true
         if [ ${#TC_MODULES} -gt 1 ]; then
-            warn "a single stick handles one transcoded module, only ${TC_MODULES:0:1} will be transcoded"
+            warn "a single device handles one transcoded module, only ${TC_MODULES:0:1} will be transcoded"
             TC_MODULES=${TC_MODULES:0:1}
         fi
     else
@@ -359,11 +361,11 @@ write_urfd_config() {
         set_php "$php" "Admin['Enable']" true
         set_php "$php" "Admin['Password']" "$(php_str "$ADMIN_PASSWORD")"
     fi
-    set_php "$php" "CallingHome['MyDashBoardURL']" "$(php_str "$DASHURL")"
+    # the reflector registers itself ([CallingHome] in urfd.ini); the dashboard's stays off
     if [ "$CALLHOME" = true ]; then
-        set_php "$php" "CallingHome['Active']" true
-        set_php "$php" "CallingHome['Country']" "$(php_str "$CH_COUNTRY")"
-        set_php "$php" "CallingHome['Comment']" "$(php_str "${CH_COMMENT:0:100}")"
+        set_ini "$ini" CallingHome Enable true
+        set_ini "$ini" CallingHome Country "$CH_COUNTRY"
+        set_ini "$ini" CallingHome Comment "${CH_COMMENT:0:100}"
     fi
     chown 33:33 "$php"   # www-data in the container
 }
@@ -491,6 +493,38 @@ EOF
 # update
 # ---------------------------------------------------------------------------
 
+# Since urfd 4.3.0 the reflector registers itself in the XLX directory and the
+# dashboard no longer does. Carry a dashboard registration over to urfd.ini once,
+# so an updated reflector does not silently drop out of the directory. An
+# existing [CallingHome] section in urfd.ini is the operator's choice and stays.
+migrate_callinghome() {
+    local ini="$CFG_DIR/urfd.ini" php="$DATA_DIR/dashboard/config.inc.php"
+    [ -f "$ini" ] && [ -f "$php" ] || return 0
+    grep -q '^\[CallingHome\]' "$ini" && return 0
+    python3 - "$php" >"$DATA_DIR/.callinghome" <<'PY' || { rm -f "$DATA_DIR/.callinghome"; return 0; }
+import re, sys
+s = open(sys.argv[1]).read()
+def get(key):
+    m = re.search(r"^\s*\$CallingHome\['" + key + r"'\]\s*=\s*(?:'([^']*)'|\"([^\"]*)\"|(\w+))\s*;", s, re.M)
+    return (m.group(1) or m.group(2) or m.group(3) or '') if m else ''
+if get('Active').lower() != 'true':
+    sys.exit(1)
+for key in ('Country', 'Comment', 'MyDashBoardURL', 'HashFile', 'OverrideIPAddress'):
+    print(get(key))
+PY
+    local country comment url hashfile overrideip
+    { read -r country; read -r comment; read -r url; read -r hashfile; read -r overrideip; } <"$DATA_DIR/.callinghome"
+    rm -f "$DATA_DIR/.callinghome"
+    info "Moving the XLX directory registration from the dashboard to the reflector"
+    set_ini "$ini" CallingHome Enable true
+    set_ini "$ini" CallingHome Country "$country"
+    set_ini "$ini" CallingHome Comment "${comment//#/}"
+    [ -n "$hashfile" ] && set_ini "$ini" CallingHome HashFile "$hashfile"
+    [ -n "$overrideip" ] && set_ini "$ini" CallingHome OverrideIP "$overrideip"
+    # the directory entry keeps the URL it had
+    [ -n "$url" ] && set_ini "$ini" Names DashboardUrl "$url"
+}
+
 update() {
     local have_urfd=false have_tcd=false
     [ -f "$CFG_DIR/urfd.ini" ] && have_urfd=true
@@ -502,6 +536,7 @@ update() {
 
     if [ "$have_urfd" = true ]; then
         install_docker
+        migrate_callinghome
         build_urfd
         # the dashboard version shown in the footer lives in the kept config
         local ver

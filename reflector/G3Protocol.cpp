@@ -92,6 +92,9 @@ bool CG3Protocol::Initialize(const char */*type*/, const EProtocol /*type*/, con
 
 void CG3Protocol::Close(void)
 {
+	// the threads below run while keep_running
+	keep_running = false;
+
 	if (m_PresenceFuture.valid())
 	{
 		m_PresenceFuture.get();
@@ -106,6 +109,9 @@ void CG3Protocol::Close(void)
 	{
 		m_IcmpFuture.get();
 	}
+
+	// base class
+	CProtocol::Close();
 }
 
 

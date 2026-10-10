@@ -8,11 +8,6 @@ class xReflector {
    private $Flagarray               = null;
    private $Flagarray_DXCC          = null;
    private $Flagfile                = null;
-   private $CallingHomeActive       = null;
-   private $CallingHomeHash         = null;
-   private $CallingHomeDashboardURL = null;
-   private $CallingHomeServerURL    = null;
-   private $CallingHomeTimeout      = 5;
    private $ReflectorName           = null;
    private $ServiceUptime           = null;
    private $ProcessIDFile           = null;
@@ -20,21 +15,12 @@ class xReflector {
    private $XMLFile                 = null;
    private $ServiceName             = null;
    private $Version                 = null;
-   private $CallingHomeCountry      = null;
-   private $CallingHomeComment      = null;
-   private $CallingHomeOverrideIP   = null;
-   private $Transferinterlink       = null;
-   private $Interlinkfile           = null;
-   public $Interlinks               = null;
-   private $InterlinkXML            = null;
-   private $ReflectorXML            = null;
+   private $DashboardURL            = null;
 
    public function __construct() {
       $this->Nodes             = array();
       $this->Stations          = array();
       $this->Peers             = array();
-      $this->Interlinks        = array();
-      $this->Transferinterlink = false;
    }
 
    public function LoadXML() {
@@ -84,11 +70,17 @@ class xReflector {
          }
 
          $this->Version = $XML->GetElement($this->XMLContent, "Version");
+         $this->DashboardURL = $XML->GetElement($this->XMLContent, "DashboardURL");
       }
    }
 
    public function GetVersion() {
       return $this->Version;
+   }
+
+   // DashboardUrl from urfd.ini, as the reflector reports it
+   public function GetDashboardURL() {
+      return $this->DashboardURL;
    }
 
    public function GetXMLContent() {
@@ -342,148 +334,6 @@ class xReflector {
           }
       }
       return $out;
-   }
-
-   public function SetCallingHome($CallingHomeVariables, $Hash) {
-
-      if (!isset($CallingHomeVariables['Active']))                {    $CallingHomeVariables['Active']            = false; }
-      if (!isset($CallingHomeVariables['MyDashBoardURL']))        {    $CallingHomeVariables['MyDashBoardURL']    = '';    }
-      if (!isset($CallingHomeVariables['ServerURL']))             {    $CallingHomeVariables['ServerURL']         = '';    }
-      if (!isset($CallingHomeVariables['Country']))               {    $CallingHomeVariables['Country']           = '';    }
-      if (!isset($CallingHomeVariables['Comment']))               {    $CallingHomeVariables['Comment']           = '';    }
-      if (!isset($CallingHomeVariables['OverrideIPAddress']))     {    $CallingHomeVariables['OverrideIPAddress'] = false; }
-      if (!isset($CallingHomeVariables['InterlinkFile']))         {    $CallingHomeVariables['InterlinkFile']     = '';    }
-
-      if (!file_exists($CallingHomeVariables['InterlinkFile']))   {
-         $this->Interlinkfile      = '';
-         $this->Transferinterlink  = false;
-      }
-      else {
-         $this->Transferinterlink  = true;
-         $this->Interlinkfile      = $CallingHomeVariables['InterlinkFile'];
-      }
-
-      $this->CallingHomeActive          = ($CallingHomeVariables['Active'] === true);
-      $this->CallingHomeHash            = $Hash;
-      $this->CallingHomeDashboardURL    = $CallingHomeVariables['MyDashBoardURL'];
-      $this->CallingHomeServerURL       = $CallingHomeVariables['ServerURL'];
-      $this->CallingHomeTimeout         = isset($CallingHomeVariables['Timeout']) ? (int)$CallingHomeVariables['Timeout'] : 5;
-      $this->CallingHomeCountry         = $CallingHomeVariables['Country'];
-      $this->CallingHomeComment         = $CallingHomeVariables['Comment'];
-      $this->CallingHomeOverrideIP      = $CallingHomeVariables['OverrideIPAddress'];
-
-   }
-
-   public function PushCallingHome() {
-      // Same reasoning as CallHome(): bound the wait, never inherit default_socket_timeout.
-      $p = @stream_context_create(array('http' => array('method'        => 'GET',
-                                                        'timeout'       => $this->CallingHomeTimeout,
-                                                        'ignore_errors' => true)));
-      $CallingHome = @fopen($this->CallingHomeServerURL."?ReflectorName=".$this->ReflectorName."&ReflectorUptime=".$this->ServiceUptime."&ReflectorHash=".$this->CallingHomeHash."&DashboardURL=".$this->CallingHomeDashboardURL."&Country=".urlencode($this->CallingHomeCountry)."&Comment=".urlencode($this->CallingHomeComment)."&OverrideIP=".$this->CallingHomeOverrideIP, "r", false, $p);
-      if ($CallingHome === false) {
-         error_log("CallingHome: push failed for ".$this->CallingHomeServerURL);
-         return false;
-      }
-      @fclose($CallingHome);
-      return true;
-   }
-
-   public function ReadInterlinkFile() {
-      if (file_exists($this->Interlinkfile) && (is_readable($this->Interlinkfile))) {
-         $this->Interlinks   = array();
-         $this->InterlinkXML = "";
-         $Interlinkfilecontent = file($this->Interlinkfile);
-         for ($i=0;$i<count($Interlinkfilecontent);$i++) {
-             if (substr($Interlinkfilecontent[$i], 0, 1) != '#') {
-                $Interlink = explode(" ", $Interlinkfilecontent[$i]);
-                $this->Interlinks[] = new Interlink();
-                if (isset($Interlink[0])) { $this->Interlinks[count($this->Interlinks)-1]->SetName(trim($Interlink[0]));    }
-                if (isset($Interlink[1])) { $this->Interlinks[count($this->Interlinks)-1]->SetAddress(trim($Interlink[1])); }
-                if (isset($Interlink[2])) {
-                   $Modules = str_split(trim($Interlink[2]), 1);
-                   for ($j=0;$j<count($Modules);$j++) {
-                       $this->Interlinks[count($this->Interlinks)-1]->AddModule($Modules[$j]);
-                   }
-                }
-             }
-         }
-         return true;
-      }
-      return false;
-   }
-
-   public function PrepareInterlinkXML() {
-      $xml = '
-<interlinks>';
-      for ($i=0;$i<count($this->Interlinks);$i++) {
-          $xml .= '
-   <interlink>
-      <name>'.$this->Interlinks[$i]->GetName().'</name>
-      <address>'.$this->Interlinks[$i]->GetAddress().'</address>
-      <modules>'.$this->Interlinks[$i]->GetModules().'</modules>
-   </interlink>';
-      }
-      $xml .= '
-</interlinks>';
-      $this->InterlinkXML = $xml;
-   }
-
-   public function PrepareReflectorXML() {
-      $this->ReflectorXML = '
-<reflector>
-   <name>'.$this->ReflectorName.'</name>
-   <uptime>'.$this->ServiceUptime.'</uptime>
-   <hash>'.$this->CallingHomeHash.'</hash>
-   <url>'.$this->CallingHomeDashboardURL.'</url>
-   <country>'.$this->CallingHomeCountry.'</country>
-   <comment>'.$this->CallingHomeComment.'</comment>
-   <ip>'.$this->CallingHomeOverrideIP.'</ip>
-   <reflectorversion>'.$this->Version.'</reflectorversion>
-</reflector>';
-   }
-
-   public function CallHome() {
-      $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<query>CallingHome</query>'.$this->ReflectorXML.$this->InterlinkXML;
-      // 'timeout' is mandatory: without it PHP falls back to default_socket_timeout
-      // (60s), and an unreachable directory server blocks a php-fpm worker for the
-      // full duration on every page load.
-      $p = @stream_context_create(array('http' => array('header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-                                                       'method'  => 'POST',
-                                                       'timeout' => $this->CallingHomeTimeout,
-                                                       'ignore_errors' => true,
-                                                       'content' => http_build_query(array('xml' => $xml)) )));
-      $result = @file_get_contents($this->CallingHomeServerURL, false, $p);
-      if ($result === false) {
-         // Directory registration is optional — never abort the dashboard for it.
-         error_log("CallingHome: no response from ".$this->CallingHomeServerURL);
-         return false;
-      }
-      return true;
-   }
-
-   public function InterlinkCount() {
-      return count($this->Interlinks);
-   }
-
-   public function GetInterlink($Index) {
-      if (isset($this->Interlinks[$Index])) return $this->Interlinks[$Index];
-      return array();
-   }
-
-   public function IsInterlinked($Reflectorname) {
-      $i = -1;
-      $f = false;
-      while (!$f && $i<$this->InterlinkCount()) {
-         $i++;
-         if (isset($this->Interlinks[$i])) {
-            if ($this->Interlinks[$i]->GetName() == $Reflectorname) {
-               $f = true;
-               return $i;
-            }
-         }
-      }
-      return -1;
    }
 
 }

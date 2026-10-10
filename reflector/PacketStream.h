@@ -63,6 +63,7 @@ public:
 	// pass-through
 	std::unique_ptr<CPacket> Pop()        { return m_Queue.Pop(); }
 	std::unique_ptr<CPacket> PopWait()    { return m_Queue.PopWait(); }
+	void Shutdown()                       { m_Queue.Shutdown(); }
 	bool IsEmpty()                        { return m_Queue.IsEmpty(); }
 
 protected:
