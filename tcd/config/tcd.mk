@@ -13,6 +13,6 @@ debug = false
 #   - DMR re-encode after AGC is available (set DMRReEncode = true in tcd.ini)
 #
 # Without md380=true (default):
-#   - Minimum hardware: 2x AMBE3000 (DV3000), 1x AMBE3003 (DV3003), or DV3000+DV3003
+#   - Minimum hardware: two devices: 2x DV3000, 2x DV3003, or DV3000+DV3003
 #   - DMRReEncode is ignored (re-encode requires md380)
 md380 = false

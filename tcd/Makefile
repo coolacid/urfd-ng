@@ -17,7 +17,7 @@ endif
 # MD380 software vocoder: disabled by default, enable with: make md380=true
 # With md380=true: single DVSI device is sufficient (D-Star HW + DMR SW)
 #                  and DMR re-encode after AGC is available
-# Without md380:   minimum hardware is 2x AMBE3000, 1x AMBE3003, or DV3000+DV3003
+# Without md380:   minimum hardware is two devices: 2x DV3000, 2x DV3003, or DV3000+DV3003
 ifeq ($(md380), true)
 CFLAGS += -DWITH_MD380_VOCODER
 MD380_LDLIB = -lmd380_vocoder

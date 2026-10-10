@@ -474,8 +474,8 @@ bool CController::InitVocoders()
 	{
 #ifndef WITH_MD380_VOCODER
 		std::cerr << "ERROR: A single DVSI device requires the md380_vocoder library for software DMR encoding." << std::endl;
-		std::cerr << "       Without md380_vocoder, minimum hardware is: 2x AMBE3000 (DV3000)," << std::endl;
-		std::cerr << "       1x AMBE3003 (DV3003), or one DV3000 + one DV3003 (mixed mode)." << std::endl;
+		std::cerr << "       Without md380_vocoder, two devices are needed: 2x DV3000, 2x DV3003," << std::endl;
+		std::cerr << "       or one DV3000 + one DV3003 (mixed mode). Rebuild with tcd/build.sh --with-md380." << std::endl;
 		return true;
 #else
 		std::cout << "Using one DVSI device and md380_vocoder" << std::endl;
