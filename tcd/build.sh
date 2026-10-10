@@ -141,12 +141,22 @@ fi
 # ---------------------------------------------------------------
 cd "$TCD_DIR"
 
+# compile as the owner of the checkout, so no root owned files are left in it
+OWNER=$(stat -c %U "$TCD_DIR")
+as_owner() {
+    if [ "$OWNER" != "root" ] && command -v sudo >/dev/null; then
+        sudo -u "$OWNER" "$@"
+    else
+        "$@"
+    fi
+}
+
 echo "Compiling tcd..."
-make clean
+as_owner make clean
 if [ "$WITH_MD380" = "true" ]; then
-    make -j$(nproc) md380=true
+    as_owner make -j"$(nproc)" md380=true
 else
-    make -j$(nproc)
+    as_owner make -j"$(nproc)"
 fi
 
 # ---------------------------------------------------------------
