@@ -78,11 +78,15 @@ void CM17Protocol::Task(void)
 			// callsign muted?
 			else if ( g_GateKeeper.MayTransmit(Header->GetMyCallsign(), Ip, EProtocol::m17, Header->GetRpt2Module()) )
 			{
+				// GNSS position, checked once a second (25 frames); look before
+				// OnDvHeaderPacketIn, an opened stream takes over the header
+				const bool gnss = (EM17Meta::gnss == Header->GetM17Meta()) && (0 == (0x7FFFU & Frame->M17FrameNumber()) % 25);
+				const CCallsign my(Header->GetMyCallsign());
+
 				OnDvHeaderPacketIn(Header, Ip);
 
-				// GNSS position, checked once a second (25 frames)
-				if ( (EM17Meta::gnss == Header->GetM17Meta()) && (0 == (0x7FFFU & Frame->M17FrameNumber()) % 25) )
-					OnGnssIn(*Header, Frame->GetNonce());
+				if ( gnss )
+					OnGnssIn(my, Frame->GetNonce());
 
 				// xrf needs a voice frame every 20 ms and an M17 frame is 40 ms, so we need a duplicate
 				auto secondFrame = std::unique_ptr<CDvFramePacket>(new CDvFramePacket(*Frame.get()));
@@ -310,14 +314,14 @@ bool CM17Protocol::IsListenOnlyClient(const CIp &Ip)
 ////////////////////////////////////////////////////////////////////////////////////////
 // position helpers
 
-void CM17Protocol::OnGnssIn(const CDvHeaderPacket &Header, const uint8_t *meta)
+void CM17Protocol::OnGnssIn(const CCallsign &my, const uint8_t *meta)
 {
 	double lat, lon;
 	const auto loc = CM17Packet::GnssLocator(meta, lat, lon);
 	if ( loc.empty() )
 		return;
 
-	g_Reflector.GetUsers()->Location(Header.GetMyCallsign(), loc, lat, lon);
+	g_Reflector.GetUsers()->Location(my, loc, lat, lon);
 	g_Reflector.ReleaseUsers();
 }
 

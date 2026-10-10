@@ -63,7 +63,7 @@ protected:
 	bool IsListenOnlyClient(const CIp &);
 
 	// position helpers
-	void OnGnssIn(const CDvHeaderPacket &, const uint8_t *);
+	void OnGnssIn(const CCallsign &, const uint8_t *);
 
 	// echo helpers
 	void MapEchoDestination(CDvHeaderPacket &) const;
