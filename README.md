@@ -405,6 +405,7 @@ M17 listen-only clients (LSTN packets) are accepted and registered on the reques
 - **TYPE field**: Voice frames are recognised in both the legacy and the V#3 TYPE layout of the M17 specification; encrypted streams are dropped in both.
 - **Packet mode**: `M17P` packets (e.g. SMS) are checked against both CRCs and forwarded unchanged to the other M17 clients on the sender's module.
 - **Relinking**: A `CONN`/`LSTN` replaces any earlier link of the same callsign and IP, so switching modules does not leave a stale entry behind.
+- **META**: The META bytes reach other M17 clients with a TYPE that says what they carry (text, GNSS or ECD) and the source's CAN, so a GNSS position is no longer shown as text. A GNSS position is decoded into a Maidenhead locator, shown in the last-heard list (linked to OpenStreetMap) and in `/json/stations`.
 
 ### Protocol Enable Flags
 All protocols can now be individually enabled/disabled. Default is `true` (backwards-compatible).
@@ -510,7 +511,7 @@ Read-only HTTP endpoints under `/json/`, served by the dashboard:
 | `/json/reflector` | Full reflector record including modules and metadata |
 | `/json/links` | Connected nodes with callsign, IP, module, protocol, connect and last-heard time |
 | `/json/peers` | Linked peer reflectors |
-| `/json/stations` | Last-heard stations with country lookup |
+| `/json/stations` | Last-heard stations with country lookup; `locator`, `latitude` and `longitude` when the station sent an M17 GNSS position |
 | `/json/modulesinuse` | Modules with the callsigns currently on them |
 
 Collection endpoints return `[]` when empty (`/json/stations` returns
@@ -770,6 +771,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 ### Dashboard & Output
 - **Protocol naming**: Consistent UI names — `MMDVM` = direct hotspot connections, `MMDVMClient` = BrandMeister/master server connection (previously both showed as "MMDVM" in different contexts)
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
+- **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
 - **Extended XML/JSON**: Module mappings (static + dynamic with TTL), reflector metadata, protocol list, per-user protocol info, dynamic TG array
 - **Protocol blocking display**: Active blocks shown as clickable labels in admin panel
@@ -777,7 +779,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 ### Infrastructure
 - **Echo module**: Built-in parrot with enable/disable flag
 - **M17 LSTN support**: Listen-only M17 clients for monitoring services, which may not transmit
-- **M17 compatibility**: V#3 TYPE field, packet mode (SMS) forwarding, `PARROT`/`ECHO` destination to the echo module, relinking replaces the old link
+- **M17 compatibility**: V#3 TYPE field, packet mode (SMS) forwarding, `PARROT`/`ECHO` destination to the echo module, relinking replaces the old link, META type and CAN kept, GNSS position as locator
 - **Transcoder resilience**: TCP keepalive, non-blocking poll, queue drain on disconnect, automatic reconnect after network outages
 - **Database HTTP retry**: Retry with backoff on failed initial load (prevents empty databases after transient errors)
 - **Database fallback sources**: `URL` accepts a comma separated list, tried in order; field separator (`;`, `,`, tab) is detected per line so the common publishers work unchanged; every successful download is mirrored to `<FilePath>.cache` and loaded when no source answers

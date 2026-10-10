@@ -80,6 +80,10 @@ void CM17Protocol::Task(void)
 			{
 				OnDvHeaderPacketIn(Header, Ip);
 
+				// GNSS position, checked once a second (25 frames)
+				if ( (EM17Meta::gnss == Header->GetM17Meta()) && (0 == (0x7FFFU & Frame->M17FrameNumber()) % 25) )
+					OnGnssIn(*Header, Frame->GetNonce());
+
 				// xrf needs a voice frame every 20 ms and an M17 frame is 40 ms, so we need a duplicate
 				auto secondFrame = std::unique_ptr<CDvFramePacket>(new CDvFramePacket(*Frame.get()));
 
@@ -301,6 +305,20 @@ bool CM17Protocol::IsListenOnlyClient(const CIp &Ip)
 	const bool listenOnly = client && std::static_pointer_cast<CM17Client>(client)->IsListenOnly();
 	g_Reflector.ReleaseClients();
 	return listenOnly;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+// position helpers
+
+void CM17Protocol::OnGnssIn(const CDvHeaderPacket &Header, const uint8_t *meta)
+{
+	double lat, lon;
+	const auto loc = CM17Packet::GnssLocator(meta, lat, lon);
+	if ( loc.empty() )
+		return;
+
+	g_Reflector.GetUsers()->Location(Header.GetMyCallsign(), loc, lat, lon);
+	g_Reflector.ReleaseUsers();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -529,8 +547,22 @@ void CM17Protocol::EncodeM17Packet(SM17Frame &frame, const CDvHeaderPacket &Head
 	// first, the src callsign (the lich.dest will be set in HandleQueue)
 	CCallsign from = Header.GetMyCallsign();
 	from.CodeOut(frame.lich.addr_src);
-	// then the frame type, if the incoming frame is M17 1600, then it will be Voice+Data only, otherwise Voice-Only
-	frame.lich.frametype = htons((ECodecType::c2_1600==codec_in) ? 0x7U : 0x5U);
+	// then the frame type, if the incoming frame is M17 1600, then it will be Voice+Data only, otherwise Voice-Only,
+	// with the META subtype and CAN of an M17 source, so GNSS is not taken for text
+	uint16_t frametype = (ECodecType::c2_1600==codec_in) ? 0x7U : 0x5U;
+	switch (Header.GetM17Meta())
+	{
+		case EM17Meta::gnss:
+			frametype |= 0x1U << 5;
+			break;
+		case EM17Meta::ecd:
+			frametype |= 0x2U << 5;
+			break;
+		default:
+			break;
+	}
+	frametype |= (0xFU & Header.GetM17Can()) << 7;
+	frame.lich.frametype = htons(frametype);
 	memcpy(frame.lich.nonce, DvFrame->GetNonce(), 14);
 
 	// now the main part of the packet

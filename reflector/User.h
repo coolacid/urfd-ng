@@ -41,9 +41,13 @@ public:
 	const std::string GetViaPeer(void)  const { return m_Xlx.GetCS(); }
 	std::time_t GetLastHeardTime(void)  const { return m_LastHeardTime; }
 	const std::string &GetProtocol(void) const { return m_Protocol; }
+	const std::string &GetLocator(void) const  { return m_Locator; }
+	bool IsCallsign(const CCallsign &cs) const { return m_My.GetBase() == cs.GetBase(); }
 
 	// operation
 	void HeardNow(void)     { m_LastHeardTime = time(nullptr); }
+	void SetLocation(const CUser &user) { m_Locator = user.m_Locator; m_Latitude = user.m_Latitude; m_Longitude = user.m_Longitude; }
+	void SetLocation(const std::string &loc, double lat, double lon) { m_Locator = loc; m_Latitude = lat; m_Longitude = lon; }
 
 	// operators
 	bool operator ==(const CUser &) const;
@@ -61,4 +65,8 @@ protected:
 	CCallsign   m_Xlx;
 	time_t      m_LastHeardTime;
 	std::string m_Protocol;
+	// from M17 GNSS META, empty if unknown
+	std::string m_Locator;
+	double      m_Latitude = 0.0;
+	double      m_Longitude = 0.0;
 };

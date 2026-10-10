@@ -10,8 +10,11 @@ class Station {
    private $Peer;
    private $OnModule;
    private $Protocol;
+   private $Locator;
+   private $Latitude;
+   private $Longitude;
 
-   public function __construct($Callsign, $Via, $Peer, $LastHeardTime, $OnModule, $Protocol = '') {
+   public function __construct($Callsign, $Via, $Peer, $LastHeardTime, $OnModule, $Protocol = '', $Locator = '', $Latitude = '', $Longitude = '') {
       $this->Callsign      = trim($Callsign);
       $this->Via           = trim($Via);
       $this->Peer          = trim($Peer);
@@ -27,6 +30,10 @@ class Station {
       $this->CallsignOnly = $tmp[0];
       $this->OnModule     = $OnModule;
       $this->Protocol     = trim($Protocol);
+      // position reported by M17 GNSS META, empty if none
+      $this->Locator      = trim($Locator);
+      $this->Latitude     = trim($Latitude);
+      $this->Longitude    = trim($Longitude);
    }
  
    public function GetCallsign()             { return $this->Callsign;       }
@@ -37,6 +44,9 @@ class Station {
    public function GetCallsignOnly()         { return $this->CallsignOnly;   }
    public function GetModule()               { return $this->OnModule;       }
    public function GetProtocol()             { return $this->Protocol;       }
+   public function GetLocator()              { return $this->Locator;        }
+   public function GetLatitude()             { return $this->Latitude;       }
+   public function GetLongitude()            { return $this->Longitude;      }
    
 }
 

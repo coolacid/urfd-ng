@@ -72,7 +72,7 @@ class xReflector {
          $AllStationsString = $XML->GetElement($this->XMLContent, $LinkedUsersName);
          $tmpStations       = $XML->GetAllElements($AllStationsString, "STATION");
          for ($i=0;$i<count($tmpStations);$i++) {
-             $Station = new Station($XML->GetElement($tmpStations[$i], 'Callsign'), $XML->GetElement($tmpStations[$i], 'Via node'), $XML->GetElement($tmpStations[$i], 'Via peer'), $XML->GetElement($tmpStations[$i], 'LastHeardTime'), $XML->GetElement($tmpStations[$i], 'On module'), $XML->GetElement($tmpStations[$i], 'Protocol'));
+             $Station = new Station($XML->GetElement($tmpStations[$i], 'Callsign'), $XML->GetElement($tmpStations[$i], 'Via node'), $XML->GetElement($tmpStations[$i], 'Via peer'), $XML->GetElement($tmpStations[$i], 'LastHeardTime'), $XML->GetElement($tmpStations[$i], 'On module'), $XML->GetElement($tmpStations[$i], 'Protocol'), $XML->GetElement($tmpStations[$i], 'Locator'), $XML->GetElement($tmpStations[$i], 'Latitude'), $XML->GetElement($tmpStations[$i], 'Longitude'));
              $this->AddStation($Station, false);
          }
 

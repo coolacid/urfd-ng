@@ -202,7 +202,7 @@ CPacket::CPacket(const CM17Packet &m17) : CPacket()
 	m_uiYsfPacketSubId = 0xffu;
 	m_uiYsfPacketFrameId = 0xffu;
 	m_uiNXDNPacketId = 0xffu;
-	m_eCodecIn = (0x6u == (0x6u & m17.GetFrameType())) ? ECodecType::c2_1600 : ECodecType::c2_3200;
+	m_eCodecIn = (ECodecType::c2_1600 == m17.GetCodecType()) ? ECodecType::c2_1600 : ECodecType::c2_3200;
 	m_uiM17FrameNumber = 0xffffu & m17.GetFrameNumber();
 	m_bLastPacket = m17.IsLastPacket();
 }

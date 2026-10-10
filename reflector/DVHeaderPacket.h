@@ -20,6 +20,7 @@
 
 #include "Callsign.h"
 #include "Packet.h"
+#include "M17Packet.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // implementation details
@@ -94,6 +95,10 @@ public:
 	void SetRpt2Callsign(const CCallsign &cs)       { m_csRPT2 = cs; }
 	void SetRpt2Module(char c)                      { m_csRPT2.SetCSModule(c); }
 
+	// M17 source only, not carried over interlinks
+	EM17Meta GetM17Meta(void) const                 { return m_M17Meta; }
+	uint8_t GetM17Can(void) const                   { return m_uiM17Can; }
+
 protected:
 	// data
 	uint8_t     m_uiFlag1;
@@ -104,4 +109,6 @@ protected:
 	CCallsign   m_csRPT2;
 	CCallsign   m_csMY;
 	uint16_t    m_uiCrc;
+	EM17Meta    m_M17Meta = EM17Meta::none;
+	uint8_t     m_uiM17Can = 0;
 };

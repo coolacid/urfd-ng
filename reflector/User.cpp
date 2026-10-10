@@ -18,6 +18,8 @@
 
 #include <ctime>
 #include <string.h>
+#include <sstream>
+#include <iomanip>
 #include "User.h"
 
 CUser::CUser()
@@ -43,6 +45,7 @@ CUser::CUser(const CUser &user)
 	m_Xlx = user.m_Xlx;
 	m_Protocol = user.m_Protocol;
 	m_LastHeardTime = user.m_LastHeardTime;
+	SetLocation(user);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -72,6 +75,15 @@ void CUser::WriteXml(std::ofstream &xmlFile)
 	xmlFile << "\t<Via peer>" << m_Xlx << "</Via peer>" << std::endl;
 	if (!m_Protocol.empty())
 		xmlFile << "\t<Protocol>" << m_Protocol << "</Protocol>" << std::endl;
+	if (!m_Locator.empty())
+	{
+		xmlFile << "\t<Locator>" << m_Locator << "</Locator>" << std::endl;
+		std::ostringstream pos;
+		pos << std::fixed << std::setprecision(5);
+		pos << "\t<Latitude>" << m_Latitude << "</Latitude>" << std::endl;
+		pos << "\t<Longitude>" << m_Longitude << "</Longitude>" << std::endl;
+		xmlFile << pos.str();
+	}
 
 	char mbstr[100];
 	if (std::strftime(mbstr, sizeof(mbstr), "%FT%TZ", std::gmtime(&m_LastHeardTime)))
@@ -88,6 +100,12 @@ void CUser::JsonReport(nlohmann::json &report)
 	juser["Repeater"] = m_Rpt1.GetCS();
 	juser["OnModule"] = std::string(1, m_Rpt2.GetCSModule());
 	juser["ViaPeer"] = m_Xlx.GetCS();
+	if (!m_Locator.empty())
+	{
+		juser["Locator"] = m_Locator;
+		juser["Latitude"] = m_Latitude;
+		juser["Longitude"] = m_Longitude;
+	}
 	char s[100];
 	if (std::strftime(s, sizeof(s), "%FT%TZ", std::gmtime(&m_LastHeardTime)))
 	{

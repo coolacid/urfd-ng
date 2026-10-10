@@ -25,6 +25,13 @@ for ($i=0;$i<$Reflector->StationCount();$i++) {
         'lastheard'      => gmdate('Y-m-d\TH:i:sp', $Reflector->Stations[$i]->GetLastHeardTime())
     );
 
+    // position reported by M17 GNSS, only present when known
+    if ($Reflector->Stations[$i]->GetLocator() != '') {
+        $payload['stations'][$i]['locator']   = $Reflector->Stations[$i]->GetLocator();
+        $payload['stations'][$i]['latitude']  = (float)$Reflector->Stations[$i]->GetLatitude();
+        $payload['stations'][$i]['longitude'] = (float)$Reflector->Stations[$i]->GetLongitude();
+    }
+
     list ($CountryCode, $Country) = $Reflector->GetFlag($Reflector->Stations[$i]->GetCallSign());
 
     $payload['stations'][$i]['country'] = array (

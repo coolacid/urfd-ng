@@ -134,7 +134,17 @@ for ($i=0;$i<$Reflector->StationCount();$i++) {
         echo '</td>
    <td><a href="https://www.qrz.com/db/' . $Reflector->Stations[$i]->GetCallsignOnly() . '" class="pl" target="_blank">' . $Reflector->Stations[$i]->GetCallsignOnly() . '</a></td>
    <td class="mobile-hide">' . $Reflector->Stations[$i]->GetSuffix() . '</td>
-   <td class="mobile-hide"><a href="http://www.aprs.fi/' . $Reflector->Stations[$i]->GetCallsignOnly() . '" class="pl" target="_blank">&#x1F6F0;&#xFE0F;</a></td>
+   <td class="mobile-hide">';
+        $Locator = $Reflector->Stations[$i]->GetLocator();
+        if ($Locator != '') {
+            // position sent along with the transmission (M17 GNSS)
+            $Lat = (float)$Reflector->Stations[$i]->GetLatitude();
+            $Lon = (float)$Reflector->Stations[$i]->GetLongitude();
+            echo '<a href="https://www.openstreetmap.org/?mlat=' . $Lat . '&amp;mlon=' . $Lon . '#map=12/' . $Lat . '/' . $Lon . '" class="pl" target="_blank" title="Position from the transmission">' . htmlspecialchars($Locator) . '</a>';
+        } else {
+            echo '<a href="http://www.aprs.fi/' . $Reflector->Stations[$i]->GetCallsignOnly() . '" class="pl" target="_blank">&#x1F6F0;&#xFE0F;</a>';
+        }
+        echo '</td>
    <td style="white-space:nowrap;">' . $Reflector->Stations[$i]->GetVia();
         $peerName = trim($Reflector->Stations[$i]->GetPeer());
         $reflName = trim($Reflector->GetReflectorName());

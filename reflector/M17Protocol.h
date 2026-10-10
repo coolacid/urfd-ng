@@ -62,6 +62,9 @@ protected:
 	// client helpers
 	bool IsListenOnlyClient(const CIp &);
 
+	// position helpers
+	void OnGnssIn(const CDvHeaderPacket &, const uint8_t *);
+
 	// echo helpers
 	void MapEchoDestination(CDvHeaderPacket &) const;
 	bool IsEchoPlaybackFor(const CClient &, char) const;

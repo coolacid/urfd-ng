@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <string.h>
 #include <memory>
+#include <string>
 
 #include "Callsign.h"
 #include "TCPacketDef.h"
@@ -54,6 +55,9 @@ using SLinkPacket = struct __attribute__((__packed__)) link_tag {
 	uint8_t mod;
 }; // 37 bytes
 
+// what the 14 META bytes of the LSF carry
+enum class EM17Meta : uint8_t { none, text, gnss, ecd };
+
 class CM17Packet
 {
 public:
@@ -66,6 +70,11 @@ public:
 	uint16_t GetFrameType() const;
 	ECodecType GetCodecType() const;
 	bool IsEncrypted() const;
+	EM17Meta GetMetaType() const;
+	uint8_t GetCan() const;
+
+	// GNSS META to a 6 character Maidenhead locator, empty if there is no valid position
+	static std::string GnssLocator(const uint8_t *meta, double &lat, double &lon);
 	const uint8_t *GetPayload() const;
 	const uint8_t *GetNonce() const;
 	void SetPayload(const uint8_t *newpayload);

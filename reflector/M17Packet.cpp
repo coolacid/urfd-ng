@@ -80,6 +80,65 @@ bool CM17Packet::IsEncrypted() const
 	return (0xF000U & t) ? (0 != (0x7U & (t >> 9))) : (0 != (0x3U & (t >> 3)));
 }
 
+//   legacy: bits 5-6 META subtype (0 text, 1 GNSS, 2 ECD) if unencrypted, bits 7-10 CAN
+//   V#3:    bits 4-7 META type (0 none, 1 GNSS, 2 ECD, 3 text), bits 0-3 CAN
+
+EM17Meta CM17Packet::GetMetaType() const
+{
+	const uint16_t t = GetFrameType();
+	if (0xF000U & t)
+	{
+		switch (0xFU & (t >> 4))
+		{
+			case 1U: return EM17Meta::gnss;
+			case 2U: return EM17Meta::ecd;
+			case 3U: return EM17Meta::text;
+			default: return EM17Meta::none;
+		}
+	}
+	if (IsEncrypted())
+		return EM17Meta::none;
+	switch (0x3U & (t >> 5))
+	{
+		case 0U: return EM17Meta::text;
+		case 1U: return EM17Meta::gnss;
+		case 2U: return EM17Meta::ecd;
+		default: return EM17Meta::none;
+	}
+}
+
+uint8_t CM17Packet::GetCan() const
+{
+	const uint16_t t = GetFrameType();
+	return (0xF000U & t) ? (0xFU & t) : (0xFU & (t >> 7));
+}
+
+// same GNSS layout as mrefd: byte 0 source/station, byte 1 bit 7 position valid,
+// bytes 3-5 and 6-8 latitude and longitude as signed 24 bit fractions of 90 and 180 degrees
+std::string CM17Packet::GnssLocator(const uint8_t *meta, double &lat, double &lon)
+{
+	if (0 == (0x80U & meta[1]))
+		return std::string();
+
+	const int32_t nlat = int32_t(uint32_t(meta[3]) << 24 | uint32_t(meta[4]) << 16 | uint32_t(meta[5]) << 8) >> 8;
+	const int32_t nlon = int32_t(uint32_t(meta[6]) << 24 | uint32_t(meta[7]) << 16 | uint32_t(meta[8]) << 8) >> 8;
+	lat =  90.0 * nlat / 8388607.0;
+	lon = 180.0 * nlon / 8388607.0;
+	if ((lat < -90.0) || (lat >= 90.0) || (lon < -180.0) || (lon >= 180.0))
+		return std::string();
+
+	const double la = lat + 90.0;
+	const double lo = lon + 180.0;
+	std::string loc(6, ' ');
+	loc[0] = 'A' + int(lo) / 20;
+	loc[1] = 'A' + int(la) / 10;
+	loc[2] = '0' + (int(lo) % 20) / 2;
+	loc[3] = '0' + int(la) % 10;
+	loc[4] = 'a' + int(lo * 12.0) % 24;
+	loc[5] = 'a' + int(la * 24.0) % 24;
+	return loc;
+}
+
 const uint8_t *CM17Packet::GetPayload() const
 {
 	return m17.payload;

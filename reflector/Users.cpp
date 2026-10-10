@@ -53,6 +53,16 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 {
 	CUser heard(my, rpt1, rpt2, xlx, proto);
 
+	// a known position stays with the callsign until it reports a new one
+	for ( auto &user : m_Users )
+	{
+		if ( user.IsCallsign(my) )
+		{
+			heard.SetLocation(user);
+			break;
+		}
+	}
+
 	// first check if this user is already listed. If so, erase him.
 	for ( auto it=begin(); it!=end(); it++ )
 	{
@@ -64,4 +74,17 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 	}
 
 	AddUser(heard);
+}
+
+void CUsers::Location(const CCallsign &my, const std::string &loc, double lat, double lon)
+{
+	// the most recent entry of this callsign
+	for ( auto &user : m_Users )
+	{
+		if ( user.IsCallsign(my) )
+		{
+			user.SetLocation(loc, lat, lon);
+			break;
+		}
+	}
 }
