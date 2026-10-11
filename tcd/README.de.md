@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.2.11** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.12** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -309,7 +309,7 @@ journalctl -u tcd -f
 ### Zuverlässigkeit
 - **Monitor standardmäßig nur lokal**: `MonitorBindAddress` (Standard `127.0.0.1`) für Web-Dashboard und Statistik-Socket, die kein Passwort haben
 - **MD380 optional**: Ohne ihn sind zwei AMBE-Geräte nötig, und Neukodieren gibt es nicht; seit 0.2.5 deckt `ambe` DMR → DMR/YSF auch ohne ihn ab
-- **Leistung**: blockierendes Lesen mit Timeout statt Dauerabfrage, etwa 5 % CPU auf einem Raspberry Pi
+- **Leistung**: blockierendes Lesen mit Timeout statt Dauerabfrage; seit 0.2.12 mit `-O2` gebaut, ein transkodierter Stream (Codec2, IMBE und AGC in Software) braucht etwa 7 % eines Kerns auf einem Raspberry Pi 4 und 3 % auf einem Pi 5, ein Pi 4 reicht für zwei Module ohne MD380 also locker
 - **Threadsicherheit**: Sperre um den IMBE-Vocoder, SIGPIPE ignoriert für saubere Neuverbindungen
 - **Fehlerbehandlung**: Wiederholung zum Reflektor mit wachsender Pause, Verwerfen bei Überlauf der Warteschlange, Erholung bei Timeouts beim Lesen
 - **Wachsende Pause beim Neuverbinden**: 0,5 s bis 5 s, solange der Reflektor nicht erreichbar ist

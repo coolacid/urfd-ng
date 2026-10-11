@@ -11,7 +11,7 @@ URFD_FILES = IP.cpp IP.h TCPacketDef.h TCSocket.cpp TCSocket.h Timer.h Golay2412
 ifeq ($(debug), true)
 CFLAGS = -ggdb3 -W -Werror -Icodec2 -MMD -MD -std=c++17
 else
-CFLAGS = -W -Werror -Icodec2 -MMD -MD -std=c++17
+CFLAGS = -O2 -W -Werror -Icodec2 -MMD -MD -std=c++17
 endif
 
 # MD380 software vocoder: disabled by default, enable with: make md380=true
