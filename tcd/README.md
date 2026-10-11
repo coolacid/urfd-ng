@@ -70,11 +70,11 @@ Each transcoded module needs a D-Star channel and a DMR/YSF channel. A DV3000 (T
 | Hardware | Build | Modules | Notes |
 |---|---|---|---|
 | 1× DV3000 or 1× DV3003 | MD380 required | 1 | D-Star on the device, DMR/YSF in software |
-| DV3000 + DV3003 | with or without MD380 | 2 | mixed mode, recommended |
-| 2× DV3000 | with or without MD380 | 1 | one for D-Star, one for DMR/YSF |
-| 2× DV3003 | with or without MD380 | up to 3 | one for D-Star, one for DMR/YSF |
+| DV3000 + DV3003 | without MD380 | 2 | mixed mode, recommended |
+| 2× DV3000 | without MD380 | 1 | one for D-Star, one for DMR/YSF |
+| 2× DV3003 | without MD380 | up to 3 | one for D-Star, one for DMR/YSF |
 
-A single device always needs the MD380 build; tcd refuses to start without it. With two devices, MD380 adds the DMR re-encode (see [`DmrGainMode`](#dmrysf--dmrysf-level-dmrgainmode)). tcd detects the devices and picks the mode itself.
+A single device always needs the MD380 build; tcd refuses to start without it. With two devices, the MD380 is not needed: since 0.2.5 `DmrGainMode = ambe` gives DMR → DMR/YSF the same AGC without re-encoding (see [`DmrGainMode`](#dmrysf--dmrysf-level-dmrgainmode)). Without the MD380, tcd builds and runs on any platform (x86_64, arm64, armhf) with no ARM code to emulate; the MD380 build only adds `reencode` as an alternative. tcd detects the devices and picks the mode itself.
 
 ### Mixed mode: DV3000 + DV3003
 
@@ -157,8 +157,8 @@ DMR to DMR/YSF audio normally passes through as AMBE2+ without being decoded, so
 | Mode | Needs | What it does |
 |---|---|---|
 | `off` | — | no adjustment |
-| `ambe` | — | applies the AGC's gain plus `AmbeGainDb` (-30 to +10 dB) and `OutputGainDMR` through the b2 (delta-gamma) gain parameter in the AMBE2+ frame. No re-encode, no quality loss, also repairs Golay FEC errors. Since 0.2.5 it works in the gamma domain and is level independent (see below). Experimental. |
-| `reencode` | MD380 | full decode and re-encode through the MD380, with AGC and `DmrReencodeGain`. Falls back to `ambe` without MD380. |
+| `ambe` | — | applies the AGC's gain plus `AmbeGainDb` (-30 to +10 dB) and `OutputGainDMR` through the b2 (delta-gamma) gain parameter in the AMBE2+ frame. No re-encode, no quality loss, also repairs Golay FEC errors. Since 0.2.5 it works in the gamma domain and is level independent (see below). The default. |
+| `reencode` | MD380 | full decode and re-encode through the MD380, with AGC and `DmrReencodeGain`; an alternative to `ambe`, same level with the same value. Falls back to `ambe` without MD380. |
 
 | Key | Template | Code default |
 |---|---|---|
@@ -290,7 +290,7 @@ journalctl -u tcd -f
 
 ### Audio
 - **Output gains per codec**: after the AGC, for D-Star, M17/Codec2, DMR/YSF, P25/NXDN and USRP, applied on copies (the shared buffer is never changed)
-- **AMBE2+ bitstream gain** (experimental): `AmbeGainDb` adjusts the b2 parameter in the AMBE2+ frame, with Golay(24,12) FEC recomputed for the A partition and the B partition unscrambled and scrambled again with the new A data (0.2.3; before, the decoder lost the B partition); since 0.2.5 driven by the AGC and computed in the gamma domain, so the gain no longer depends on the level, also with a single device and the MD380
+- **AMBE2+ bitstream gain**: `AmbeGainDb` adjusts the b2 parameter in the AMBE2+ frame, with Golay(24,12) FEC recomputed for the A partition and the B partition unscrambled and scrambled again with the new A data (0.2.3; before, the decoder lost the B partition); since 0.2.5 driven by the AGC and computed in the gamma domain, so the gain no longer depends on the level, also with a single device and the MD380
 - **AGC v3**: sliding RMS window, per-speaker tracking, gate with decay, fast release after the gate, asymmetric limits, noise gate, peak limiter that cuts the applied gain at once (0.2.3; before, loud onsets after quiet speech clipped), live changes from the dashboard; thread safe since 0.2.3, as every codec's decode thread uses it. Since 0.2.4 the gate holds 60 ms and fades out instead of switching (word endings are no longer chopped), noise just above it no longer pumps the gain up, and the gain ramps across each frame instead of stepping every 20 ms
 - **DMR re-encode** (`md380=true`): `DmrGainMode = reencode` with AGC and `DmrReencodeGain` on DMR → DMR/YSF
 - **MD380 stream isolation**: encoder state saved per stream, MD380 calls serialized; since 0.2.7 a new stream starts from the state right after `md380_init()` instead of the previous stream's
@@ -304,7 +304,7 @@ journalctl -u tcd -f
 
 ### Reliability
 - **Monitor on loopback by default**: `MonitorBindAddress` (default `127.0.0.1`) for the web dashboard and stats socket, which have no password
-- **Optional MD380**: without it, two AMBE devices are needed and re-encode is unavailable
+- **Optional MD380**: without it, two AMBE devices are needed and re-encode is unavailable; since 0.2.5 `ambe` covers DMR → DMR/YSF without it
 - **Performance**: blocking reads with a timeout instead of busy polling, about 5 % CPU on a Raspberry Pi
 - **Thread safety**: lock around the IMBE vocoder, SIGPIPE ignored for clean reconnects
 - **Error handling**: retries towards the reflector with backoff, dropping on queue overflow, timeout recovery while reading
