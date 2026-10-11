@@ -329,6 +329,11 @@ bool CConfigure::ReadData(const std::string &path)
 						do pos++; while (pos < value.size() && 0x80 == (0xC0 & (unsigned char)value[pos]));
 					data[g_Keys.callinghome.comment] = value.substr(0, pos);
 				}
+				else if (0 == key.compare("Hash"))
+				{
+					if (!value.empty())	// blank = use the hash file
+						data[g_Keys.callinghome.hash] = value;
+				}
 				else if (0 == key.compare("HashFile"))
 					data[g_Keys.callinghome.hashfile] = value;
 				else if (0 == key.compare("OverrideIP"))
@@ -1160,6 +1165,16 @@ bool CConfigure::ReadData(const std::string &path)
 	{
 		isDefined(ErrorLevel::mild, JCALLINGHOME, "Country", g_Keys.callinghome.country, rval);
 		isDefined(ErrorLevel::mild, JCALLINGHOME, "Comment", g_Keys.callinghome.comment, rval);
+		// the dashboard's CreateCode(16) makes 16, older files may differ: just letters and digits
+		if (data.contains(g_Keys.callinghome.hash))
+		{
+			const auto hash = data[g_Keys.callinghome.hash].get<std::string>();
+			if (hash.size() > 64 || std::string::npos != hash.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"))
+			{
+				std::cerr << "ERROR: [" << JCALLINGHOME << "] Hash must be letters and digits only, at most 64" << std::endl;
+				rval = true;
+			}
+		}
 	}
 
 	// Echo

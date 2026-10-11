@@ -3,7 +3,7 @@
 // CallingHome -- registers the reflector in the XLX directory
 //
 // Sends what the dashboard sent before, so the directory sees the same reflector:
-// the same hash (from the dashboard's hash file), name, uptime, URL, country,
+// the same hash (Hash in urfd.ini, else the dashboard's hash file), name, uptime, URL, country,
 // comment, version and interlinks. Does nothing unless [CallingHome] Enable = true.
 //
 // Copyright (C) 2026 Jens-Christian Merg (DL4JC)

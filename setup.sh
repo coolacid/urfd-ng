@@ -364,6 +364,7 @@ write_urfd_config() {
         set_ini "$ini" CallingHome Enable true
         set_ini "$ini" CallingHome Country "$CH_COUNTRY"
         set_ini "$ini" CallingHome Comment "${CH_COMMENT:0:100}"
+        callinghome_hash_to_ini
     fi
     chown 33:33 "$php"   # www-data in the container
     secure_files
@@ -539,6 +540,48 @@ PY
     [ -n "$url" ] && set_ini "$ini" Names DashboardUrl "$url"
 }
 
+# The directory hash belongs in urfd.ini ([CallingHome] Hash), not in a file
+# beside it. Take it from the hash file the reflector or dashboard used, so the
+# directory entry stays the same, or make one the way the dashboard did. The
+# file itself stays, in case Hash is ever removed again.
+callinghome_hash_to_ini() {
+    local ini="$CFG_DIR/urfd.ini" hash
+    [ -f "$ini" ] || return 0
+    python3 - "$ini" "$DATA_DIR/xlxd-ch" >"$DATA_DIR/.chhash" <<'PY' || { rm -f "$DATA_DIR/.chhash"; warn "Could not read the CallingHome hash file, [CallingHome] stays as it is"; return 0; }
+import re, secrets, string, sys
+ini, data = sys.argv[1:3]
+section, keys = None, {}
+for line in open(ini):
+    line = line.split('#', 1)[0].strip()
+    m = re.match(r'^\[(.+)\]$', line)
+    if m:
+        section = m.group(1)
+    elif section == 'CallingHome' and '=' in line:
+        k, v = (x.strip() for x in line.split('=', 1))
+        keys[k] = v
+if keys.get('Enable', '').lower()[:1] not in ('t', 'y', '1') or keys.get('Hash'):
+    sys.exit(0)
+# HashFile is the path inside the container, /var/lib/xlxd-ch is $DATA_DIR/xlxd-ch here
+path = keys.get('HashFile') or '/var/lib/xlxd-ch/callinghome.php'
+if path.startswith('/var/lib/xlxd-ch/'):
+    path = data + path[len('/var/lib/xlxd-ch'):]
+try:
+    m = re.search(r'\$Hash\s*=\s*["\']([A-Za-z0-9]+)["\']', open(path).read())
+    if not m:
+        sys.exit(1)   # a file without a hash is the operator's to fix, as in the reflector
+    print(m.group(1))
+except FileNotFoundError:
+    print(''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16)))
+except OSError:
+    sys.exit(1)
+PY
+    hash=$(cat "$DATA_DIR/.chhash")
+    rm -f "$DATA_DIR/.chhash"
+    [ -n "$hash" ] || return 0
+    set_ini "$ini" CallingHome Hash "$hash"
+    info "XLX directory hash is now [CallingHome] Hash in urfd.ini"
+}
+
 update() {
     local have_urfd=false have_tcd=false
     [ -f "$CFG_DIR/urfd.ini" ] && have_urfd=true
@@ -561,6 +604,7 @@ update() {
     if [ "$have_urfd" = true ]; then
         install_docker
         migrate_callinghome
+        callinghome_hash_to_ini
         secure_files
         build_urfd
         # the dashboard version shown in the footer lives in the kept config

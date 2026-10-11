@@ -25,12 +25,22 @@ Der Reflektor trägt sich selbst im XLX-Verzeichnis ein, über das ihn Pi-Star, 
 Enable = true
 Country = Germany              # country name as shown in the directory
 Comment = My URF Reflector     # max 100 characters
+# Hash =                       # 16 letters and digits; blank = use HashFile
 # HashFile = /var/lib/xlxd-ch/callinghome.php  # shared with the dashboard, created if missing
 # OverrideIP =                 # blank = the directory uses the address it sees
 # PushDelay = 300              # seconds between updates
 ```
 
-Gesendet wird dasselbe wie vorher vom Dashboard (Name `XLXnnn`, Laufzeit, `DashboardUrl` aus `[Names]`, Land, Kommentar, Version, Kopplungen), und die Hash-Datei des Dashboards wird weiterverwendet; ein bestehender Reflektor bleibt im Verzeichnis also derselbe Eintrag. Eine vorhandene, aber nicht lesbare Hash-Datei wird nie ersetzt; dann wird nichts gesendet. Ohne `Enable = true` wird nichts gesendet. Die Einstellungen werden beim Start gelesen.
+Gesendet wird dasselbe wie vorher vom Dashboard (Name `XLXnnn`, Laufzeit, `DashboardUrl` aus `[Names]`, Land, Kommentar, Version, Kopplungen). Der Hash identifiziert den Reflektor im Verzeichnis. Steht er als `Hash` in der ini, wird keine Hash-Datei gelesen oder geschrieben; `setup.sh` erledigt das bei der Installation und bei `update` (mit dem Hash aus der vorhandenen Datei, die liegen bleibt). Ohne `Hash` wird die Hash-Datei des Dashboards weiterverwendet, ein bestehender Reflektor bleibt im Verzeichnis also derselbe Eintrag; eine vorhandene, aber nicht lesbare Hash-Datei wird nie ersetzt, dann wird nichts gesendet. Ohne `Enable = true` wird nichts gesendet. Die Einstellungen werden beim Start gelesen.
+
+Um `Hash` von Hand zu setzen, nimm den vorhandenen, oder erzeuge einen neuen, wenn der Reflektor noch nie im Verzeichnis stand (16 Buchstaben und Ziffern, wie sie das Dashboard erzeugt hat):
+
+```bash
+grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php       # vorhandener Hash
+LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c16; echo   # neuer Hash
+```
+
+Ist der Reflektor einmal eingetragen, bleibt der Hash: Das Verzeichnis bindet den Namen daran, ein neuer würde für dasselbe `XLXnnn` nicht angenommen.
 
 ### MMDVMClient-Anbindung
 Verbindet sich über das MMDVM-Protokoll mit einem beliebigen DMR-Master-Server (z.B. BrandMeister). Bildet Talkgroups auf Reflektor-Module ab, mit Unterstützung pro Timeslot. Mehrere TGs können sich ein Modul teilen: Die erste ist die primäre (TX/RX), weitere TGs sind sekundär (nur eingehend, RX). Dynamische TGs lassen sich zur Laufzeit über die Admin-Oberfläche hinzufügen.
@@ -830,6 +840,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **CallingHome-Hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` setzt den Hash fürs Verzeichnis direkt, ohne Hash-Datei (Anregung von Jason, VE3YCA); `setup.sh` trägt ihn bei der Installation ein und übernimmt bei `update` einen vorhandenen aus der Datei; leer bleibt es bei `HashFile`
 - **Härtung (4.3.5)**: DPlus und DMR+ prüfen die Paketlänge vor dem Lesen; der JSON-Bericht übersteht Rufzeichen, die kein gültiges UTF-8 sind; unbekannte Pakete landen nur mit ihren ersten 64 Byte im Log; ein MMDVM-Login-Salt gehört zur DMR-ID und zur anfragenden Adresse, und ein Konfigurationspaket eines nicht angemeldeten Hotspots bekommt keine Antwort; `setup.sh` macht `urfd.ini` nur für root lesbar und gibt `xlxd-ch` dem Dashboard statt allen (`update` korrigiert bestehende Installationen)
 - **Sicherheitskorrekturen (4.3.4)**: Der SVX-Server nimmt UDP nur von der Adresse der TCP-Verbindung des Knotens an (die Client-ID ist ein Zähler, jeder hätte als Knoten Audio senden oder dessen Audio übernehmen können), gibt einer Verbindung 30 s ab Aufbau für die Anmeldung und lässt höchstens 8 gleichzeitig warten; der SvxReflector-Client nimmt Audio nur von seinem Reflektor an; P25-Frames, die kürzer als ihre IMBE-Daten sind, werden verworfen (Bytes hinter dem Paket gingen als Audio hinaus); der Admin-Socket liest die SVX-Knoten aus einer Kopie; Docker hält höchstens 5 × 10 MB Log
 - **Sicherheitskorrekturen (4.3.3)**: Koppeln dürfen nur die in `urfd.interlink` eingetragenen Reflektoren (bei leerer Datei durfte jeder über URF und XLX koppeln); der MMDVM-Client nimmt Pakete nur noch von seinem Master an und löst dessen Adresse bei jeder Anmeldung neu auf (vorher lenkte jedes beliebige Paket die BrandMeister-Anbindung um, samt dem Passwort-Hash der nächsten Anmeldung); Hotspot-Angaben werden nur für angemeldete Hotspots gespeichert und unter einer Sperre gelesen; der Admin-Socket lehnt nach einem falschen Passwort 2 s lang alle Anmeldungen ab, erzeugt 128-Bit-Token und stürzt bei einem fehlschlagenden Befehl nicht mehr ab; keine irreführende `MMDVMPort`-Fehlermeldung beim Start ohne `[MMDVM]`

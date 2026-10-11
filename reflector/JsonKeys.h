@@ -80,8 +80,8 @@ struct SJsonKeys {
 	struct ECHO { const std::string enable, module; }
 	echo { "EchoEnable", "EchoModule" };
 
-	struct CALLINGHOME { const std::string enable, country, comment, hashfile, overrideip, server, pushdelay, timeout; }
-	callinghome { "chEnable", "chCountry", "chComment", "chHashFile", "chOverrideIP", "chServer", "chPushDelay", "chTimeout" };
+	struct CALLINGHOME { const std::string enable, country, comment, hash, hashfile, overrideip, server, pushdelay, timeout; }
+	callinghome { "chEnable", "chCountry", "chComment", "chHash", "chHashFile", "chOverrideIP", "chServer", "chPushDelay", "chTimeout" };
 
 	struct FILES { const std::string pid, xml, json, white, black, interlink, terminal; }
 	files { "pidFilePath", "xmlFilePath", "jsonFilePath", "whitelistFilePath", "blacklistFilePath", "interlinkFilePath", "g3TerminalFilePath" };

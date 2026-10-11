@@ -59,10 +59,15 @@ void CCallingHome::Start(void)
 	m_HashFile = optional(g_Keys.callinghome.hashfile);
 	if (m_HashFile.empty())
 		m_HashFile = CALLINGHOME_HASHFILE;
-	m_Hash.clear();
+	m_Hash = optional(g_Keys.callinghome.hash);
 	m_Reached = false;
-	if (LoadOrCreateHash())
-		return;
+	if (m_Hash.empty())
+	{
+		if (LoadOrCreateHash())
+			return;
+	}
+	else
+		std::cout << "CallingHome: using the hash from urfd.ini" << std::endl;
 
 	m_StartTime = std::chrono::steady_clock::now();
 	m_Run = true;
