@@ -70,7 +70,7 @@ private:
 	int dstar_in, dstar_out, dmr_in, dmr_out, usrp_tx, usrp_rx, dmr_reencode;
 	int outgain_dstar = 0, outgain_dmr = 0, outgain_usrp = 0, outgain_imbe = 0, outgain_m17 = 0;
 	EDmrGainMode dmr_gain_mode = EDmrGainMode::ambe;
-	int  ambe_gain_db = -18;
+	int  ambe_gain_db = 0;
 	bool  agc_enabled = false;
 	float agc_target  = -16.0f;
 	float agc_attack  = 50.0f;

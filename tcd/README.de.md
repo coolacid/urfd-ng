@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.2.9** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.10** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -140,7 +140,7 @@ Alle Werte in dB, -40 bis +40.
 | Schlüssel | Vorlage | Wirkt auf |
 |---|---|---|
 | `OutputGainDStar` | `0` | D-Star-Ausgang, nach der AGC |
-| `OutputGainDMR` | `0` | DMR/YSF-Ausgang, nach der AGC |
+| `OutputGainDMR` | `-18` | DMR/YSF-Ausgang, nach der AGC; jeder Weg nach DMR/YSF, auch DMR → DMR/YSF |
 | `OutputGainM17` | `0` | M17/Codec2-Ausgang, nach der AGC |
 | `OutputGainIMBE` | `0` | P25/NXDN-Ausgang, nach der AGC |
 | `OutputGainUSRP` | `0` | USRP-Ausgang, nach der AGC |
@@ -163,10 +163,10 @@ Audio von DMR nach DMR/YSF läuft normalerweise als AMBE2+ durch, ohne dekodiert
 | Schlüssel | Vorlage | Standard im Code |
 |---|---|---|
 | `DmrGainMode` | `ambe` | `ambe` |
-| `AmbeGainDb` | `-18` | `-18` |
-| `DmrReencodeGain` | `-18` | — |
+| `AmbeGainDb` | `0` | `0` |
+| `DmrReencodeGain` | `0` | — |
 
-`AmbeGainDb` und `DmrReencodeGain` senken beide das AGC-Ziel (`AGCTarget`, -16 dBFS) auf den Pegel, den DMR-Funkgeräte erwarten; nach Gehör klingt -18 in beiden Modi gleich. Frühere Versionen beschrieben `DmrReencodeGain` als Ausgleich der Lautheit beim Neukodieren durch den MD380; es ist derselbe Versatz wie `AmbeGainDb`.
+DMR-Funkgeräte erwarten einen niedrigeren Pegel als das AGC-Ziel (`AGCTarget`, -16 dBFS). `OutputGainDMR = -18` senkt jeden Weg nach DMR/YSF darauf ab: den DVSI-Encoder für Quellen aus D-Star, M17, P25 und USRP sowie b2 oder das Neukodieren für DMR-Quellen. `AmbeGainDb` und `DmrReencodeGain` verschieben nur DMR → DMR/YSF gegenüber den anderen Wegen und bleiben normalerweise 0. (tcd 0.2.6 legte die -18 in `AmbeGainDb`/`DmrReencodeGain`, D-Star → DMR war dadurch 18 dB zu laut.)
 
 So arbeitet `ambe`: Der Decoder rechnet γ = Δγ[b2] + 0,5·γ<sub>alt</sub>, und der mittlere log2-Pegel eines Frames ist γ, eine Einheit γ sind also 6 dB. Die Δγ-Tabelle ist bei kleinem b2 grob und bei großem fein, deshalb änderte eine feste Verschiebung von b2 (tcd bis 0.2.4) leise Signale um 3–16 dB pro Stufe und laute um etwa 1,2 dB. tcd verfolgt jetzt γ für den Original- und den veränderten Stream und wählt pro Frame das b2, das der gewünschten Verstärkung am nächsten kommt; der Rundungsfehler wird im nächsten Frame ausgeglichen. Gemessen mit dem MD380-Decoder bei -40, -30 und -16 dBFS Eingangspegel kommen -12 bis +6 dB auf 0,8 dB genau an. Die Auflösung pro Frame ist grob, und sehr leise Quellen lassen sich nicht weiter anheben, als b2 = 31 erlaubt.
 
@@ -216,7 +216,7 @@ DMR -> DMR/YSF with DmrGainMode = ambe:
   AMBE2+ --[b2: AGC gain + AmbeGainDb + OutputGainDMR]--> AMBE2+
 ```
 
-**Mit AGC** können die festen Verstärkungen meist alle auf 0 bleiben: Sie gleicht unterschiedliche Mikrofone, Funkgeräte und Codecs pro Aussendung aus. Ohne sie braucht jeder Weg seine eigene feste Verstärkung.
+**Mit AGC** können die festen Verstärkungen meist alle auf 0 bleiben, bis auf `OutputGainDMR = -18` für den Pegel, den DMR-Funkgeräte erwarten: Sie gleicht unterschiedliche Mikrofone, Funkgeräte und Codecs pro Aussendung aus. Ohne sie braucht jeder Weg seine eigene feste Verstärkung.
 
 Wo die AGC wirkt: Sie misst immer am dekodierten PCM des eingehenden Streams. Zwischen verschiedenen Codecs wird sie auf dieses PCM angewendet, bevor kodiert wird. DMR → DMR/YSF bekommt sie im AMBE2+-Bitstrom über b2 (`DmrGainMode = ambe`) oder durch Neukodieren (`reencode`). D-Star → D-Star, M17 → M17 und P25 → P25 laufen unverändert durch.
 

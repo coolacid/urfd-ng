@@ -263,7 +263,7 @@ bool CConfigure::ReadData(const std::string &path)
 	{
 		const char *mode_str = (dmr_gain_mode == EDmrGainMode::reencode) ? "reencode" : (dmr_gain_mode == EDmrGainMode::ambe) ? "ambe" : "off";
 		std::cout << DMRGAINMODE << " = " << mode_str;
-		if (dmr_gain_mode == EDmrGainMode::ambe) std::cout << " (DMR -> DMR/YSF: AGC gain + " << ambe_gain_db << " dB through b2 in the bitstream)";
+		if (dmr_gain_mode == EDmrGainMode::ambe) std::cout << " (DMR -> DMR/YSF: AGC gain + OutputGainDMR + " << ambe_gain_db << " dB through b2 in the bitstream)";
 		if (dmr_gain_mode == EDmrGainMode::reencode) std::cout << " (DMR -> DMR/YSF: AGC and MD380 re-encode)";
 		std::cout << std::endl;
 	}
