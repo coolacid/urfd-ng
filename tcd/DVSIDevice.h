@@ -41,7 +41,8 @@ public:
 	void AddPacket(const std::shared_ptr<CTranscoderPacket> packet);
 	std::string GetProductID() { return productid; }
 	unsigned int GetBufferDepth() const { return buffer_depth.load(std::memory_order_relaxed); }
-	void SetOutputGain(int32_t num) { m_outputGainNum.store(num, std::memory_order_relaxed); }
+	// output gain per encoding: a DV3003 in mixed mode encodes D-Star and DMR
+	void SetOutputGains(int32_t dstar_num, int32_t dmr_num) { m_outputGainDStar.store(dstar_num, std::memory_order_relaxed); m_outputGainDmr.store(dmr_num, std::memory_order_relaxed); }
 	void SetStatsIndex(int idx) { m_statsIndex = idx; }
 
 	// Virtual hooks for mixed-mode support
@@ -59,7 +60,7 @@ protected:
 	CPacketQueue input_queue;
 	std::future<void> feedFuture, readFuture;
 	std::string description, productid;
-	std::atomic<int32_t> m_outputGainNum{256};
+	std::atomic<int32_t> m_outputGainDStar{256}, m_outputGainDmr{256};
 	int m_statsIndex = -1;
 
 	bool ConfigureVocoder(uint8_t pkt_ch, Encoding type, int8_t in_gain, int8_t out_gain);

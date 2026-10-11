@@ -26,4 +26,5 @@ TCSocket.h
 Timer.h
 Golay24128.cpp
 Golay24128.h
+YSFDefines.h
 monitor_html.cpp

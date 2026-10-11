@@ -579,7 +579,7 @@ void CDVDevice::FeedDevice()
 					}
 					else
 					{
-						int32_t gn = m_outputGainNum.load(std::memory_order_relaxed);
+						int32_t gn = ((Encoding::dstar==ch_enc) ? m_outputGainDStar : m_outputGainDmr).load(std::memory_order_relaxed);
 						if (gn != 256)
 						{
 							int16_t buf[160];

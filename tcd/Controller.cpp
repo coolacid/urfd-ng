@@ -236,8 +236,8 @@ bool CController::Start()
 		keep_running = false;
 		return true;
 	}
-	if (dstar_device) dstar_device->SetOutputGain(outgain_dstar_num);
-	if (dmrsf_device) dmrsf_device->SetOutputGain(outgain_dmr_num);
+	if (dstar_device) dstar_device->SetOutputGains(outgain_dstar_num, outgain_dmr_num);
+	if (dmrsf_device) dmrsf_device->SetOutputGains(outgain_dstar_num, outgain_dmr_num);
 
 	reflectorFuture = std::async(std::launch::async, &CController::ReadReflectorThread, this);
 	c2Future        = std::async(std::launch::async, &CController::ProcessC2Thread,     this);
@@ -271,8 +271,8 @@ void CController::ReconfigureAGC()
 	outgain_imbe_num = calcNumerator(g_Stats.config.outgain_imbe.load());
 	outgain_m17_num = calcNumerator(g_Stats.config.outgain_m17.load());
 	outgain_dmr_steps = (g_Stats.config.dmr_gain_mode.load() == 1) ? (int)roundf(abs(g_Stats.config.ambe_gain_db.load()) / 2.0f) : 0;
-	if (dstar_device) dstar_device->SetOutputGain(outgain_dstar_num);
-	if (dmrsf_device) dmrsf_device->SetOutputGain(outgain_dmr_num);
+	if (dstar_device) dstar_device->SetOutputGains(outgain_dstar_num, outgain_dmr_num);
+	if (dmrsf_device) dmrsf_device->SetOutputGains(outgain_dstar_num, outgain_dmr_num);
 }
 
 void CController::Stop()
@@ -786,8 +786,7 @@ void CController::Codec2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
-			// AGC the second half too before storing
-			m_agc.Process(&tmp[160], 160, packet->GetStreamId());
+			// the second half goes through the AGC with the second packet
 			memcpy(audio_store[packet->GetModule()], &(tmp[160]), 320);
 		}
 		else /* codec_in is ECodecType::c2_3200 */
