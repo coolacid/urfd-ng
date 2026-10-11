@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.7.2-dht** | tcd 0.2.12 | Dashboard v2.8.2
+**urfd 4.7.3-dht** | tcd 0.2.12 | Dashboard v2.8.2
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -901,7 +901,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Transcoder resilience**: TCP keepalive, non-blocking poll, queue drain on disconnect, automatic reconnect after network outages
 - **Database HTTP retry**: Retry with backoff on failed initial load (prevents empty databases after transient errors)
 - **Database fallback sources**: `URL` accepts a comma separated list, tried in order; field separator (`;`, `,`, tab) is detected per line so the common publishers work unchanged; every successful download is mirrored to `<FilePath>.cache` and loaded when no source answers
-- **Service optimizations**: Realtime scheduling and voice CPU priority
+- **Service optimizations**: Realtime scheduling and voice CPU priority; built with `-O2` since 4.7.3
 - **Thread-safe logging**: Atomic cout via ostringstream
 - **Thread-safe DB lookups**: DMR/NXDN ID database lookups in CodecStream hold proper mutex locks during access, preventing race conditions with background DB refresh
 - **P25 cleanup**: Removed dead `P25_MODULE_ID` hardcode, P25 now uses `AutoLinkModule` config consistently. Guard debug dumps.

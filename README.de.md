@@ -4,7 +4,7 @@
 
 Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
-**urfd 4.7.2-dht** | tcd 0.2.12 | Dashboard v2.8.2
+**urfd 4.7.3-dht** | tcd 0.2.12 | Dashboard v2.8.2
 
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
@@ -880,7 +880,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Robuste Transcoder-Verbindung**: TCP-Keepalive, nicht blockierendes poll, Warteschlangen leeren bei Verbindungsabbruch, automatische Neuverbindung nach Netzausfällen
 - **Wiederholung beim Datenbank-Download**: Wiederholung mit wachsender Pause, wenn das erste Laden scheitert (verhindert leere Datenbanken nach kurzen Fehlern)
 - **Ersatzquellen für Datenbanken**: `URL` nimmt eine durch Komma getrennte Liste, der Reihe nach versucht; das Trennzeichen (`;`, `,`, Tabulator) wird pro Zeile erkannt, die üblichen Anbieter funktionieren also unverändert; jeder erfolgreiche Download wird in `<FilePath>.cache` gespiegelt und geladen, wenn keine Quelle antwortet
-- **Dienst-Optimierungen**: Echtzeit-Scheduling und CPU-Priorität für Sprache
+- **Dienst-Optimierungen**: Echtzeit-Scheduling und CPU-Priorität für Sprache; seit 4.7.3 mit `-O2` gebaut
 - **Threadsicheres Logging**: Atomares cout über ostringstream
 - **Threadsichere Datenbankabfragen**: DMR-/NXDN-ID-Abfragen in CodecStream halten während des Zugriffs die nötigen Sperren und vermeiden so Konflikte mit der Aktualisierung im Hintergrund
 - **P25 aufgeräumt**: Totes festes `P25_MODULE_ID` entfernt, P25 verwendet durchgängig `AutoLinkModule`. Debug-Ausgaben abgesichert.

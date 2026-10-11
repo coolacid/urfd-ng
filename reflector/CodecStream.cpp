@@ -59,7 +59,8 @@ void CCodecStream::Push(std::unique_ptr<CDvFramePacket> p)
 	if (m_EventFD >= 0)
 	{
 		uint64_t val = 1;
-		write(m_EventFD, &val, sizeof(val));
+		// a lost wakeup only delays Task until its 20 ms poll timeout
+		if (write(m_EventFD, &val, sizeof(val)) < 0) {}
 	}
 }
 
@@ -71,7 +72,8 @@ CCodecStream::~CCodecStream()
 	if (m_EventFD >= 0)
 	{
 		uint64_t val = 1;
-		write(m_EventFD, &val, sizeof(val));
+		// a lost wakeup only delays Task until its 20 ms poll timeout
+		if (write(m_EventFD, &val, sizeof(val)) < 0) {}
 	}
 	if ( m_Future.valid() )
 	{
@@ -401,7 +403,7 @@ void CCodecStream::Task(void)
 		if (pfd.revents & POLLIN)
 		{
 			uint64_t val;
-			read(m_EventFD, &val, sizeof(val));
+			if (read(m_EventFD, &val, sizeof(val)) < 0) {}  // only clears the counter
 		}
 	}
 

@@ -41,7 +41,7 @@ int CLogBuffer::overflow(int c)
 		AddChar((char)c);
 		// Write directly to stdout fd (bypasses rdbuf, works with supervisord)
 		char ch = (char)c;
-		::write(STDOUT_FILENO, &ch, 1);
+		if (::write(STDOUT_FILENO, &ch, 1) < 0) {}  // nothing to do if stdout is gone
 	}
 	return c;
 }
@@ -51,8 +51,8 @@ std::streamsize CLogBuffer::xsputn(const char *s, std::streamsize n)
 	for (std::streamsize i = 0; i < n; i++)
 		AddChar(s[i]);
 
-	// Write directly to stdout fd
-	::write(STDOUT_FILENO, s, n);
+	// Write directly to stdout fd, nothing to do if stdout is gone
+	if (::write(STDOUT_FILENO, s, n) < 0) {}
 
 	return n;
 }
