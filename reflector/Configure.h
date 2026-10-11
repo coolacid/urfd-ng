@@ -43,12 +43,14 @@ public:
 	bool IsString(const std::string &key) const;
 	char GetAutolinkModule(const std::string &key) const;
 	const nlohmann::json &GetData() { return data; }
+	const std::string &GetPath() const { return inipath; }	// the ini last read
 	void SetData(const nlohmann::json &d) { data = d; }
 
 private:
 	// CFGDATA data;
 	unsigned counter;
 	nlohmann::json data;
+	std::string inipath;
 	std::regex IPv4RegEx, IPv6RegEx;
 
 	std::string getDataRefreshType(ERefreshType t) const;

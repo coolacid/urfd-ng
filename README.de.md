@@ -25,43 +25,38 @@ Der Reflektor trägt sich selbst im XLX-Verzeichnis ein, über das ihn Pi-Star, 
 Enable = true
 Country = Germany              # country name as shown in the directory
 Comment = My URF Reflector     # max 100 characters
-# Hash =                       # 16 letters and digits; blank = use HashFile
-# HashFile = /var/lib/xlxd-ch/callinghome.php  # shared with the dashboard, created if missing
+# Hash =                       # letters and digits; blank = made at first start
 # OverrideIP =                 # blank = the directory uses the address it sees
 # PushDelay = 300              # seconds between updates
 ```
 
-Gesendet wird dasselbe wie vorher vom Dashboard (Name `XLXnnn`, Laufzeit, `DashboardUrl` aus `[Names]`, Land, Kommentar, Version, Kopplungen). Der Hash identifiziert den Reflektor im Verzeichnis. Steht er als `Hash` in der ini, wird keine Hash-Datei gelesen oder geschrieben; `setup.sh` erledigt das bei der Installation und bei `update` (mit dem Hash aus der vorhandenen Datei, die liegen bleibt). Ohne `Hash` wird die Hash-Datei des Dashboards weiterverwendet, ein bestehender Reflektor bleibt im Verzeichnis also derselbe Eintrag; eine vorhandene, aber nicht lesbare Hash-Datei wird nie ersetzt, dann wird nichts gesendet. Ohne `Enable = true` wird nichts gesendet. Die Einstellungen werden beim Start gelesen.
+Gesendet wird dasselbe wie vorher vom Dashboard (Name `XLXnnn`, Laufzeit, `DashboardUrl` aus `[Names]`, Land, Kommentar, Version, Kopplungen). Ohne `Enable = true` wird nichts gesendet. Die Einstellungen werden beim Start gelesen.
 
-#### Den Hash bei der Einrichtung von Hand besorgen
+Der Hash identifiziert den Reflektor im Verzeichnis, und das Verzeichnis bindet `XLXnnn` an den ersten Hash, den es sieht. Das Verzeichnis vergibt keine Hashes: Ist `Hash` leer, erzeugt der Reflektor beim ersten Start einen und speichert ihn als `Hash = ...` in `[CallingHome]` seiner `urfd.ini`, die einzige Zeile, die er dort je schreibt. Eine Hash-Datei gibt es nicht. Kann er `urfd.ini` nicht schreiben (etwa weil sie schreibgeschützt eingebunden ist), trägt er sich nicht ein und schreibt das ins Log. Danach den Hash nicht mehr ändern.
 
-`setup.sh` kümmert sich um den Hash. Ohne das Script brauchst du ihn vor dem ersten Start mit `Enable = true`. Herunterladen lässt er sich nicht: Das Verzeichnis vergibt keine Hashes, jeder Reflektor erzeugt seinen eigenen, und der erste Hash, den das Verzeichnis für `XLXnnn` sieht, besitzt diesen Namen.
+#### Einen schon eingetragenen Reflektor umziehen
 
-1. Prüfen, ob dein Name schon im Verzeichnis steht (hier `XLX363`, die Nummer deines `URFnnn`):
+Ein Reflektor, den bisher ein XLX-Dashboard oder ein älteres urfd eingetragen hat, muss seinen Hash behalten, einen neuen würde das Verzeichnis für denselben Namen nicht annehmen. Setze ihn vor dem ersten Start mit `Enable = true`.
+
+1. Prüfen, ob dein Name im Verzeichnis steht (hier `XLX363`, die Nummer deines `URFnnn`):
    ```bash
    curl -s 'http://xlxapi.rlx.lu/api.php?do=GetReflectorList' | grep -A6 '<name>XLX363</name>'
    # ohne curl:
    wget -qO- 'http://xlxapi.rlx.lu/api.php?do=GetReflectorList' | grep -A6 '<name>XLX363</name>'
    ```
-2. **Nicht eingetragen:** einen neuen Hash erzeugen, 16 Buchstaben und Ziffern wie beim Dashboard, mit einem von beiden:
+   Nicht eingetragen: nichts zu tun, der Reflektor erzeugt seinen Hash selbst. Gehört der eingetragene Reflektor nicht dir, nimm eine andere Nummer.
+2. Eingetragen und deiner: den Hash vom alten Server kopieren. Die Datei steht als `$CallingHome['HashFile']` in der `config.inc.php` des alten Dashboards:
    ```bash
-   LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c16; echo
-   openssl rand -hex 8
+   grep '\$Hash' /pfad/zur/callinghome.php
    ```
-   **Eingetragen:** Der Name hat schon einen Hash, und das Verzeichnis nimmt Aktualisierungen nur mit diesem an. Ist es dein Reflektor, kopiere ihn von dem Server, der ihn bisher eingetragen hat, ein XLX-Dashboard oder ein älteres urfd. Die Datei steht als `$CallingHome['HashFile']` in der `config.inc.php` des alten Dashboards, hier `/opt/urfd/xlxd-ch/callinghome.php`:
-   ```bash
-   grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php
-   ```
-   Lesen lässt er sich nur dort, nicht übers Web: Das Dashboard führt die Datei als PHP aus und liefert nichts. Gehört der eingetragene Reflektor nicht dir, nimm eine andere Nummer.
-3. In `urfd.ini` eintragen und neu starten:
+   Lesen lässt er sich nur dort, nicht übers Web: Das Dashboard führt die Datei als PHP aus und liefert nichts.
+3. In `urfd.ini` eintragen und starten:
    ```ini
    [CallingHome]
    Enable = true
    Hash = Ab3dE4fG5hIj6K7L
    ```
-   `docker logs urfd | grep CallingHome` zeigt danach `using the hash from urfd.ini` und `registered as XLXnnn`.
-
-Danach den Hash nicht mehr ändern, ein neuer würde für dasselbe `XLXnnn` nicht angenommen.
+   `docker logs urfd | grep CallingHome` zeigt danach `registered as XLXnnn`.
 
 ### MMDVMClient-Anbindung
 Verbindet sich über das MMDVM-Protokoll mit einem beliebigen DMR-Master-Server (z.B. BrandMeister). Bildet Talkgroups auf Reflektor-Module ab, mit Unterstützung pro Timeslot. Mehrere TGs können sich ein Modul teilen: Die erste ist die primäre (TX/RX), weitere TGs sind sekundär (nur eingehend, RX). Dynamische TGs lassen sich zur Laufzeit über die Admin-Oberfläche hinzufügen.
@@ -861,11 +856,12 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
-- **CallingHome-Hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` setzt den Hash fürs Verzeichnis direkt, ohne Hash-Datei (Anregung von Jason, VE3YCA); `setup.sh` trägt ihn bei der Installation ein und übernimmt bei `update` einen vorhandenen aus der Datei; leer bleibt es bei `HashFile`
+- **CallingHome ohne Hash-Datei (4.5.0)**: Der Reflektor erzeugt seinen Hash fürs Verzeichnis beim ersten Start und speichert ihn als `[CallingHome] Hash` in `urfd.ini`; keine Hash-Datei mehr, `HashFile` entfällt und `setup.sh` fasst den Hash nicht mehr an (Anregung von Jason, VE3YCA)
+- **CallingHome-Hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` setzt den Hash fürs Verzeichnis direkt (Anregung von Jason, VE3YCA)
 - **Härtung (4.3.5)**: DPlus und DMR+ prüfen die Paketlänge vor dem Lesen; der JSON-Bericht übersteht Rufzeichen, die kein gültiges UTF-8 sind; unbekannte Pakete landen nur mit ihren ersten 64 Byte im Log; ein MMDVM-Login-Salt gehört zur DMR-ID und zur anfragenden Adresse, und ein Konfigurationspaket eines nicht angemeldeten Hotspots bekommt keine Antwort; `setup.sh` macht `urfd.ini` nur für root lesbar und gibt `xlxd-ch` dem Dashboard statt allen (`update` korrigiert bestehende Installationen)
 - **Sicherheitskorrekturen (4.3.4)**: Der SVX-Server nimmt UDP nur von der Adresse der TCP-Verbindung des Knotens an (die Client-ID ist ein Zähler, jeder hätte als Knoten Audio senden oder dessen Audio übernehmen können), gibt einer Verbindung 30 s ab Aufbau für die Anmeldung und lässt höchstens 8 gleichzeitig warten; der SvxReflector-Client nimmt Audio nur von seinem Reflektor an; P25-Frames, die kürzer als ihre IMBE-Daten sind, werden verworfen (Bytes hinter dem Paket gingen als Audio hinaus); der Admin-Socket liest die SVX-Knoten aus einer Kopie; Docker hält höchstens 5 × 10 MB Log
 - **Sicherheitskorrekturen (4.3.3)**: Koppeln dürfen nur die in `urfd.interlink` eingetragenen Reflektoren (bei leerer Datei durfte jeder über URF und XLX koppeln); der MMDVM-Client nimmt Pakete nur noch von seinem Master an und löst dessen Adresse bei jeder Anmeldung neu auf (vorher lenkte jedes beliebige Paket die BrandMeister-Anbindung um, samt dem Passwort-Hash der nächsten Anmeldung); Hotspot-Angaben werden nur für angemeldete Hotspots gespeichert und unter einer Sperre gelesen; der Admin-Socket lehnt nach einem falschen Passwort 2 s lang alle Anmeldungen ab, erzeugt 128-Bit-Token und stürzt bei einem fehlschlagenden Befehl nicht mehr ab; keine irreführende `MMDVMPort`-Fehlermeldung beim Start ohne `[MMDVM]`
-- **CallingHome im Reflektor**: `[CallingHome]` in `urfd.ini` trägt den Reflektor mit denselben Daten und derselben Hash-Datei wie bisher das Dashboard im XLX-Verzeichnis ein, auch ohne Dashboard
+- **CallingHome im Reflektor**: `[CallingHome]` in `urfd.ini` trägt den Reflektor mit denselben Daten wie bisher das Dashboard im XLX-Verzeichnis ein, auch ohne Dashboard
 - **Sauberes Beenden**: urfd beendet sich bei SIGTERM in etwa 2 Sekunden. Vorher warteten die Router-Threads der Module ewig auf Pakete, Protokolle wurden gelöscht, während ihre Threads noch liefen (ein Absturz, der nur nicht auffiel, weil Docker urfd vorher abschoss), und die ID-Datenbank-Threads schliefen je bis zu 10 s; `docker stop` endete so immer mit einem Kill
 - **Transcoder-Verbindung ohne Nagle-Verzögerung**: `TCP_NODELAY` an beiden Enden der Verbindung urfd–tcd. Vorher wartete ein transcodierter Frame auf das verzögerte ACK des Reflektors, das erst mit dem nächsten DMR-Bündel kam; ein Frame ist jetzt nach etwa 23 ms statt 60 ms zurück (URF363, am Reflektor gemessen)
 - **Setup-Script**: `setup.sh` installiert und aktualisiert Reflektor und Transcoder, schreibt die Konfiguration aus den Vorlagen und prüft sie mit inicheck; Docker Compose baut aus jedem Klon, Daten in `$URFD_DATA` (Standard `/opt/urfd`)

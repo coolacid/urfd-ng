@@ -26,7 +26,7 @@ The image is built from this checkout; configuration and state live outside it, 
 |---|---|---|
 | `$URFD_DATA/config/` | `/usr/local/etc/urfd` | `urfd.ini`, interlink, black/whitelist, downloaded ID databases |
 | `$URFD_DATA/dashboard/config.inc.php` | dashboard `pgs/config.inc.php` | Dashboard settings |
-| `$URFD_DATA/xlxd-ch/` | `/var/lib/xlxd-ch` | Directory hash file (CallingHome) and reflector list cache |
+| `$URFD_DATA/xlxd-ch/` | `/var/lib/xlxd-ch` | Reflector list cache of the dashboard |
 
 `urfd.ini` must exist. See the main [README](../README.md) and the commented templates in [config/](../config/) for details.
 

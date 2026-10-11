@@ -98,14 +98,10 @@ Leite diese Ports in deinem Router auf den Rechner weiter, oder gib sie in der F
 Wenn alles von außen funktioniert, kann der Reflektor in der Hotspot-Software erscheinen:
 
 1. In `/opt/urfd/config/urfd.ini`, Abschnitt `[CallingHome]`: `Enable = true` setzen, dazu den Namen des Landes bei `Country` (z.B. `Germany`) und einen `Comment`. Die `DashboardUrl` aus `[Names]` wird mitgeschickt.
-2. Den `Hash` setzen, der den Reflektor im Verzeichnis identifiziert. Prüfe, ob dein `XLXnnn` schon eingetragen ist:
-   ```bash
-   curl -s 'http://xlxapi.rlx.lu/api.php?do=GetReflectorList' | grep -A6 '<name>XLX123</name>'
-   ```
-   Nicht eingetragen: einen neuen erzeugen mit `LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c16; echo`. Eingetragen: den vorhandenen von dem Server kopieren, der ihn bisher eingetragen hat (`grep '\$Hash' .../callinghome.php`). Im Abschnitt als `Hash = ...` eintragen und danach nicht mehr ändern. Details im [README](../README.de.md#den-hash-bei-der-einrichtung-von-hand-besorgen).
+2. Ziehst du einen Reflektor um, der schon im Verzeichnis steht (eingetragen von einem XLX-Dashboard oder einem älteren urfd)? Dann trage seinen alten Hash im Abschnitt als `Hash = ...` ein, siehe [README](../README.de.md#einen-schon-eingetragenen-reflektor-umziehen). Sonst `Hash` leer lassen: Der Reflektor erzeugt beim ersten Start einen und speichert ihn dort.
 3. Neu starten: `docker restart urfd`.
 
-Der Reflektor meldet sich dann alle 5 Minuten beim Verzeichnis; `docker logs urfd | grep CallingHome` zeigt, ob es geklappt hat. Hast du die Frage beim Setup mit yes beantwortet, ist das schon eingeschaltet und der Hash gesetzt.
+Der Reflektor meldet sich dann alle 5 Minuten beim Verzeichnis; `docker logs urfd | grep CallingHome` zeigt, ob es geklappt hat. Hast du die Frage beim Setup mit yes beantwortet, ist das schon eingeschaltet.
 
 ## Im Alltag
 

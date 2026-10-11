@@ -11,13 +11,12 @@
 #include <regex>
 #include <sstream>
 #include <sys/stat.h>
+#include <vector>
 
 #include "CallingHome.h"
 #include "CurlGet.h"
 #include "Global.h"
 
-// the dashboard's file, so both use the same identity in the directory
-#define CALLINGHOME_HASHFILE "/var/lib/xlxd-ch/callinghome.php"
 #define CALLINGHOME_SERVER   "http://xlxapi.rlx.lu/api.php"
 
 static std::string XmlEscape(const std::string &in)
@@ -56,18 +55,10 @@ void CCallingHome::Start(void)
 		m_PushDelay = g_Configure.GetUnsigned(g_Keys.callinghome.pushdelay);
 	if (g_Configure.Contains(g_Keys.callinghome.timeout))
 		m_Timeout = g_Configure.GetUnsigned(g_Keys.callinghome.timeout);
-	m_HashFile = optional(g_Keys.callinghome.hashfile);
-	if (m_HashFile.empty())
-		m_HashFile = CALLINGHOME_HASHFILE;
 	m_Hash = optional(g_Keys.callinghome.hash);
 	m_Reached = false;
-	if (m_Hash.empty())
-	{
-		if (LoadOrCreateHash())
-			return;
-	}
-	else
-		std::cout << "CallingHome: using the hash from urfd.ini" << std::endl;
+	if (m_Hash.empty() && CreateHash())
+		return;
 
 	m_StartTime = std::chrono::steady_clock::now();
 	m_Run = true;
@@ -93,61 +84,88 @@ void CCallingHome::Stop(void)
 		m_Future.get();
 }
 
-// The hash identifies the reflector in the directory, which ties the name to it.
-// Reuse the dashboard's, create one only if there is no file at all, and never
-// replace a file that exists but can't be read.
-bool CCallingHome::LoadOrCreateHash(void)
+// The directory ties the name to the first hash it sees, so a new hash is only
+// used once it is saved as [CallingHome] Hash in urfd.ini, where the next start
+// finds it again.
+bool CCallingHome::CreateHash(void)
 {
-	std::ifstream in(m_HashFile);
-	if (in)
-	{
-		std::stringstream content;
-		content << in.rdbuf();
-		std::smatch m;
-		const std::string s(content.str());
-		if (std::regex_search(s, m, std::regex("\\$Hash\\s*=\\s*\"([A-Za-z0-9]+)\"")))
-		{
-			m_Hash = m[1];
-			std::cout << "CallingHome: using the hash from " << m_HashFile << std::endl;
-			return false;
-		}
-		std::cerr << "CallingHome: no $Hash in " << m_HashFile << ", not registering (fix or remove the file)" << std::endl;
-		return true;
-	}
-
-	struct stat st;
-	if (0 == stat(m_HashFile.c_str(), &st))
-	{
-		std::cerr << "CallingHome: cannot read " << m_HashFile << ", not registering" << std::endl;
-		return true;
-	}
-
 	// same alphabet and length as the dashboard's CreateCode(16)
-	static const char chars[] = "1234567890abcdefghijklmnopqrstuvwyxzABCDEFGHIJKLMNAOPQRSTUVWYXZ";
+	static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 	std::random_device rd;
 	std::uniform_int_distribution<size_t> pick(0, sizeof(chars) - 2);
+	std::string hash;
 	for (int i = 0; i < 16; i++)
-		m_Hash += chars[pick(rd)];
+		hash += chars[pick(rd)];
 
-	// The directory ties the name to the first hash it sees, so only register
-	// with a hash that will still be there after a restart.
-	if (WriteHashFile())
+	const std::string &ini = g_Configure.GetPath();
+	if (SaveHash(ini, hash))
 	{
-		std::cerr << "CallingHome: cannot save a new hash to " << m_HashFile << ", not registering" << std::endl;
+		std::cerr << "CallingHome: cannot save a new hash in " << ini << ", not registering (set [CallingHome] Hash yourself)" << std::endl;
 		return true;
 	}
-	std::cout << "CallingHome: created a new hash in " << m_HashFile << std::endl;
+	m_Hash = hash;
+	std::cout << "CallingHome: made a new hash, saved as [CallingHome] Hash in " << ini << std::endl;
 	return false;
 }
 
-// The dashboard's format. Written once, to a temporary file renamed over the
-// target, so a crash can never leave the reflector's identity half written.
-bool CCallingHome::WriteHashFile(void) const
+// Puts "Hash = ..." into [CallingHome], over a blank or commented-out Hash line
+// if there is one, and leaves every other line as it is. Written to a temporary
+// file renamed over the ini, so a crash never leaves it half written; a single
+// file bind mount can't be renamed over, that one is rewritten in place.
+bool CCallingHome::SaveHash(const std::string &ini, const std::string &hash)
 {
-	const std::string tmp = m_HashFile + ".tmp";
+	std::vector<std::string> lines;
+	{
+		std::ifstream in(ini);
+		if (!in)
+			return true;
+		std::string line;
+		while (std::getline(in, line))
+			lines.push_back(line);
+	}
+
+	auto trimmed = [](const std::string &s) {
+		const auto b = s.find_first_not_of(" \t\r");
+		return (std::string::npos == b) ? std::string() : s.substr(b, s.find_last_not_of(" \t\r") - b + 1);
+	};
+	const std::regex active("^\\s*Hash\\s*=.*"), commented("^\\s*#\\s*Hash\\s*=.*");
+	size_t start = lines.size();
+	for (size_t i = 0; i < lines.size(); i++)
+	{
+		if ("[CallingHome]" == trimmed(lines[i]))
+		{
+			start = i;
+			break;
+		}
+	}
+	if (start == lines.size())
+		return true;	// can't happen, Enable = true was read from it
+	size_t end = start + 1;
+	while (end < lines.size() && '[' != trimmed(lines[end]).c_str()[0])
+		end++;
+	size_t hit = end;
+	for (size_t i = start + 1; i < end && hit == end; i++)
+		if (std::regex_match(lines[i], active))
+			hit = i;
+	for (size_t i = start + 1; i < end && hit == end; i++)
+		if (std::regex_match(lines[i], commented))
+			hit = i;
+	const std::string entry = "Hash = " + hash;
+	if (hit == end)
+		lines.insert(lines.begin() + start + 1, entry);
+	else
+		lines[hit] = entry;
+
+	std::stringstream content;
+	for (const auto &line : lines)
+		content << line << '\n';
+
+	struct stat st;
+	const mode_t mode = (0 == stat(ini.c_str(), &st)) ? (st.st_mode & 07777) : 0600;
+	const std::string tmp = ini + ".tmp";
 	{
 		std::ofstream out(tmp, std::ios::trunc);
-		out << "<?php\n\n$LastSync = " << std::time(nullptr) << ";\n$Hash     = \"" << m_Hash << "\";\n\n?>";
+		out << content.str();
 		out.flush();
 		if (!out)
 		{
@@ -155,13 +173,15 @@ bool CCallingHome::WriteHashFile(void) const
 			return true;
 		}
 	}
-	chmod(tmp.c_str(), 0644);
-	if (0 != std::rename(tmp.c_str(), m_HashFile.c_str()))
-	{
-		std::remove(tmp.c_str());
-		return true;
-	}
-	return false;
+	chmod(tmp.c_str(), mode);
+	if (0 == std::rename(tmp.c_str(), ini.c_str()))
+		return false;
+	std::remove(tmp.c_str());
+
+	std::ofstream out(ini, std::ios::trunc);
+	out << content.str();
+	out.flush();
+	return !out;
 }
 
 std::string CCallingHome::BuildXml(void) const

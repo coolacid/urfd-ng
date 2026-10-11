@@ -25,43 +25,38 @@ The reflector registers itself in the XLX directory, which lists it in Pi-Star, 
 Enable = true
 Country = Germany              # country name as shown in the directory
 Comment = My URF Reflector     # max 100 characters
-# Hash =                       # 16 letters and digits; blank = use HashFile
-# HashFile = /var/lib/xlxd-ch/callinghome.php  # shared with the dashboard, created if missing
+# Hash =                       # letters and digits; blank = made at first start
 # OverrideIP =                 # blank = the directory uses the address it sees
 # PushDelay = 300              # seconds between updates
 ```
 
-It sends what the dashboard sent (name `XLXnnn`, uptime, `DashboardUrl` from `[Names]`, country, comment, version, interlinks). The hash identifies the reflector in the directory. Set it as `Hash` and no hash file is read or written; `setup.sh` does this for you, on install and on `update` (taking the hash from the existing file, which stays). Without `Hash` it keeps using the dashboard's hash file, so an existing reflector stays the same entry in the directory; a hash file that exists but cannot be read is never replaced, nothing is sent then. Nothing is sent unless `Enable = true`. The settings are read at startup.
+It sends what the dashboard sent (name `XLXnnn`, uptime, `DashboardUrl` from `[Names]`, country, comment, version, interlinks). Nothing is sent unless `Enable = true`. The settings are read at startup.
 
-#### Getting the hash when setting up by hand
+The hash identifies the reflector in the directory, and the directory ties `XLXnnn` to the first hash it sees. The directory hands out no hashes: with `Hash` blank, the reflector makes one at its first start and saves it as `Hash = ...` in `[CallingHome]` of its `urfd.ini`, the only line it ever writes there. No hash file is used. If it cannot write `urfd.ini` (mounted read-only, say), it does not register and says so in the log. Keep the hash from then on.
 
-`setup.sh` takes care of the hash. Without it, get one before the first start with `Enable = true`. There is nothing to download: the directory hands out no hashes, a reflector makes its own, and the first hash the directory sees for `XLXnnn` owns that name.
+#### Moving a reflector that is listed already
 
-1. Check whether your name is already in the directory (here `XLX363`, the number of your `URFnnn`):
+A reflector that was registered before, by an XLX dashboard or an older urfd, has to keep its hash, the directory would not accept a new one for the same name. Set it before the first start with `Enable = true`.
+
+1. Check whether your name is in the directory (here `XLX363`, the number of your `URFnnn`):
    ```bash
    curl -s 'http://xlxapi.rlx.lu/api.php?do=GetReflectorList' | grep -A6 '<name>XLX363</name>'
    # without curl:
    wget -qO- 'http://xlxapi.rlx.lu/api.php?do=GetReflectorList' | grep -A6 '<name>XLX363</name>'
    ```
-2. **Not listed:** make a new hash, 16 letters and digits like the dashboard made them, with either of
+   Not listed: nothing to do, the reflector makes its hash itself. If the listed reflector isn't yours, choose another number.
+2. Listed and yours: copy the hash from the old server. The file is `$CallingHome['HashFile']` in the old dashboard's `config.inc.php`:
    ```bash
-   LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c16; echo
-   openssl rand -hex 8
+   grep '\$Hash' /path/to/callinghome.php
    ```
-   **Listed:** the name already has a hash, and the directory takes updates only with that one. If it is your reflector, copy it from the server that registered it until now, an XLX dashboard or an older urfd. The file is `$CallingHome['HashFile']` in the old dashboard's `config.inc.php`, here `/opt/urfd/xlxd-ch/callinghome.php`:
-   ```bash
-   grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php
-   ```
-   It can only be read there, not over the web: the dashboard runs the file as PHP and sends nothing. If the listed reflector isn't yours, choose another number.
-3. Put it in `urfd.ini` and restart:
+   It can only be read there, not over the web: the dashboard runs the file as PHP and sends nothing.
+3. Put it in `urfd.ini` and start:
    ```ini
    [CallingHome]
    Enable = true
    Hash = Ab3dE4fG5hIj6K7L
    ```
-   `docker logs urfd | grep CallingHome` should then show `using the hash from urfd.ini` and `registered as XLXnnn`.
-
-Keep the hash from then on, a new one would not be accepted for the same `XLXnnn`.
+   `docker logs urfd | grep CallingHome` then shows `registered as XLXnnn`.
 
 ### MMDVMClient Connector
 Connect to any DMR master server (e.g. BrandMeister) via the MMDVM protocol. Maps talkgroups to reflector modules with per-timeslot support. Multiple TGs can share a module: the first becomes the primary (TX/RX), additional TGs are secondary (inbound RX only). Dynamic TGs can be added at runtime via the Admin interface.
@@ -882,11 +877,12 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
-- **CallingHome hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` sets the directory hash directly, no hash file needed (suggested by Jason, VE3YCA); `setup.sh` writes it on install and moves an existing one there on `update`; blank keeps using `HashFile`
+- **CallingHome without a hash file (4.5.0)**: the reflector makes its directory hash at the first start and saves it as `[CallingHome] Hash` in `urfd.ini`; no hash file any more, `HashFile` is gone and `setup.sh` no longer touches the hash (suggested by Jason, VE3YCA)
+- **CallingHome hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` sets the directory hash directly (suggested by Jason, VE3YCA)
 - **Hardening (4.3.5)**: DPlus and DMR+ check the packet size before reading it; the JSON report survives callsigns that aren't valid UTF-8; unknown packets are logged with their first 64 bytes only; an MMDVM login salt belongs to the DMR ID and the address that asked for it, and a config packet from a hotspot that isn't logged in gets no answer; `setup.sh` makes `urfd.ini` readable by root only and gives `xlxd-ch` to the dashboard instead of everyone (`update` fixes existing installations)
 - **Security fixes (4.3.4)**: the SVX server takes UDP only from the address of the node's TCP connection (the client id is a counter, anyone could send audio as a node or take its audio over), gives a connection 30 s from connecting to log in and lets at most 8 wait at a time; the SvxReflector client takes audio only from its reflector; P25 frames shorter than their IMBE data are dropped (bytes past the packet went out as audio); the admin socket reads SVX nodes from a copy; Docker keeps at most 5 × 10 MB of log
 - **Security fixes (4.3.3)**: only reflectors listed in `urfd.interlink` may peer (an empty file let anyone peer over URF and XLX); the MMDVM client accepts packets only from its master, which it looks up again at every login (any packet used to redirect the BrandMeister link, with the next password hash going to the sender); hotspot config is kept only for logged-in hotspots and read under a lock; the admin socket refuses logins for 2 s after a wrong password, makes 128-bit tokens and no longer dies on a failing command; no misleading `MMDVMPort` error at startup without `[MMDVM]`
-- **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data and hash file the dashboard used, without needing the dashboard
+- **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data the dashboard sent, without needing the dashboard
 - **Clean shutdown**: urfd stops within about 2 seconds on SIGTERM. Before, the module router threads waited for packets forever, protocols were deleted while their threads still ran (a crash, hidden because Docker killed urfd first) and the ID database threads slept up to 10 s each, so `docker stop` always ended in a kill
 - **Transcoder link without Nagle delay**: `TCP_NODELAY` on both ends of the urfd–tcd connection. Before, a transcoded frame waited for the reflector's delayed ACK, which only came with the next DMR burst; a frame now returns after about 23 ms instead of 60 ms (URF363, measured at the reflector)
 - **Setup script**: `setup.sh` installs and updates reflector and transcoder, writes the configuration from the templates and checks it with inicheck; Docker compose builds from any checkout, data in `$URFD_DATA` (default `/opt/urfd`)

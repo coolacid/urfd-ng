@@ -141,6 +141,7 @@ bool CConfigure::ReadData(const std::string &path)
 	unsigned tcport = 0;
 
 	data.clear();
+	inipath = path;
 	std::ifstream cfgfile(path.c_str(), std::ifstream::in);
 	if (! cfgfile.is_open()) {
 		std::cerr << "ERROR: '" << path << "' was not found!" << std::endl;
@@ -331,11 +332,9 @@ bool CConfigure::ReadData(const std::string &path)
 				}
 				else if (0 == key.compare("Hash"))
 				{
-					if (!value.empty())	// blank = use the hash file
+					if (!value.empty())	// blank = make one at startup
 						data[g_Keys.callinghome.hash] = value;
 				}
-				else if (0 == key.compare("HashFile"))
-					data[g_Keys.callinghome.hashfile] = value;
 				else if (0 == key.compare("OverrideIP"))
 					data[g_Keys.callinghome.overrideip] = value;
 				else if (0 == key.compare("Server"))
@@ -1165,7 +1164,7 @@ bool CConfigure::ReadData(const std::string &path)
 	{
 		isDefined(ErrorLevel::mild, JCALLINGHOME, "Country", g_Keys.callinghome.country, rval);
 		isDefined(ErrorLevel::mild, JCALLINGHOME, "Comment", g_Keys.callinghome.comment, rval);
-		// the dashboard's CreateCode(16) makes 16, older files may differ: just letters and digits
+		// the dashboard's CreateCode(16) made 16, older ones may differ: just letters and digits
 		if (data.contains(g_Keys.callinghome.hash))
 		{
 			const auto hash = data[g_Keys.callinghome.hash].get<std::string>();

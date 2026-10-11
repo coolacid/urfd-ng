@@ -3,8 +3,9 @@
 // CallingHome -- registers the reflector in the XLX directory
 //
 // Sends what the dashboard sent before, so the directory sees the same reflector:
-// the same hash (Hash in urfd.ini, else the dashboard's hash file), name, uptime, URL, country,
-// comment, version and interlinks. Does nothing unless [CallingHome] Enable = true.
+// the same hash ([CallingHome] Hash, made and saved there on the first start),
+// name, uptime, URL, country, comment, version and interlinks. Does nothing
+// unless [CallingHome] Enable = true.
 //
 // Copyright (C) 2026 Jens-Christian Merg (DL4JC)
 // Licensed under the GNU General Public License v3 or later
@@ -27,8 +28,8 @@ public:
 
 private:
 	void Thread(void);
-	bool LoadOrCreateHash(void);
-	bool WriteHashFile(void) const;	// true on failure
+	bool CreateHash(void);	// true on failure
+	static bool SaveHash(const std::string &ini, const std::string &hash);	// true on failure
 	std::string BuildXml(void) const;
 	bool Push(void);
 
@@ -38,7 +39,6 @@ private:
 	long m_Timeout = 5;
 
 	std::string m_Hash;
-	std::string m_HashFile;
 	std::chrono::steady_clock::time_point m_StartTime;
 	bool m_Reached = false;	// last push got through, for logging state changes only
 
