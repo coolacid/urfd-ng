@@ -216,6 +216,44 @@ static void Md380Stat(char module, std::atomic<uint32_t> &counter)
 }
 #endif
 
+#ifdef WITH_MD380_VOCODER
+// Switch the md380 RAM to this stream's state, called with md380_mux held:
+// the current stream's state is saved, a known stream's state comes back,
+// a new stream starts from the state right after md380_init()
+void CController::Md380SelectStream(uint16_t sid)
+{
+	if (sid == md380_enc_streamid)
+		return;
+
+	// Save current stream's state
+	if (md380_enc_streamid != 0)
+	{
+		auto &entry = md380_state_cache[md380_enc_streamid];
+		entry.state.resize(MD380_RAM_SIZE);
+		memcpy(entry.state.data(), (void*)MD380_RAM, MD380_RAM_SIZE);
+		entry.last_used = std::chrono::steady_clock::now();
+	}
+	// Restore target stream's state, a new stream starts fresh
+	auto it = md380_state_cache.find(sid);
+	if (it != md380_state_cache.end())
+		memcpy((void*)MD380_RAM, it->second.state.data(), MD380_RAM_SIZE);
+	else
+		memcpy((void*)MD380_RAM, md380_fresh_state.data(), MD380_RAM_SIZE);
+	md380_enc_streamid = sid;
+
+	// Purge stale (>30s) or excess cache entries
+	static constexpr size_t MD380_CACHE_MAX = 8;
+	auto cutoff = std::chrono::steady_clock::now() - std::chrono::seconds(30);
+	for (auto ci = md380_state_cache.begin(); ci != md380_state_cache.end(); )
+	{
+		if (ci->first != sid && (ci->second.last_used < cutoff || md380_state_cache.size() > MD380_CACHE_MAX))
+			ci = md380_state_cache.erase(ci);
+		else
+			++ci;
+	}
+}
+#endif
+
 CController::CController() : keep_running(true), ambe_in_num(256), ambe_out_num(256), usrp_rx_num(256), usrp_tx_num(256), dmr_reencode_num(256), outgain_dstar_num(256), outgain_dmr_num(256), outgain_usrp_num(256), outgain_imbe_num(256), outgain_m17_num(256) {}
 
 bool CController::Start()
@@ -838,6 +876,7 @@ void CController::Codec2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 		memcpy(dmr_buf, packet->GetAudioSamples(), sizeof(dmr_buf));
 		ApplyGain(dmr_buf, 160, outgain_dmr_num);
 		std::lock_guard<std::mutex> lock(md380_mux);
+		Md380SelectStream(packet->GetStreamId());
 		md380_encode_fec(ambe2, dmr_buf);
 		Md380Stat(packet->GetModule(), g_Stats.md380.encodes);
 		packet->SetDMRData(ambe2);
@@ -900,6 +939,7 @@ void CController::AudiotoSWAMBE2(std::shared_ptr<CTranscoderPacket> packet)
 
 	{
 		std::lock_guard<std::mutex> lock(md380_mux);
+		Md380SelectStream(packet->GetStreamId());
 		if (ambe_in_num != 256)
 		{
 			int16_t tmp[160];
@@ -926,6 +966,7 @@ void CController::SWAMBE2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 	int16_t tmp[160];
 	{
 		std::lock_guard<std::mutex> lock(md380_mux);
+		Md380SelectStream(packet->GetStreamId());
 		md380_decode_fec(const_cast<uint8_t*>(packet->GetDMRData()), tmp);
 		Md380Stat(packet->GetModule(), g_Stats.md380.decodes);
 	}
@@ -1368,37 +1409,8 @@ void CController::RouteDmrPacket(std::shared_ptr<CTranscoderPacket> packet)
 			uint8_t ambe2[9];
 			const int16_t *pcm = packet->GetAudioSamples();
 			std::lock_guard<std::mutex> lock(md380_mux);
-			// Save/restore md380 encoder state per stream to prevent crosstalk
-			uint16_t sid = packet->GetStreamId();
-			if (sid != md380_enc_streamid)
-			{
-				// Save current stream's state
-				if (md380_enc_streamid != 0)
-				{
-					auto &entry = md380_state_cache[md380_enc_streamid];
-					entry.state.resize(MD380_RAM_SIZE);
-					memcpy(entry.state.data(), (void*)MD380_RAM, MD380_RAM_SIZE);
-					entry.last_used = std::chrono::steady_clock::now();
-				}
-				// Restore target stream's state, a new stream starts from the state after md380_init()
-				auto it = md380_state_cache.find(sid);
-				if (it != md380_state_cache.end())
-					memcpy((void*)MD380_RAM, it->second.state.data(), MD380_RAM_SIZE);
-				else
-					memcpy((void*)MD380_RAM, md380_fresh_state.data(), MD380_RAM_SIZE);
-				md380_enc_streamid = sid;
-
-				// Purge stale (>30s) or excess cache entries
-				static constexpr size_t MD380_CACHE_MAX = 8;
-				auto cutoff = std::chrono::steady_clock::now() - std::chrono::seconds(30);
-				for (auto ci = md380_state_cache.begin(); ci != md380_state_cache.end(); )
-				{
-					if (ci->first != sid && (ci->second.last_used < cutoff || md380_state_cache.size() > MD380_CACHE_MAX))
-						ci = md380_state_cache.erase(ci);
-					else
-						++ci;
-				}
-			}
+			// Save/restore md380 state per stream to prevent crosstalk
+			Md380SelectStream(packet->GetStreamId());
 			int16_t tmp[160];
 			memcpy(tmp, pcm, sizeof(tmp));
 			ApplyGain(tmp, 160, outgain_dmr_num);

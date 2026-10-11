@@ -268,7 +268,12 @@ void CMonitorServer::HandleRest(struct mg_connection *c, struct mg_http_message 
 			g_Stats.config.agc_noisegate.store(noisegate);
 		float dmr_gain_mode;
 		if (json_get_float(hm->body.buf, hm->body.len, "dmr_gain_mode", dmr_gain_mode))
-			g_Stats.config.dmr_gain_mode.store((int)dmr_gain_mode < 0 ? 0 : (int)dmr_gain_mode > 2 ? 2 : (int)dmr_gain_mode);
+		{
+			int m = (int)dmr_gain_mode < 0 ? 0 : (int)dmr_gain_mode > 2 ? 2 : (int)dmr_gain_mode;
+			if (m == 2 && !g_Stats.md380.available.load())
+				m = 1;  // re-encode needs the MD380, fall back to the bitstream gain
+			g_Stats.config.dmr_gain_mode.store(m);
+		}
 		float ambe_db;
 		if (json_get_float(hm->body.buf, hm->body.len, "ambe_gain_db", ambe_db))
 			g_Stats.config.ambe_gain_db.store((int)ambe_db < -30 ? -30 : (int)ambe_db > 10 ? 10 : (int)ambe_db);

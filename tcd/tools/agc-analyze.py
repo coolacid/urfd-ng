@@ -62,7 +62,7 @@ def analyze_file(path):
             "rms_out_min": -100, "rms_out_avg": -100, "rms_out_max": -100,
             "peak_in_max": -100, "peak_out_max": -100,
             "gain_min": 0, "gain_avg": 0, "gain_max": 0,
-            "target_dev": 0, "gain_std": 0, "gate_transitions": 0,
+            "target_dev": 0, "gain_std": 0, "gate_transitions": 0, "gate_short_openings": 0,
             "clipping": 0, "gain_ceiling_pct": 0, "gain_floor_pct": 0,
         })
         return result
@@ -99,15 +99,26 @@ def analyze_file(path):
         "gain_floor_pct": gain_floor / len(gains) * 100,
     })
 
-    # Gate flicker: count gate→speech transitions
+    # Gate: count gate→speech transitions, and short openings between two
+    # closed stretches. Since tcd 0.2.4 the gate holds 60 ms before it closes,
+    # so a transition is a real pause; flicker shows as openings under 100 ms,
+    # noise peaks that cross the threshold
     transitions = 0
+    short_openings = 0
     prev_gate = False
+    open_run = 0
     for r in rows:
         g = int(r["gate"]) == 1
         if prev_gate and not g:
             transitions += 1
+            open_run = 0
+        if not g:
+            open_run += 1
+        elif not prev_gate and 0 < open_run < 5 and transitions > 0:
+            short_openings += 1
         prev_gate = g
     result["gate_transitions"] = transitions
+    result["gate_short_openings"] = short_openings
 
     return result
 
@@ -122,7 +133,7 @@ def diagnose(r):
     ceil_pct = r["gain_ceiling_pct"]
     floor_pct = r["gain_floor_pct"]
     gstd = r["gain_std"]
-    gtrans = r["gate_transitions"]
+    gshort = r["gate_short_openings"]
     dur = r["duration"]
     gmax = r["gain_max"]
     clip = r["clipping"]
@@ -166,14 +177,14 @@ def diagnose(r):
     elif gstd > 2.5:
         msgs.append(("warn", f"Gain somewhat unstable ({gstd:.1f}dB std)"))
 
-    # Gate flicker
-    if dur > 5 and gtrans / dur > 1.5:
+    # Gate flicker: noise peaks opening the gate briefly
+    if dur > 5 and gshort / dur > 0.5:
         msgs.append(("fix",
-            f"Noise gate flicker: {gtrans} transitions in {dur:.0f}s ({gtrans/dur:.1f}/s). "
-            f"-> Lower AGCNoiseGate (e.g. -60 dBFS)"))
-    elif dur > 5 and gtrans / dur > 0.8:
+            f"Noise opens the gate: {gshort} openings under 100 ms in {dur:.0f}s ({gshort/dur:.1f}/s). "
+            f"-> Raise AGCNoiseGate by about 3 dB"))
+    elif dur > 5 and gshort / dur > 0.2:
         msgs.append(("warn",
-            f"Moderate gate activity: {gtrans} transitions in {dur:.0f}s"))
+            f"Some short gate openings: {gshort} under 100 ms in {dur:.0f}s"))
 
     # Clipping
     if clip > 0:
@@ -210,7 +221,7 @@ def print_detail(r):
     print(f"\n  Target ({TARGET} dBFS) deviation: {r['target_dev']:+.1f} dB")
     print(f"  Gain stability:   {r['gain_std']:.1f} dB std dev")
     print(f"  Gain at ceiling:  {r['gain_ceiling_pct']:.0f}% of speech frames")
-    print(f"  Gate transitions: {r['gate_transitions']}")
+    print(f"  Gate transitions: {r['gate_transitions']} ({r['gate_short_openings']} openings under 100 ms)")
     print(f"  Near-clip frames: {r['clipping']}")
 
     msgs = diagnose(r)
@@ -306,11 +317,11 @@ def print_summary(results):
             ))
 
     # Check gate flicker
-    flickery = [r for r in with_speech if r["duration"] > 5 and r["gate_transitions"] / r["duration"] > 1.5]
+    flickery = [r for r in with_speech if r["duration"] > 5 and r["gate_short_openings"] / r["duration"] > 0.5]
     if flickery:
         issues.append((
-            f"{len(flickery)}/{n} streams have excessive gate flicker.",
-            f"-> Lower AGCNoiseGate (e.g. -60)"
+            f"{len(flickery)}/{n} streams have noise opening the gate (openings under 100 ms).",
+            f"-> Raise AGCNoiseGate by about 3 dB"
         ))
 
     # Check pumping
