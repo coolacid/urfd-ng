@@ -33,7 +33,7 @@ Comment = My URF Reflector     # max 100 characters
 
 Gesendet wird dasselbe wie vorher vom Dashboard (Name `XLXnnn`, Laufzeit, `DashboardUrl` aus `[Names]`, Land, Kommentar, Version, Kopplungen). Der Hash identifiziert den Reflektor im Verzeichnis. Steht er als `Hash` in der ini, wird keine Hash-Datei gelesen oder geschrieben; `setup.sh` erledigt das bei der Installation und bei `update` (mit dem Hash aus der vorhandenen Datei, die liegen bleibt). Ohne `Hash` wird die Hash-Datei des Dashboards weiterverwendet, ein bestehender Reflektor bleibt im Verzeichnis also derselbe Eintrag; eine vorhandene, aber nicht lesbare Hash-Datei wird nie ersetzt, dann wird nichts gesendet. Ohne `Enable = true` wird nichts gesendet. Die Einstellungen werden beim Start gelesen.
 
-Um `Hash` von Hand zu setzen, nimm den vorhandenen, oder erzeuge einen neuen, wenn der Reflektor noch nie im Verzeichnis stand (16 Buchstaben und Ziffern, wie sie das Dashboard erzeugt hat):
+Richtest du es von Hand ein (ohne `setup.sh`), besorge dir zuerst den Hash: den vorhandenen, wenn der Reflektor schon einmal im Verzeichnis stand (über ein XLX-Dashboard oder ein älteres urfd), sonst einen neuen (16 Buchstaben und Ziffern, wie sie das Dashboard erzeugt hat), und trage ihn in `[CallingHome]` als `Hash = ...` ein:
 
 ```bash
 grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php       # vorhandener Hash

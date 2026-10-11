@@ -98,9 +98,15 @@ Forward these ports from your router to the machine, or open them in the firewal
 Once everything works from outside, the reflector can be listed in hotspot software:
 
 1. Edit `/opt/urfd/config/urfd.ini`, section `[CallingHome]`: set `Enable = true`, the `Country` name (e.g. `Germany`) and a `Comment`. The `DashboardUrl` from `[Names]` is sent along.
-2. Restart: `docker restart urfd`.
+2. Set the `Hash` that identifies the reflector in the directory. If it was listed before (by an XLX dashboard or an older urfd), take its existing hash, otherwise make a new one:
+   ```bash
+   grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php       # existing hash
+   LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c16; echo   # new hash
+   ```
+   and put it in the section as `Hash = ...`. Keep it from then on: the directory ties `XLXnnn` to the first hash it sees.
+3. Restart: `docker restart urfd`.
 
-The reflector then reports to the directory every 5 minutes; `docker logs urfd | grep CallingHome` shows whether it got through. If you answered yes to this question during setup, it is already on.
+The reflector then reports to the directory every 5 minutes; `docker logs urfd | grep CallingHome` shows whether it got through. If you answered yes to this question during setup, it is already on and the hash is set.
 
 ## Daily use
 

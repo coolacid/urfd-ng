@@ -33,7 +33,7 @@ Comment = My URF Reflector     # max 100 characters
 
 It sends what the dashboard sent (name `XLXnnn`, uptime, `DashboardUrl` from `[Names]`, country, comment, version, interlinks). The hash identifies the reflector in the directory. Set it as `Hash` and no hash file is read or written; `setup.sh` does this for you, on install and on `update` (taking the hash from the existing file, which stays). Without `Hash` it keeps using the dashboard's hash file, so an existing reflector stays the same entry in the directory; a hash file that exists but cannot be read is never replaced, nothing is sent then. Nothing is sent unless `Enable = true`. The settings are read at startup.
 
-To set `Hash` by hand, take the existing one, or make a new one if the reflector was never in the directory (16 letters and digits, like the dashboard made them):
+Setting it up by hand (without `setup.sh`), get the hash first: take the existing one if the reflector was listed before, by an XLX dashboard or an older urfd, or make a new one if it never was (16 letters and digits, like the dashboard made them), and put it in `[CallingHome]` as `Hash = ...`:
 
 ```bash
 grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php       # existing hash
