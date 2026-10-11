@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.7.0-dht** | tcd 0.2.2 | Dashboard v2.8.2
+**urfd 4.7.1-dht** | tcd 0.2.2 | Dashboard v2.8.2
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -879,6 +879,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **XLX mode hotspots (4.7.1)**: a module linked with a private call 4001-4026, as Pi-Star/WPSD's XLX master mode (DMRGateway) does, is served on the slot it was linked on and on TG9, like xlxd; DMRGateway's XLX network takes nothing else. The terminator of such a link call no longer logs an orphaned frame
 - **DMR talker alias (4.7.0)**: calls to hotspots on the MMDVM server carry a talker alias, the callsign and first name from the DMR ID database as BrandMeister makes it, or the alias the DMR source sends (BrandMeister, the radio) as soon as it arrived complete
 - **D-Star positions (4.6.0)**: DPRS positions in the slow data of D-Star radios (GPS-A, checked against its CRC, or NMEA `RMC`/`GGA`) show up as locator in the last heard list, the XML and `/json/stations`, like M17 GNSS positions; both are published as the middle of their locator field (about 4.6 × 2.3 km), not the exact position, which other D-Star stations on the module still get with the slow data; from every D-Star protocol and URF peers
 - **CallingHome without a hash file (4.5.0)**: the reflector makes its directory hash at the first start and saves it as `[CallingHome] Hash` in `urfd.ini`; no hash file any more, `HashFile` is gone and `setup.sh` no longer touches the hash (suggested by Jason, VE3YCA)

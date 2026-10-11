@@ -146,8 +146,11 @@ protected:
 	char DmrDstIdToModule(uint32_t) const;
 	uint32_t ModuleToDmrDestId(char) const;
 
-	// per-client TG lookup for outbound DstId
+	// per-client TG and timeslot lookup for outbound DstId
 	uint32_t GetClientTGForModule(const CDmrmmdvmClient *client, char mod) const;
+	uint8_t GetClientSlotForModule(const CDmrmmdvmClient *client, char mod, uint8_t fallback) const;
+	// TG remembered for a slot linked with this TG (XLX links 4001-4026 -> TG9)
+	uint32_t SlotTGForLink(uint32_t tg) const;
 
 	// Buffer & LC helpers
 	void AppendVoiceLCToBuffer(CBuffer *, uint32_t uiSrcId, uint32_t uiDstId) const;

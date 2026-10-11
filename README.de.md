@@ -4,7 +4,7 @@
 
 Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
-**urfd 4.7.0-dht** | tcd 0.2.2 | Dashboard v2.8.2
+**urfd 4.7.1-dht** | tcd 0.2.2 | Dashboard v2.8.2
 
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
@@ -858,6 +858,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **Hotspots im XLX-Modus (4.7.1)**: Ein Modul, das per Private Call 4001-4026 verbunden wurde, wie es der XLX-Master-Modus von Pi-Star/WPSD (DMRGateway) tut, wird auf dem Slot bedient, auf dem verbunden wurde, und auf TG9, wie bei xlxd; das XLX-Netz von DMRGateway nimmt nichts anderes an. Der Terminator eines solchen Link-Rufs erzeugt keinen Orphaned Frame mehr
 - **DMR Talker Alias (4.7.0)**: Rufe an Hotspots am MMDVM-Server tragen einen Talker Alias, Rufzeichen und Vorname aus der DMR-ID-Datenbank wie bei BrandMeister, oder den Alias, den die DMR-Quelle schickt (BrandMeister, das Funkgerät), sobald er vollständig angekommen ist
 - **D-Star-Positionen (4.6.0)**: DPRS-Positionen aus den Slow Data von D-Star-Geräten (GPS-A, gegen seine CRC geprüft, oder NMEA `RMC`/`GGA`) erscheinen als Locator in der Liste der zuletzt Gehörten, im XML und in `/json/stations`, wie M17-GPS-Positionen; veröffentlicht wird bei beiden nur die Mitte des Locator-Feldes (etwa 4,6 × 2,3 km), nicht die genaue Position, die andere D-Star-Stationen auf dem Modul weiterhin mit den Slow Data bekommen; aus allen D-Star-Protokollen und von URF-Partnern
 - **CallingHome ohne Hash-Datei (4.5.0)**: Der Reflektor erzeugt seinen Hash fürs Verzeichnis beim ersten Start und speichert ihn als `[CallingHome] Hash` in `urfd.ini`; keine Hash-Datei mehr, `HashFile` entfällt und `setup.sh` fasst den Hash nicht mehr an (Anregung von Jason, VE3YCA)

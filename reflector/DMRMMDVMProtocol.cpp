@@ -365,6 +365,8 @@ void CDmrmmdvmProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Hea
 		// extract timeslot from streamId high byte
 		uint8_t slot = (Header->GetStreamId() >> 24) & 0xFF;
 		if (slot < DMR_SLOT1 || slot > DMR_SLOT2) slot = DMR_SLOT2;
+		// the TG this slot answers on, TG9 for XLX style links
+		const uint32_t slotTG = SlotTGForLink(sourceTG);
 		// no stream open yet, open a new one
 		// firstfind this client
 		std::shared_ptr<CClient>client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::dmrmmdvm);
@@ -383,7 +385,7 @@ void CDmrmmdvmProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Hea
 					{
 						std::cout << "MMDVM: " << client->GetCallsign() << " TS" << (int)slot << " linking on module " << targetMod << " (TG" << sourceTG << ")" << std::endl;
 						mmdvm->SetSlotModule(slot, targetMod);
-						mmdvm->SetSlotTG(slot, sourceTG);
+						mmdvm->SetSlotTG(slot, slotTG);
 					}
 					else
 					{
@@ -395,7 +397,7 @@ void CDmrmmdvmProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Hea
 					// TG mapping resolved to a valid module — auto-link this slot
 					std::cout << "MMDVM: " << client->GetCallsign() << " TS" << (int)slot << " linking on module " << targetMod << " (TG" << sourceTG << ")" << std::endl;
 					mmdvm->SetSlotModule(slot, targetMod);
-					mmdvm->SetSlotTG(slot, sourceTG);
+					mmdvm->SetSlotTG(slot, slotTG);
 				}
 			}
 			else
@@ -405,12 +407,12 @@ void CDmrmmdvmProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Hea
 				{
 					std::cout << "MMDVM: " << client->GetCallsign() << " TS" << (int)slot << " switching to module " << targetMod << " (TG" << sourceTG << ")" << std::endl;
 					mmdvm->SetSlotModule(slot, targetMod);
-					mmdvm->SetSlotTG(slot, sourceTG);
+					mmdvm->SetSlotTG(slot, slotTG);
 				}
-				else if ( sourceTG != 0 && sourceTG != mmdvm->GetSlotTG(slot) )
+				else if ( slotTG != 0 && slotTG != mmdvm->GetSlotTG(slot) )
 				{
 					// same module but different TG — update the linked TG
-					mmdvm->SetSlotTG(slot, sourceTG);
+					mmdvm->SetSlotTG(slot, slotTG);
 				}
 
 				if ( cmd == CMD_UNLINK )
@@ -533,6 +535,8 @@ void CDmrmmdvmProtocol::HandleQueue(void)
 					{
 						auto *mmdvm = static_cast<CDmrmmdvmClient*>(client.get());
 						uint32_t clientTG = GetClientTGForModule(mmdvm, mod);
+						uint8_t clientSlot = GetClientSlotForModule(mmdvm, mod, outSlot);
+						buffer.data()[15] = (buffer.data()[15] & 0x7F) | ((clientSlot == DMR_SLOT2) ? 0x80 : 0x00);
 						buffer.data()[8]  = (uint8_t)(clientTG >> 16);
 						buffer.data()[9]  = (uint8_t)(clientTG >> 8);
 						buffer.data()[10] = (uint8_t)(clientTG);
@@ -582,7 +586,9 @@ void CDmrmmdvmProtocol::HandleQueue(void)
 						EncodeLastMMDVMPacket(hdr, m_StreamsCache[cacheKey].m_uiSeqId, &buffer, clientTG);
 					}
 
-					// patch rptrId
+					// patch timeslot and rptrId
+					uint8_t clientSlot = GetClientSlotForModule(mmdvm, mod, outSlot);
+					buffer.data()[15] = (buffer.data()[15] & 0x7F) | ((clientSlot == DMR_SLOT2) ? 0x80 : 0x00);
 					uint32_t rptrId = mmdvm->GetRawDmrId();
 					buffer.data()[11] = (uint8_t)(rptrId >> 24);
 					buffer.data()[12] = (uint8_t)(rptrId >> 16);
@@ -1003,11 +1009,12 @@ bool CDmrmmdvmProtocol::IsValidDvLastFramePacket(const CBuffer &Buffer, std::uni
 		// frame details
 		uint8_t uiFrameType = (Buffer.data()[15] & 0x30) >> 4;
 		uint8_t uiSlot = (Buffer.data()[15] & 0x80) ? DMR_SLOT2 : DMR_SLOT1;
-		//uint8_t uiCallType = (Buffer.data()[15] & 0x40) ? DMR_PRIVATE_CALL : DMR_GROUP_CALL;
+		uint8_t uiCallType = (Buffer.data()[15] & 0x40) ? DMR_PRIVATE_CALL : DMR_GROUP_CALL;
 		uint8_t uiSlotType = Buffer.data()[15] & 0x0F;
-		//std::cout << (int)uiSlot << std::endl;
+		// private calls (module link commands) never open a stream, so their terminator has none to close
 		if ( (uiFrameType == DMRMMDVM_FRAMETYPE_DATASYNC) &&
-				(uiSlotType == MMDVM_SLOTTYPE_TERMINATOR) )
+				(uiSlotType == MMDVM_SLOTTYPE_TERMINATOR) &&
+				(uiCallType == DMR_GROUP_CALL) )
 		{
 			// extract sync
 			uint8_t dmrsync[7];
@@ -1293,6 +1300,26 @@ uint32_t CDmrmmdvmProtocol::GetClientTGForModule(const CDmrmmdvmClient *client, 
 		}
 	}
 	return ModuleToDmrDestId(mod);  // fallback to primary TG
+}
+
+uint8_t CDmrmmdvmProtocol::GetClientSlotForModule(const CDmrmmdvmClient *client, char mod, uint8_t fallback) const
+{
+	// answer on the slot the client linked the module on
+	for (uint8_t s = 1; s <= 2; s++)
+	{
+		if (client->GetSlotModule(s) == mod)
+			return s;
+	}
+	return fallback;
+}
+
+uint32_t CDmrmmdvmProtocol::SlotTGForLink(uint32_t tg) const
+{
+	// a module linked with a legacy XLX private call 4001-4026 is served on TG9,
+	// as xlxd does; DMRGateway's XLX network takes nothing else
+	if (tg > 4000 && tg < 4027 && m_TGMap.TGToModule(tg) == ' ')
+		return 9;
+	return tg;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
