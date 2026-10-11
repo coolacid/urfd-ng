@@ -70,6 +70,10 @@ protected:
 	uint16_t md380_enc_streamid = 0;
 	struct Md380CacheEntry { std::vector<uint8_t> state; std::chrono::steady_clock::time_point last_used; };
 	std::unordered_map<uint16_t, Md380CacheEntry> md380_state_cache;
+	// md380 firmware RAM at 0x20000000, 128KB, saved/restored per stream
+	static constexpr uintptr_t MD380_RAM = 0x20000000;
+	static constexpr size_t MD380_RAM_SIZE = 0x20000;
+	std::vector<uint8_t> md380_fresh_state;  // RAM right after md380_init(), for new streams
 #endif
 	int32_t ambe_in_num, ambe_out_num, usrp_rx_num, usrp_tx_num, dmr_reencode_num;
 	int32_t outgain_dstar_num, outgain_dmr_num, outgain_usrp_num, outgain_imbe_num, outgain_m17_num;

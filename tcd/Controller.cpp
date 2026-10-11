@@ -508,6 +508,7 @@ bool CController::InitVocoders()
 		return true;
 	}
 	g_Stats.md380.available.store(true, std::memory_order_relaxed);
+	md380_fresh_state.assign((const uint8_t *)MD380_RAM, (const uint8_t *)MD380_RAM + MD380_RAM_SIZE);
 	if (dmrsf_device)
 		std::cout << "md380 vocoder: DMR re-encode after AGC" << std::endl;
 	else
@@ -1368,9 +1369,6 @@ void CController::RouteDmrPacket(std::shared_ptr<CTranscoderPacket> packet)
 			const int16_t *pcm = packet->GetAudioSamples();
 			std::lock_guard<std::mutex> lock(md380_mux);
 			// Save/restore md380 encoder state per stream to prevent crosstalk
-			// md380 firmware RAM at 0x20000000, 128KB
-			static constexpr uintptr_t MD380_RAM = 0x20000000;
-			static constexpr size_t MD380_RAM_SIZE = 0x20000;
 			uint16_t sid = packet->GetStreamId();
 			if (sid != md380_enc_streamid)
 			{
@@ -1382,10 +1380,12 @@ void CController::RouteDmrPacket(std::shared_ptr<CTranscoderPacket> packet)
 					memcpy(entry.state.data(), (void*)MD380_RAM, MD380_RAM_SIZE);
 					entry.last_used = std::chrono::steady_clock::now();
 				}
-				// Restore target stream's state (or init fresh)
+				// Restore target stream's state, a new stream starts from the state after md380_init()
 				auto it = md380_state_cache.find(sid);
 				if (it != md380_state_cache.end())
 					memcpy((void*)MD380_RAM, it->second.state.data(), MD380_RAM_SIZE);
+				else
+					memcpy((void*)MD380_RAM, md380_fresh_state.data(), MD380_RAM_SIZE);
 				md380_enc_streamid = sid;
 
 				// Purge stale (>30s) or excess cache entries
