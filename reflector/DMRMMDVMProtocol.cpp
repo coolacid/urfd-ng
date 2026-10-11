@@ -489,8 +489,16 @@ void CDmrmmdvmProtocol::HandleQueue(void)
 		if ( isHeader )
 		{
 			// update local stream cache
-			m_StreamsCache[cacheKey].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
-			m_StreamsCache[cacheKey].m_uiSeqId = 0;
+			auto &cache = m_StreamsCache[cacheKey];
+			cache.m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
+			cache.m_uiSeqId = 0;
+			// the talker alias, as BrandMeister sets it: callsign and first name
+			cache.m_TalkerAlias = CDmrEmbeddedLC::TalkerAlias(TalkerAliasText(cache.m_dvHeader.GetMyCallsign()));
+			cache.m_uiSuperframe = 0;
+			cache.m_bEmbeddedReady = false;
+			cache.m_SourceLC = CDmrEmbeddedLC();
+			cache.m_uiSourceTAMask = 0;
+			cache.m_bSourceTA = false;
 		}
 		else if ( isTerminator )
 		{
@@ -511,6 +519,8 @@ void CDmrmmdvmProtocol::HandleQueue(void)
 			{
 				CBuffer buffer;
 				EncodeMMDVMPacket(m_StreamsCache[cacheKey].m_dvHeader, m_StreamsCache[cacheKey].m_dvFrame0, m_StreamsCache[cacheKey].m_dvFrame1, (const CDvFramePacket &)*packet.get(), m_StreamsCache[cacheKey].m_uiSeqId, &buffer);
+				TakeSourceTalkerAlias(m_StreamsCache[cacheKey]);
+				AddTalkerAlias(m_StreamsCache[cacheKey], m_StreamsCache[cacheKey].m_dvFrame0.GetDmrPacketId(), buffer);
 				m_StreamsCache[cacheKey].m_uiSeqId = (m_StreamsCache[cacheKey].m_uiSeqId + 1) & 0xFF;
 
 				// send voice to all linked clients, patching DstId and rptrId per-client
@@ -1385,7 +1395,83 @@ void CDmrmmdvmProtocol::AppendTerminatorLCToBuffer(CBuffer *buffer, uint32_t uiS
 	buffer->Append(payload, sizeof(payload));
 }
 
-void CDmrmmdvmProtocol::ReplaceEMBInBuffer(CBuffer *buffer, uint8_t uiDmrPacketId) const
+// The talker alias is the same for every client, so it goes into the voice
+// frame built once for all of them: at burst A the next of its LCs is encoded,
+// bursts B-E carry it, F carries nothing
+void CDmrmmdvmProtocol::AddTalkerAlias(CDmrmmdvmStreamCacheItem &cache, uint8_t uiDmrPacketId, CBuffer &buffer) const
+{
+	if ( cache.m_TalkerAlias.empty() )
+		return;
+	if ( 0 == uiDmrPacketId )
+	{
+		cache.m_Embedded.Encode(cache.m_TalkerAlias[cache.m_uiSuperframe++ % cache.m_TalkerAlias.size()].data());
+		cache.m_bEmbeddedReady = true;
+	}
+	else if ( cache.m_bEmbeddedReady && (uiDmrPacketId <= 4) )
+	{
+		// the EMB clears the embedded bits, so it goes first; LCSS: B first, E last
+		const uint8_t lcss = (1 == uiDmrPacketId) ? 1 : ((4 == uiDmrPacketId) ? 2 : 3);
+		ReplaceEMBInBuffer(&buffer, uiDmrPacketId, lcss);
+		cache.m_Embedded.Fragment(uiDmrPacketId, buffer.data() + 20);
+	}
+}
+
+// A DMR source's own talker alias (from BrandMeister or the radio) is kept
+// in the frames: collect its LCs, and once all of them arrived send those
+// instead of ours, as they are
+void CDmrmmdvmProtocol::TakeSourceTalkerAlias(CDmrmmdvmStreamCacheItem &cache) const
+{
+	const auto &frame = cache.m_dvFrame0;
+	const uint8_t burst = frame.GetDmrPacketId();
+	if ( cache.m_bSourceTA || (ECodecType::dmr != frame.GetCodecIn()) || (burst < 1) || (burst > 4) )
+		return;
+
+	uint8_t lc[9];
+	if ( !cache.m_SourceLC.Collect(frame.GetDvSync(), lc) )
+		return;
+	const uint8_t flco = lc[0] & 0x3FU;
+	if ( (flco < 0x04U) || (flco > 0x07U) )
+		return;	// voice LC, GPS, ...
+	std::copy(lc, lc + 9, cache.m_SourceTA[flco - 0x04U].begin());
+	cache.m_uiSourceTAMask |= 1U << (flco - 0x04U);
+	if ( 0 == (cache.m_uiSourceTAMask & 0x01U) )
+		return;
+
+	// the header says how long it is: 48 bits in the header, 56 per block
+	const uint8_t *header = cache.m_SourceTA[0].data();
+	static const unsigned bitsPerChar[4] = { 7, 8, 8, 16 };
+	const unsigned bits = ((header[2] >> 1) & 0x1FU) * bitsPerChar[(header[2] >> 6) & 0x03U];
+	unsigned count = 1 + ((bits > 48) ? (bits - 48 + 55) / 56 : 0);
+	if ( count > 4 )
+		count = 4;
+	const uint8_t all = (1U << count) - 1U;
+	if ( (cache.m_uiSourceTAMask & all) != all )
+		return;
+
+	cache.m_TalkerAlias.assign(cache.m_SourceTA.begin(), cache.m_SourceTA.begin() + count);
+	cache.m_bSourceTA = true;
+}
+
+// "CALLSIGN Firstname" from the DMR ID database, or the callsign alone
+std::string CDmrmmdvmProtocol::TalkerAliasText(const CCallsign &my)
+{
+	std::string text = my.GetBase();
+	while ( !text.empty() && ' ' == text.back() )
+		text.pop_back();
+	if ( text.empty() )
+		return text;
+
+	g_LDid.Lock();
+	const uint32_t dmrid = g_LDid.FindDmrid(my.GetKey());
+	const std::string name = dmrid ? g_LDid.FindName(dmrid) : std::string();
+	g_LDid.Unlock();
+	const auto first = name.find_first_not_of(' ');
+	if ( std::string::npos != first )
+		text += " " + name.substr(first, name.find(' ', first) - first);
+	return text;
+}
+
+void CDmrmmdvmProtocol::ReplaceEMBInBuffer(CBuffer *buffer, uint8_t uiDmrPacketId, uint8_t lcss) const
 {
 	// voice packet A ?
 	if ( uiDmrPacketId == 0 )
@@ -1402,7 +1488,7 @@ void CDmrmmdvmProtocol::ReplaceEMBInBuffer(CBuffer *buffer, uint8_t uiDmrPacketI
 		uint8_t emb[2];
 		emb[0]  = (DMRMMDVM_REFLECTOR_COLOUR << 4) & 0xF0;
 		//emb[0] |= PI ? 0x08U : 0x00;
-		//emb[0] |= (LCSS << 1) & 0x06;
+		emb[0] |= (lcss << 1) & 0x06;
 		emb[1]  = 0x00;
 		// encode
 		CQR1676::encode(emb);

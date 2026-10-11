@@ -190,6 +190,8 @@ TG9 = A,TS2                        # Common hotspot default
 
 **Dual-Slot**: Jeder Timeslot verbindet sich unabhängig. Sendet ein Hotspot auf TS1 mit TG 4019 (Modul S) und auf TS2 mit TG 4004 (Modul D), empfängt er beide Module gleichzeitig, Modul S auf dem Timeslot, der für dessen TG eingetragen ist, Modul D auf dem anderen. Dafür müssen TGs verschiedener Module auf verschiedenen Timeslots liegen. Das Dashboard zeigt beide verbundenen Module (z.B. "S (TS1), D (TS2)").
 
+**Talker Alias**: Jeder Ruf kommt bei den Hotspots mit Talker Alias an, wie von BrandMeister: Rufzeichen und Vorname aus der DMR-ID-Datenbank (z.B. `DL4JC Jens-Christian`), höchstens 27 Zeichen, ISO 8859-1. Schickt die DMR-Quelle einen eigenen Alias (BrandMeister oder ein Funkgerät mit eigenem), wird dieser unverändert weitergegeben, sobald er vollständig angekommen ist; bis dahin, und bei D-Star, YSF, M17 und den anderen Betriebsarten, ist es unserer. Er steckt in der Embedded Signalling, ein LC pro Superframe; der Hotspot zeigt ihn an und gibt ihn ans Funkgerät weiter.
+
 **Hotspot-Einstellungen**: Den Hotspot direkt auf die IP des Reflektors, Port 62030, einstellen. In WPSD/Pi-Star "MMDVM_BRIDGE" oder den Einzel-Netzwerk-Modus verwenden. Der Multi-Netzwerk-Modus von DMRGateway leitet standardmäßig zu BrandMeister und muss abgeschaltet werden.
 
 **Admin-Befehle**:
@@ -856,6 +858,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **DMR Talker Alias (4.7.0)**: Rufe an Hotspots am MMDVM-Server tragen einen Talker Alias, Rufzeichen und Vorname aus der DMR-ID-Datenbank wie bei BrandMeister, oder den Alias, den die DMR-Quelle schickt (BrandMeister, das Funkgerät), sobald er vollständig angekommen ist
 - **D-Star-Positionen (4.6.0)**: DPRS-Positionen aus den Slow Data von D-Star-Geräten (GPS-A, gegen seine CRC geprüft, oder NMEA `RMC`/`GGA`) erscheinen als Locator in der Liste der zuletzt Gehörten, im XML und in `/json/stations`, wie M17-GPS-Positionen; veröffentlicht wird bei beiden nur die Mitte des Locator-Feldes (etwa 4,6 × 2,3 km), nicht die genaue Position, die andere D-Star-Stationen auf dem Modul weiterhin mit den Slow Data bekommen; aus allen D-Star-Protokollen und von URF-Partnern
 - **CallingHome ohne Hash-Datei (4.5.0)**: Der Reflektor erzeugt seinen Hash fürs Verzeichnis beim ersten Start und speichert ihn als `[CallingHome] Hash` in `urfd.ini`; keine Hash-Datei mehr, `HashFile` entfällt und `setup.sh` fasst den Hash nicht mehr an (Anregung von Jason, VE3YCA)
 - **CallingHome-Hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` setzt den Hash fürs Verzeichnis direkt (Anregung von Jason, VE3YCA)

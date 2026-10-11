@@ -190,6 +190,8 @@ TG9 = A,TS2                        # Common hotspot default
 
 **Dual-slot linking**: Each timeslot links independently. When a hotspot transmits on TS1 with TG 4019 (module S) and on TS2 with TG 4004 (module D), it receives traffic from both modules simultaneously — module S on the timeslot configured for that TG, module D on the other. For this to work, map TGs for different modules to different timeslots. The dashboard shows both linked modules (e.g. "S (TS1), D (TS2)").
 
+**Talker alias**: Every call reaches the hotspots with a talker alias, as from BrandMeister: the callsign and the first name from the DMR ID database (e.g. `DL4JC Jens-Christian`), at most 27 characters, ISO 8859-1. If the DMR source sends its own alias (BrandMeister, or a radio with one), that one is passed on as it is once it arrived complete; until then, and for D-Star, YSF, M17 and the other modes, it is ours. It goes in the embedded signalling, one LC per superframe; the hotspot shows it and passes it to the radio.
+
 **Hotspot config**: Point the hotspot directly at the reflector IP on port 62030. In WPSD/Pi-Star, use "MMDVM_BRIDGE" or single-network mode. DMRGateway multi-network mode routes traffic to BrandMeister by default and must be disabled.
 
 **Admin commands**:
@@ -877,6 +879,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **DMR talker alias (4.7.0)**: calls to hotspots on the MMDVM server carry a talker alias, the callsign and first name from the DMR ID database as BrandMeister makes it, or the alias the DMR source sends (BrandMeister, the radio) as soon as it arrived complete
 - **D-Star positions (4.6.0)**: DPRS positions in the slow data of D-Star radios (GPS-A, checked against its CRC, or NMEA `RMC`/`GGA`) show up as locator in the last heard list, the XML and `/json/stations`, like M17 GNSS positions; both are published as the middle of their locator field (about 4.6 × 2.3 km), not the exact position, which other D-Star stations on the module still get with the slow data; from every D-Star protocol and URF peers
 - **CallingHome without a hash file (4.5.0)**: the reflector makes its directory hash at the first start and saves it as `[CallingHome] Hash` in `urfd.ini`; no hash file any more, `HashFile` is gone and `setup.sh` no longer touches the hash (suggested by Jason, VE3YCA)
 - **CallingHome hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` sets the directory hash directly (suggested by Jason, VE3YCA)

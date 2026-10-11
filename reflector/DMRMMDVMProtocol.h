@@ -22,6 +22,7 @@
 #include <random>
 #include <unordered_map>
 
+#include "DMREmbeddedLC.h"
 #include "Defines.h"
 #include "Timer.h"
 #include "Protocol.h"
@@ -60,6 +61,17 @@ public:
 	CDvFramePacket  m_dvFrame1;
 
 	uint8_t  m_uiSeqId;
+
+	// talker alias of the stream, one of its LCs per superframe
+	std::vector<std::array<uint8_t, 9>> m_TalkerAlias;
+	unsigned        m_uiSuperframe = 0;
+	bool            m_bEmbeddedReady = false;
+	CDmrEmbeddedLC  m_Embedded;
+	// a talker alias the DMR source sends (BrandMeister, the radio) replaces ours
+	CDmrEmbeddedLC  m_SourceLC;
+	std::array<std::array<uint8_t, 9>, 4> m_SourceTA {};
+	uint8_t         m_uiSourceTAMask = 0;	// bit n: LC n of the source's alias arrived
+	bool            m_bSourceTA = false;
 };
 
 
@@ -140,7 +152,10 @@ protected:
 	// Buffer & LC helpers
 	void AppendVoiceLCToBuffer(CBuffer *, uint32_t uiSrcId, uint32_t uiDstId) const;
 	void AppendTerminatorLCToBuffer(CBuffer *, uint32_t uiSrcId, uint32_t uiDstId) const;
-	void ReplaceEMBInBuffer(CBuffer *, uint8_t) const;
+	void ReplaceEMBInBuffer(CBuffer *, uint8_t, uint8_t lcss = 0) const;
+	void AddTalkerAlias(CDmrmmdvmStreamCacheItem &, uint8_t, CBuffer &) const;
+	void TakeSourceTalkerAlias(CDmrmmdvmStreamCacheItem &) const;
+	static std::string TalkerAliasText(const CCallsign &);
 	void AppendDmrIdToBuffer(CBuffer *, uint32_t) const;
 	void AppendDmrRptrIdToBuffer(CBuffer *, uint32_t) const;
 
