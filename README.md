@@ -33,14 +33,35 @@ Comment = My URF Reflector     # max 100 characters
 
 It sends what the dashboard sent (name `XLXnnn`, uptime, `DashboardUrl` from `[Names]`, country, comment, version, interlinks). The hash identifies the reflector in the directory. Set it as `Hash` and no hash file is read or written; `setup.sh` does this for you, on install and on `update` (taking the hash from the existing file, which stays). Without `Hash` it keeps using the dashboard's hash file, so an existing reflector stays the same entry in the directory; a hash file that exists but cannot be read is never replaced, nothing is sent then. Nothing is sent unless `Enable = true`. The settings are read at startup.
 
-Setting it up by hand (without `setup.sh`), get the hash first: take the existing one if the reflector was listed before, by an XLX dashboard or an older urfd, or make a new one if it never was (16 letters and digits, like the dashboard made them), and put it in `[CallingHome]` as `Hash = ...`:
+#### Getting the hash when setting up by hand
 
-```bash
-grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php       # existing hash
-LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c16; echo   # new hash
-```
+`setup.sh` takes care of the hash. Without it, get one before the first start with `Enable = true`. There is nothing to download: the directory hands out no hashes, a reflector makes its own, and the first hash the directory sees for `XLXnnn` owns that name.
 
-Keep the hash once the reflector is listed: the directory ties the name to it, and a new one would not be accepted for the same `XLXnnn`.
+1. Check whether your name is already in the directory (here `XLX363`, the number of your `URFnnn`):
+   ```bash
+   curl -s 'http://xlxapi.rlx.lu/api.php?do=GetReflectorList' | grep -A6 '<name>XLX363</name>'
+   # without curl:
+   wget -qO- 'http://xlxapi.rlx.lu/api.php?do=GetReflectorList' | grep -A6 '<name>XLX363</name>'
+   ```
+2. **Not listed:** make a new hash, 16 letters and digits like the dashboard made them, with either of
+   ```bash
+   LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c16; echo
+   openssl rand -hex 8
+   ```
+   **Listed:** the name already has a hash, and the directory takes updates only with that one. If it is your reflector, copy it from the server that registered it until now, an XLX dashboard or an older urfd. The file is `$CallingHome['HashFile']` in the old dashboard's `config.inc.php`, here `/opt/urfd/xlxd-ch/callinghome.php`:
+   ```bash
+   grep '\$Hash' /opt/urfd/xlxd-ch/callinghome.php
+   ```
+   It can only be read there, not over the web: the dashboard runs the file as PHP and sends nothing. If the listed reflector isn't yours, choose another number.
+3. Put it in `urfd.ini` and restart:
+   ```ini
+   [CallingHome]
+   Enable = true
+   Hash = Ab3dE4fG5hIj6K7L
+   ```
+   `docker logs urfd | grep CallingHome` should then show `using the hash from urfd.ini` and `registered as XLXnnn`.
+
+Keep the hash from then on, a new one would not be accepted for the same `XLXnnn`.
 
 ### MMDVMClient Connector
 Connect to any DMR master server (e.g. BrandMeister) via the MMDVM protocol. Maps talkgroups to reflector modules with per-timeslot support. Multiple TGs can share a module: the first becomes the primary (TX/RX), additional TGs are secondary (inbound RX only). Dynamic TGs can be added at runtime via the Admin interface.
