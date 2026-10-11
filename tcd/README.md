@@ -2,7 +2,7 @@
 
 **English** | [Deutsch](README.de.md)
 
-**Version 0.2.5** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.6** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd converts voice between the digital modes on a URF reflector, so a D-Star user hears a DMR user and the other way round. It uses DVSI AMBE hardware for D-Star (AMBE) and DMR/YSF (AMBE2+), and software vocoders for M17 (Codec2), P25/NXDN (IMBE) and, optionally, DMR/YSF (MD380). The reflector hands the audio of its transcoded modules to tcd over TCP and gets every other mode back.
 
@@ -158,13 +158,15 @@ DMR to DMR/YSF audio normally passes through as AMBE2+ without being decoded, so
 |---|---|---|
 | `off` | — | no adjustment |
 | `ambe` | — | applies the AGC's gain plus `AmbeGainDb` (-30 to +10 dB) and `OutputGainDMR` through the b2 (delta-gamma) gain parameter in the AMBE2+ frame. No re-encode, no quality loss, also repairs Golay FEC errors. Since 0.2.5 it works in the gamma domain and is level independent (see below). Experimental. |
-| `reencode` | MD380 | full decode and re-encode through the MD380, with AGC and `DmrReencodeGain` (compensates the re-encode loudness, around -16 dB). Falls back to `ambe` without MD380. |
+| `reencode` | MD380 | full decode and re-encode through the MD380, with AGC and `DmrReencodeGain`. Falls back to `ambe` without MD380. |
 
 | Key | Template | Code default |
 |---|---|---|
 | `DmrGainMode` | `ambe` | `ambe` |
-| `AmbeGainDb` | `-2` | `-2` |
-| `DmrReencodeGain` | `-16` | — |
+| `AmbeGainDb` | `-18` | `-18` |
+| `DmrReencodeGain` | `-18` | — |
+
+`AmbeGainDb` and `DmrReencodeGain` both bring the AGC target (`AGCTarget`, -16 dBFS) down to the level DMR radios expect; by ear, -18 sounds the same in both modes. Earlier versions described `DmrReencodeGain` as compensating the MD380's re-encode loudness; it is the same offset as `AmbeGainDb`.
 
 How `ambe` works: the decoder computes γ = Δγ[b2] + 0.5·γ<sub>prev</sub>, and a frame's mean log2 amplitude is γ, so one unit of γ is 6 dB. The Δγ table is coarse for low b2 and fine for high b2, so moving b2 by a fixed number of steps (tcd up to 0.2.4) changed quiet audio by 3–16 dB per step and loud audio by about 1.2 dB. tcd now tracks γ for the original and the modified stream and chooses, frame by frame, the b2 that comes closest to the wanted gain; the rounding error is made up in the next frame. Measured with the MD380 decoder on input at -40, -30 and -16 dBFS, gains of -12 to +6 dB arrive within 0.8 dB. The resolution per frame is coarse, so very quiet sources cannot be raised beyond what b2 = 31 allows.
 

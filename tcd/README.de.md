@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.2.5** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.6** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -158,13 +158,15 @@ Audio von DMR nach DMR/YSF läuft normalerweise als AMBE2+ durch, ohne dekodiert
 |---|---|---|
 | `off` | — | keine Anpassung |
 | `ambe` | — | wendet die Verstärkung der AGC plus `AmbeGainDb` (-30 bis +10 dB) und `OutputGainDMR` über den Verstärkungsparameter b2 (delta-gamma) im AMBE2+-Frame an. Kein Neukodieren, kein Qualitätsverlust, repariert nebenbei Golay-FEC-Fehler. Seit 0.2.5 im γ-Bereich und unabhängig vom Pegel (siehe unten). Experimentell. |
-| `reencode` | MD380 | vollständiges Dekodieren und Neukodieren über den MD380, mit AGC und `DmrReencodeGain` (gleicht die Lautheit des Neukodierens aus, etwa -16 dB). Ohne MD380 Rückfall auf `ambe`. |
+| `reencode` | MD380 | vollständiges Dekodieren und Neukodieren über den MD380, mit AGC und `DmrReencodeGain`. Ohne MD380 Rückfall auf `ambe`. |
 
 | Schlüssel | Vorlage | Standard im Code |
 |---|---|---|
 | `DmrGainMode` | `ambe` | `ambe` |
-| `AmbeGainDb` | `-2` | `-2` |
-| `DmrReencodeGain` | `-16` | — |
+| `AmbeGainDb` | `-18` | `-18` |
+| `DmrReencodeGain` | `-18` | — |
+
+`AmbeGainDb` und `DmrReencodeGain` senken beide das AGC-Ziel (`AGCTarget`, -16 dBFS) auf den Pegel, den DMR-Funkgeräte erwarten; nach Gehör klingt -18 in beiden Modi gleich. Frühere Versionen beschrieben `DmrReencodeGain` als Ausgleich der Lautheit beim Neukodieren durch den MD380; es ist derselbe Versatz wie `AmbeGainDb`.
 
 So arbeitet `ambe`: Der Decoder rechnet γ = Δγ[b2] + 0,5·γ<sub>alt</sub>, und der mittlere log2-Pegel eines Frames ist γ, eine Einheit γ sind also 6 dB. Die Δγ-Tabelle ist bei kleinem b2 grob und bei großem fein, deshalb änderte eine feste Verschiebung von b2 (tcd bis 0.2.4) leise Signale um 3–16 dB pro Stufe und laute um etwa 1,2 dB. tcd verfolgt jetzt γ für den Original- und den veränderten Stream und wählt pro Frame das b2, das der gewünschten Verstärkung am nächsten kommt; der Rundungsfehler wird im nächsten Frame ausgeglichen. Gemessen mit dem MD380-Decoder bei -40, -30 und -16 dBFS Eingangspegel kommen -12 bis +6 dB auf 0,8 dB genau an. Die Auflösung pro Frame ist grob, und sehr leise Quellen lassen sich nicht weiter anheben, als b2 = 31 erlaubt.
 
