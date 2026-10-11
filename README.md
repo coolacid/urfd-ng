@@ -17,6 +17,9 @@ git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.
 ### Setup Script and Transcoder
 `setup.sh` installs the reflector (Docker, with the dashboard) and the transcoder (systemd), on one machine or split across two, after a few questions; it also updates them. The transcoder lives in [`tcd/`](tcd/), so reflector and transcoder always come from the same version. tcd uses the AMBE sticks through the kernel's `ftdi_sio` driver with the USB latency timer at 1 ms, so it no longer needs the libftd2xx driver, which ftdichip.com no longer lets scripts download. See [docs/INSTALL.md](docs/INSTALL.md) and [tcd/README.md](tcd/README.md).
 
+### Even Levels Across All Modes
+tcd's AGC brings every call to the same level, whatever radio or vocoder it came from, and it also covers DMR → DMR/YSF, where the AMBE2+ frames pass through without a vocoder: the AGC's gain goes into the frame's gain parameter (b2) instead of a decode and re-encode, so the audio stays as clean as the original. Two DVSI devices, e.g. DV3000 + DV3003 for two modules, need no MD380 software vocoder and no ARM machine; a Raspberry Pi 4 is plenty. See [tcd/README.md](tcd/README.md#dmrysf--dmrysf-level-dmrgainmode).
+
 ### XLX Directory Registration (CallingHome)
 The reflector registers itself in the XLX directory, which lists it in Pi-Star, WPSD and other hotspot software. This used to be the dashboard's job; now it works without the dashboard too, and the dashboard no longer makes the request.
 

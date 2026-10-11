@@ -15,7 +15,10 @@ git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.
 ## Neu in urfd-ng
 
 ### Setup-Script und Transcoder
-`setup.sh` installiert nach ein paar Fragen den Reflektor (in Docker, mit Dashboard) und den Transcoder (mit systemd), auf einem Rechner oder auf zwei verteilt, und aktualisiert beide auch. Der Transcoder liegt in [`tcd/`](tcd/), Reflektor und Transcoder stammen also immer aus derselben Version. tcd spricht die AMBE-Sticks über den Kernel-Treiber `ftdi_sio` mit einem USB-Latenz-Timer von 1 ms an und braucht damit den libftd2xx-Treiber nicht mehr, den ftdichip.com nicht mehr per Script herunterladen lässt. Siehe [docs/INSTALL.de.md](docs/INSTALL.de.md) und [tcd/README.md](tcd/README.md).
+`setup.sh` installiert nach ein paar Fragen den Reflektor (in Docker, mit Dashboard) und den Transcoder (mit systemd), auf einem Rechner oder auf zwei verteilt, und aktualisiert beide auch. Der Transcoder liegt in [`tcd/`](tcd/), Reflektor und Transcoder stammen also immer aus derselben Version. tcd spricht die AMBE-Sticks über den Kernel-Treiber `ftdi_sio` mit einem USB-Latenz-Timer von 1 ms an und braucht damit den libftd2xx-Treiber nicht mehr, den ftdichip.com nicht mehr per Script herunterladen lässt. Siehe [docs/INSTALL.de.md](docs/INSTALL.de.md) und [tcd/README.de.md](tcd/README.de.md).
+
+### Gleicher Pegel in allen Betriebsarten
+Die AGC von tcd bringt jeden Ruf auf denselben Pegel, egal von welchem Funkgerät oder Vocoder er kommt, und zwar auch bei DMR → DMR/YSF, wo die AMBE2+-Frames ohne Vocoder durchgereicht werden: Die Verstärkung der AGC geht in den Verstärkungsparameter des Frames (b2) statt in ein Dekodieren und Neukodieren, der Klang bleibt also so sauber wie das Original. Zwei DVSI-Geräte, z.B. DV3000 + DV3003 für zwei Module, brauchen keinen MD380-Software-Vocoder und keinen ARM-Rechner; ein Raspberry Pi 4 reicht locker. Siehe [tcd/README.de.md](tcd/README.de.md#pegel-dmrysf--dmrysf-dmrgainmode).
 
 ### XLX-Verzeichnis (CallingHome)
 Der Reflektor trägt sich selbst im XLX-Verzeichnis ein, über das ihn Pi-Star, WPSD und andere Hotspot-Software anbieten. Das war bisher Aufgabe des Dashboards; jetzt geht es auch ohne Dashboard, und das Dashboard stellt die Anfrage nicht mehr.
