@@ -271,7 +271,7 @@ void CMonitorServer::HandleRest(struct mg_connection *c, struct mg_http_message 
 			g_Stats.config.dmr_gain_mode.store((int)dmr_gain_mode < 0 ? 0 : (int)dmr_gain_mode > 2 ? 2 : (int)dmr_gain_mode);
 		float ambe_db;
 		if (json_get_float(hm->body.buf, hm->body.len, "ambe_gain_db", ambe_db))
-			g_Stats.config.ambe_gain_db.store((int)ambe_db < -30 ? -30 : (int)ambe_db > 0 ? 0 : (int)ambe_db);
+			g_Stats.config.ambe_gain_db.store((int)ambe_db < -30 ? -30 : (int)ambe_db > 10 ? 10 : (int)ambe_db);
 
 		mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "{\"status\":\"ok\"}");
 	}

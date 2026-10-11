@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.2.4** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.5** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -95,7 +95,7 @@ DeviceSerial = DKB7FXGE # DV3003
 
 ### Einzelnes Gerät mit MD380
 
-Ein Modul, D-Star auf dem DV3000 oder DV3003, DMR/YSF über den MD380. In diesem Betrieb wird DMR/YSF → DMR/YSF nach der AGC **nicht neu kodiert**, weil der MD380 nicht im selben Ablauf dekodieren und neu kodieren kann (gemeinsamer Zustand von Kodierer und Dekodierer). Für diesen Weg die Bitstrom-Verstärkung (`DmrGainMode = ambe`) verwenden; alle Wege zwischen verschiedenen Betriebsarten bekommen weiterhin die volle AGC. Neukodieren bei DMR/YSF → DMR/YSF braucht ein zweites AMBE-Gerät.
+Ein Modul, D-Star auf dem DV3000 oder DV3003, DMR/YSF über den MD380. In diesem Betrieb wird DMR/YSF → DMR/YSF nach der AGC **nicht neu kodiert**, weil der MD380 nicht im selben Ablauf dekodieren und neu kodieren kann (gemeinsamer Zustand von Kodierer und Dekodierer). Für diesen Weg die Bitstrom-Verstärkung (`DmrGainMode = ambe`, folgt der AGC; in diesem Betrieb seit 0.2.5) verwenden; alle Wege zwischen verschiedenen Betriebsarten bekommen weiterhin die volle AGC. Neukodieren bei DMR/YSF → DMR/YSF braucht ein zweites AMBE-Gerät.
 
 ### Hinweise zum DV3003
 
@@ -157,7 +157,7 @@ Audio von DMR nach DMR/YSF läuft normalerweise als AMBE2+ durch, ohne dekodiert
 | Modus | Braucht | Wirkung |
 |---|---|---|
 | `off` | — | keine Anpassung |
-| `ambe` | — | ändert den Verstärkungsparameter b2 (delta-gamma) direkt im AMBE2+-Frame, mit `AmbeGainDb` (-30 bis 0 dB, etwa 2 dB pro Stufe). Kein Dekodieren, kein Qualitätsverlust, repariert nebenbei Golay-FEC-Fehler. Experimentell. |
+| `ambe` | — | wendet die Verstärkung der AGC plus `AmbeGainDb` (-30 bis +10 dB) und `OutputGainDMR` über den Verstärkungsparameter b2 (delta-gamma) im AMBE2+-Frame an. Kein Neukodieren, kein Qualitätsverlust, repariert nebenbei Golay-FEC-Fehler. Seit 0.2.5 im γ-Bereich und unabhängig vom Pegel (siehe unten). Experimentell. |
 | `reencode` | MD380 | vollständiges Dekodieren und Neukodieren über den MD380, mit AGC und `DmrReencodeGain` (gleicht die Lautheit des Neukodierens aus, etwa -16 dB). Ohne MD380 Rückfall auf `ambe`. |
 
 | Schlüssel | Vorlage | Standard im Code |
@@ -165,6 +165,8 @@ Audio von DMR nach DMR/YSF läuft normalerweise als AMBE2+ durch, ohne dekodiert
 | `DmrGainMode` | `ambe` | `ambe` |
 | `AmbeGainDb` | `-2` | `-2` |
 | `DmrReencodeGain` | `-16` | — |
+
+So arbeitet `ambe`: Der Decoder rechnet γ = Δγ[b2] + 0,5·γ<sub>alt</sub>, und der mittlere log2-Pegel eines Frames ist γ, eine Einheit γ sind also 6 dB. Die Δγ-Tabelle ist bei kleinem b2 grob und bei großem fein, deshalb änderte eine feste Verschiebung von b2 (tcd bis 0.2.4) leise Signale um 3–16 dB pro Stufe und laute um etwa 1,2 dB. tcd verfolgt jetzt γ für den Original- und den veränderten Stream und wählt pro Frame das b2, das der gewünschten Verstärkung am nächsten kommt; der Rundungsfehler wird im nächsten Frame ausgeglichen. Gemessen mit dem MD380-Decoder bei -40, -30 und -16 dBFS Eingangspegel kommen -12 bis +6 dB auf 0,8 dB genau an. Die Auflösung pro Frame ist grob, und sehr leise Quellen lassen sich nicht weiter anheben, als b2 = 31 erlaubt.
 
 ### AGC
 
@@ -206,6 +208,10 @@ USRP/SVX (PCM):
 
 DMR -> DMR/YSF with DmrGainMode = reencode:
   AMBE2+ --[decode]--> PCM --[AGC]--> PCM --[OutputGainDMR]--> [DmrReencodeGain] --> MD380 --> AMBE2+
+
+DMR -> DMR/YSF with DmrGainMode = ambe:
+  AMBE2+ --[decode]--> PCM --[AGC] (gain only)
+  AMBE2+ --[b2: AGC gain + AmbeGainDb + OutputGainDMR]--> AMBE2+
 ```
 
 **Mit AGC** können die festen Verstärkungen meist alle auf 0 bleiben: Sie gleicht unterschiedliche Mikrofone, Funkgeräte und Codecs pro Aussendung aus. Ohne sie braucht jeder Weg seine eigene feste Verstärkung.
@@ -282,7 +288,7 @@ journalctl -u tcd -f
 
 ### Audio
 - **Ausgangsverstärkung pro Codec**: nach der AGC, für D-Star, M17/Codec2, DMR/YSF, P25/NXDN und USRP, angewendet auf Kopien (der gemeinsame Puffer wird nie verändert)
-- **AMBE2+-Bitstrom-Verstärkung** (experimentell): `AmbeGainDb` ändert den Parameter b2 im AMBE2+-Frame, mit neu berechnetem Golay(24,12)-FEC für die A-Partition; die B-Partition wird entwürfelt und mit den neuen A-Daten wieder verwürfelt (0.2.3; vorher verlor der Decoder die B-Partition)
+- **AMBE2+-Bitstrom-Verstärkung** (experimentell): `AmbeGainDb` ändert den Parameter b2 im AMBE2+-Frame, mit neu berechnetem Golay(24,12)-FEC für die A-Partition; die B-Partition wird entwürfelt und mit den neuen A-Daten wieder verwürfelt (0.2.3; vorher verlor der Decoder die B-Partition); seit 0.2.5 von der AGC gesteuert und im γ-Bereich gerechnet, die Verstärkung hängt also nicht mehr vom Pegel ab, auch mit nur einem Gerät und dem MD380
 - **AGC v3**: gleitendes RMS-Fenster, Verfolgung pro Sprecher, Gate mit Rücklauf, schnelles Anheben nach dem Gate, ungleiche Grenzen, Noise-Gate, Begrenzer, der die angewendete Verstärkung sofort kappt (0.2.3; vorher clippten laute Einsätze nach leiser Sprache), Änderungen live aus dem Dashboard; seit 0.2.3 threadsicher, da die Dekodier-Threads aller Codecs sie nutzen. Seit 0.2.4 hält das Gate 60 ms nach und blendet aus statt umzuschalten (Wortenden werden nicht mehr abgehackt), Rauschen knapp darüber pumpt die Verstärkung nicht mehr hoch, und die Verstärkung läuft als Rampe durch jeden Frame statt alle 20 ms zu springen
 - **DMR neu kodieren** (`md380=true`): `DmrGainMode = reencode` mit AGC und `DmrReencodeGain` für DMR → DMR/YSF
 - **MD380 pro Stream getrennt**: Kodierer-Zustand pro Stream gesichert, MD380-Aufrufe nacheinander

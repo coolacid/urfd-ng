@@ -177,7 +177,7 @@ bool CConfigure::ReadData(const std::string &path)
 		else if (0 == key.compare(AMBEGAIN_DB))
 		{
 			ambe_gain_db = getSigned(key, value);
-			if (ambe_gain_db > 0) ambe_gain_db = 0;
+			if (ambe_gain_db > 10) ambe_gain_db = 10;
 			if (ambe_gain_db < -30) ambe_gain_db = -30;
 		}
 		else if (0 == key.compare(DEVICESERIAL))
@@ -263,7 +263,7 @@ bool CConfigure::ReadData(const std::string &path)
 	{
 		const char *mode_str = (dmr_gain_mode == EDmrGainMode::reencode) ? "reencode" : (dmr_gain_mode == EDmrGainMode::ambe) ? "ambe" : "off";
 		std::cout << DMRGAINMODE << " = " << mode_str;
-		if (dmr_gain_mode == EDmrGainMode::ambe) std::cout << " (" << ambe_gain_db << " dB, b2 bitstream)";
+		if (dmr_gain_mode == EDmrGainMode::ambe) std::cout << " (AGC + " << ambe_gain_db << " dB, b2 bitstream)";
 		if (dmr_gain_mode == EDmrGainMode::reencode) std::cout << " (MD380 re-encode + AGC)";
 		std::cout << std::endl;
 	}

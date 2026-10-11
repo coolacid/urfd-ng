@@ -128,11 +128,11 @@ h2 { color: #81d4fa; font-size: 15px; margin: 12px 0 8px; }
       <h2 style="font-size:13px">DMR/YSF Gain</h2>
       <div class="config-row"><label>Mode</label><select id="dmr_gain_mode" style="flex:1;max-width:200px;background:#0a0a1a;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px;padding:2px 4px;font-family:inherit;font-size:13px">
         <option value="off">Off</option>
-        <option value="ambe">Bitstream (b2)</option>
+        <option value="ambe">Bitstream (b2 + AGC)</option>
         <option value="reencode">Re-encode (MD380)</option>
       </select></div>
       <div id="dmr_gain_ambe" style="display:none">
-        <div class="config-row"><label>Bitstream Gain</label><input type="range" min="-30" max="0" id="ambe_gain_db"><span class="val" id="v_ambe_gain_db">-2</span></div>
+        <div class="config-row"><label>Bitstream Gain</label><input type="range" min="-30" max="10" id="ambe_gain_db"><span class="val" id="v_ambe_gain_db">-2</span></div>
       </div>
       <div id="dmr_gain_reencode" style="display:none">
         <div class="config-row"><label>Re-enc Gain</label><input type="range" min="-40" max="40" id="g_dmr_reencode"><span class="val" id="v_dmr_reencode">0</span></div>

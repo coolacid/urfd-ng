@@ -31,6 +31,7 @@
 #include "DV3003.h"
 #include "TCSocket.h"
 #include "AGC.h"
+#include "AmbeGain.h"
 
 class CController
 {
@@ -72,9 +73,9 @@ protected:
 #endif
 	int32_t ambe_in_num, ambe_out_num, usrp_rx_num, usrp_tx_num, dmr_reencode_num;
 	int32_t outgain_dstar_num, outgain_dmr_num, outgain_usrp_num, outgain_imbe_num, outgain_m17_num;
-	int outgain_dmr_steps;  // b2 bitstream gain offset for AMBE2+ (used when re-encode not active)
 	imbe_vocoder p25vocoder;
 	CAGC m_agc;
+	CAmbeGain m_ambeGain;  // DmrGainMode = ambe: AGC and gains in the AMBE2+ bitstream
 
 	int32_t calcNumerator(int32_t db) const;
 	static void ApplyGain(int16_t *samples, int count, int32_t num);

@@ -216,7 +216,7 @@ static void Md380Stat(char module, std::atomic<uint32_t> &counter)
 }
 #endif
 
-CController::CController() : keep_running(true), ambe_in_num(256), ambe_out_num(256), usrp_rx_num(256), usrp_tx_num(256), dmr_reencode_num(256), outgain_dstar_num(256), outgain_dmr_num(256), outgain_usrp_num(256), outgain_imbe_num(256), outgain_m17_num(256), outgain_dmr_steps(0) {}
+CController::CController() : keep_running(true), ambe_in_num(256), ambe_out_num(256), usrp_rx_num(256), usrp_tx_num(256), dmr_reencode_num(256), outgain_dstar_num(256), outgain_dmr_num(256), outgain_usrp_num(256), outgain_imbe_num(256), outgain_m17_num(256) {}
 
 bool CController::Start()
 {
@@ -228,7 +228,6 @@ bool CController::Start()
 	outgain_usrp_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_usrp));
 	outgain_imbe_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_imbe));
 	outgain_m17_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_m17));
-	outgain_dmr_steps = (g_Conf.GetDmrGainMode() == CConfigure::EDmrGainMode::ambe) ? (int)roundf(abs(g_Conf.GetAmbeGainDb()) / 2.0f) : 0;
 	m_agc.Configure(g_Conf.GetAGCEnabled(), g_Conf.GetAGCTarget(), g_Conf.GetAGCAttack(), g_Conf.GetAGCRelease(), g_Conf.GetAGCMaxGainUp(), g_Conf.GetAGCMaxGainDown(), g_Conf.GetAGCNoiseGate());
 
 	if (InitVocoders() || tcClient.Open(g_Conf.GetAddress(), g_Conf.GetTCMods(), g_Conf.GetPort()))
@@ -270,7 +269,6 @@ void CController::ReconfigureAGC()
 	outgain_usrp_num = calcNumerator(g_Stats.config.outgain_usrp.load());
 	outgain_imbe_num = calcNumerator(g_Stats.config.outgain_imbe.load());
 	outgain_m17_num = calcNumerator(g_Stats.config.outgain_m17.load());
-	outgain_dmr_steps = (g_Stats.config.dmr_gain_mode.load() == 1) ? (int)roundf(abs(g_Stats.config.ambe_gain_db.load()) / 2.0f) : 0;
 	if (dstar_device) dstar_device->SetOutputGains(outgain_dstar_num, outgain_dmr_num);
 	if (dmrsf_device) dmrsf_device->SetOutputGains(outgain_dstar_num, outgain_dmr_num);
 }
@@ -936,12 +934,23 @@ void CController::SWAMBE2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 			tmp[i] = (tmp[i] * ambe_out_num) >> 8;
 	}
 	g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
+	float agc_db = 0.0f;
 	{
-		float agc_db; bool agc_gate;
+		bool agc_gate;
 		m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 		g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 	}
 	packet->SetAudioSamples(tmp, false);
+	// Bitstream gain on DMR -> DMR/YSF, as in RouteDmrPacket
+	if (g_Stats.config.dmr_gain_mode.load(std::memory_order_relaxed) == 1)
+	{
+		const float gain_db = agc_db + (float)g_Stats.config.ambe_gain_db.load(std::memory_order_relaxed)
+			+ (float)g_Stats.config.outgain_dmr.load(std::memory_order_relaxed);
+		uint8_t dmr_data[9];
+		memcpy(dmr_data, packet->GetDMRData(), 9);
+		m_ambeGain.Process(dmr_data, packet->GetStreamId(), gain_db);
+		packet->SetDMRData(dmr_data);
+	}
 	g_Stats.UpdateLevelsOut(packet->GetModule(), tmp, 160);
 	{
 		int i = packet->GetModule() - 'A';
@@ -1327,10 +1336,11 @@ void CController::RouteDmrPacket(std::shared_ptr<CTranscoderPacket> packet)
 	{
 		// codec_in is dmr (hardware decode), apply AGC before encoding
 		g_Stats.UpdateLevelsIn(packet->GetModule(), packet->GetAudioSamples(), 160);
+		float agc_db = 0.0f;
 		if (m_agc.IsEnabled())
 		{
 			int16_t tmp[160];
-			float agc_db; bool agc_gate;
+			bool agc_gate;
 			memcpy(tmp, packet->GetAudioSamples(), sizeof(tmp));
 			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
@@ -1402,22 +1412,16 @@ void CController::RouteDmrPacket(std::shared_ptr<CTranscoderPacket> packet)
 			packet->SetDMRData(ambe2);
 		}
 #endif
-		// Bitstream gain: adjust b2 (delta-gamma) in AMBE2+ frame when
-		// re-encode did not already handle the gain via PCM path
-		if (outgain_dmr_steps != 0)
+		// Bitstream gain: the AGC's gain for this frame plus AmbeGainDb and
+		// OutputGainDMR, applied through b2 (delta-gamma) in the AMBE2+ frame
+		if (g_Stats.config.dmr_gain_mode.load(std::memory_order_relaxed) == 1)
 		{
-			bool reencode_handled = false;
-#ifdef WITH_MD380_VOCODER
-			reencode_handled = (g_Stats.config.dmr_gain_mode.load(std::memory_order_relaxed) == 2) &&
-				(m_agc.IsEnabled() || outgain_dmr_num != 256 || dmr_reencode_num != 256);
-#endif
-			if (!reencode_handled)
-			{
-				uint8_t dmr_data[9];
-				memcpy(dmr_data, packet->GetDMRData(), 9);
-				AmbeAdjustGain(dmr_data, outgain_dmr_steps);
-				packet->SetDMRData(dmr_data);
-			}
+			const float gain_db = agc_db + (float)g_Stats.config.ambe_gain_db.load(std::memory_order_relaxed)
+				+ (float)g_Stats.config.outgain_dmr.load(std::memory_order_relaxed);
+			uint8_t dmr_data[9];
+			memcpy(dmr_data, packet->GetDMRData(), 9);
+			m_ambeGain.Process(dmr_data, packet->GetStreamId(), gain_db);
+			packet->SetDMRData(dmr_data);
 		}
 		codec2_queue.push(packet);
 		imbe_queue.push(packet);

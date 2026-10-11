@@ -2,7 +2,7 @@
 
 **English** | [Deutsch](README.de.md)
 
-**Version 0.2.4** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.5** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd converts voice between the digital modes on a URF reflector, so a D-Star user hears a DMR user and the other way round. It uses DVSI AMBE hardware for D-Star (AMBE) and DMR/YSF (AMBE2+), and software vocoders for M17 (Codec2), P25/NXDN (IMBE) and, optionally, DMR/YSF (MD380). The reflector hands the audio of its transcoded modules to tcd over TCP and gets every other mode back.
 
@@ -95,7 +95,7 @@ DeviceSerial = DKB7FXGE # DV3003
 
 ### Single device with MD380
 
-One module, D-Star on the DV3000 or DV3003 and DMR/YSF through the MD380. In this mode, DMR/YSF → DMR/YSF audio is **not re-encoded** after the AGC, because the MD380 cannot decode and re-encode in the same pipeline (shared encoder/decoder state). Use the bitstream gain (`DmrGainMode = ambe`) for that path; all paths between different modes still get the full AGC. Re-encode on DMR/YSF → DMR/YSF needs a second AMBE device.
+One module, D-Star on the DV3000 or DV3003 and DMR/YSF through the MD380. In this mode, DMR/YSF → DMR/YSF audio is **not re-encoded** after the AGC, because the MD380 cannot decode and re-encode in the same pipeline (shared encoder/decoder state). Use the bitstream gain (`DmrGainMode = ambe`, which follows the AGC; in this mode since 0.2.5) for that path; all paths between different modes still get the full AGC. Re-encode on DMR/YSF → DMR/YSF needs a second AMBE device.
 
 ### DV3003 notes
 
@@ -157,7 +157,7 @@ DMR to DMR/YSF audio normally passes through as AMBE2+ without being decoded, so
 | Mode | Needs | What it does |
 |---|---|---|
 | `off` | — | no adjustment |
-| `ambe` | — | changes the b2 (delta-gamma) gain parameter directly in the AMBE2+ frame, with `AmbeGainDb` (-30 to 0 dB, about 2 dB per step). No decode, no quality loss, also repairs Golay FEC errors. Experimental. |
+| `ambe` | — | applies the AGC's gain plus `AmbeGainDb` (-30 to +10 dB) and `OutputGainDMR` through the b2 (delta-gamma) gain parameter in the AMBE2+ frame. No re-encode, no quality loss, also repairs Golay FEC errors. Since 0.2.5 it works in the gamma domain and is level independent (see below). Experimental. |
 | `reencode` | MD380 | full decode and re-encode through the MD380, with AGC and `DmrReencodeGain` (compensates the re-encode loudness, around -16 dB). Falls back to `ambe` without MD380. |
 
 | Key | Template | Code default |
@@ -165,6 +165,8 @@ DMR to DMR/YSF audio normally passes through as AMBE2+ without being decoded, so
 | `DmrGainMode` | `ambe` | `ambe` |
 | `AmbeGainDb` | `-2` | `-2` |
 | `DmrReencodeGain` | `-16` | — |
+
+How `ambe` works: the decoder computes γ = Δγ[b2] + 0.5·γ<sub>prev</sub>, and a frame's mean log2 amplitude is γ, so one unit of γ is 6 dB. The Δγ table is coarse for low b2 and fine for high b2, so moving b2 by a fixed number of steps (tcd up to 0.2.4) changed quiet audio by 3–16 dB per step and loud audio by about 1.2 dB. tcd now tracks γ for the original and the modified stream and chooses, frame by frame, the b2 that comes closest to the wanted gain; the rounding error is made up in the next frame. Measured with the MD380 decoder on input at -40, -30 and -16 dBFS, gains of -12 to +6 dB arrive within 0.8 dB. The resolution per frame is coarse, so very quiet sources cannot be raised beyond what b2 = 31 allows.
 
 ### AGC
 
@@ -206,6 +208,10 @@ USRP/SVX (PCM):
 
 DMR -> DMR/YSF with DmrGainMode = reencode:
   AMBE2+ --[decode]--> PCM --[AGC]--> PCM --[OutputGainDMR]--> [DmrReencodeGain] --> MD380 --> AMBE2+
+
+DMR -> DMR/YSF with DmrGainMode = ambe:
+  AMBE2+ --[decode]--> PCM --[AGC] (gain only)
+  AMBE2+ --[b2: AGC gain + AmbeGainDb + OutputGainDMR]--> AMBE2+
 ```
 
 **With the AGC**, the static gains can usually all stay at 0: it evens out different microphones, radios and codecs per transmission. Without it, every route needs its own static gain.
@@ -282,7 +288,7 @@ journalctl -u tcd -f
 
 ### Audio
 - **Output gains per codec**: after the AGC, for D-Star, M17/Codec2, DMR/YSF, P25/NXDN and USRP, applied on copies (the shared buffer is never changed)
-- **AMBE2+ bitstream gain** (experimental): `AmbeGainDb` adjusts the b2 parameter in the AMBE2+ frame, with Golay(24,12) FEC recomputed for the A partition and the B partition unscrambled and scrambled again with the new A data (0.2.3; before, the decoder lost the B partition)
+- **AMBE2+ bitstream gain** (experimental): `AmbeGainDb` adjusts the b2 parameter in the AMBE2+ frame, with Golay(24,12) FEC recomputed for the A partition and the B partition unscrambled and scrambled again with the new A data (0.2.3; before, the decoder lost the B partition); since 0.2.5 driven by the AGC and computed in the gamma domain, so the gain no longer depends on the level, also with a single device and the MD380
 - **AGC v3**: sliding RMS window, per-speaker tracking, gate with decay, fast release after the gate, asymmetric limits, noise gate, peak limiter that cuts the applied gain at once (0.2.3; before, loud onsets after quiet speech clipped), live changes from the dashboard; thread safe since 0.2.3, as every codec's decode thread uses it. Since 0.2.4 the gate holds 60 ms and fades out instead of switching (word endings are no longer chopped), noise just above it no longer pumps the gain up, and the gain ramps across each frame instead of stepping every 20 ms
 - **DMR re-encode** (`md380=true`): `DmrGainMode = reencode` with AGC and `DmrReencodeGain` on DMR → DMR/YSF
 - **MD380 stream isolation**: encoder state saved per stream, MD380 calls serialized
