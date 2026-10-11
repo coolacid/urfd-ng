@@ -17,6 +17,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+#include <cmath>
 #include "Users.h"
 #include "Global.h"
 
@@ -78,7 +79,13 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 
 void CUsers::Location(const CCallsign &my, double lat, double lon)
 {
+	if ( (lat < -90.0) || (lat >= 90.0) || (lon < -180.0) || (lon >= 180.0) )
+		return;
 	const auto loc = CUser::Locator(lat, lon);
+	// the dashboard, XML and JSON are public: publish the middle of the
+	// locator's field (about 4.6 x 2.3 km), not where the station is
+	lat = (std::floor((lat + 90.0) * 24.0) + 0.5) / 24.0 - 90.0;
+	lon = (std::floor((lon + 180.0) * 12.0) + 0.5) / 12.0 - 180.0;
 	// the most recent entry of this callsign
 	for ( auto &user : m_Users )
 	{

@@ -137,7 +137,7 @@ for ($i=0;$i<$Reflector->StationCount();$i++) {
    <td class="mobile-hide">';
         $Locator = $Reflector->Stations[$i]->GetLocator();
         if ($Locator != '') {
-            // position sent along with the transmission (M17 GNSS)
+            // position sent along with the transmission (M17 GNSS, D-Star DPRS), rounded to its locator
             $Lat = (float)$Reflector->Stations[$i]->GetLatitude();
             $Lon = (float)$Reflector->Stations[$i]->GetLongitude();
             echo '<a href="https://www.openstreetmap.org/?mlat=' . $Lat . '&amp;mlon=' . $Lon . '#map=12/' . $Lat . '/' . $Lon . '" class="pl" target="_blank" title="Position from the transmission">' . htmlspecialchars($Locator) . '</a>';
