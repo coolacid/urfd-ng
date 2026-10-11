@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.2.7** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.2.8** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -217,6 +217,8 @@ DMR -> DMR/YSF with DmrGainMode = ambe:
 ```
 
 **Mit AGC** können die festen Verstärkungen meist alle auf 0 bleiben: Sie gleicht unterschiedliche Mikrofone, Funkgeräte und Codecs pro Aussendung aus. Ohne sie braucht jeder Weg seine eigene feste Verstärkung.
+
+Wo die AGC wirkt: Sie misst immer am dekodierten PCM des eingehenden Streams. Zwischen verschiedenen Codecs wird sie auf dieses PCM angewendet, bevor kodiert wird. DMR → DMR/YSF bekommt sie im AMBE2+-Bitstrom über b2 (`DmrGainMode = ambe`) oder durch Neukodieren (`reencode`). D-Star → D-Star, M17 → M17 und P25 → P25 laufen unverändert durch.
 
 Die AGC arbeitet pro Stream (pro Aussendung):
 - RMS über ein gleitendes Fenster von 3 Frames (60 ms), folgt also Silben statt einzelnen Lauten
