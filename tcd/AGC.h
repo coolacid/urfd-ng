@@ -6,12 +6,19 @@
 //
 // Design improvements over simple RMS-tracking AGC:
 // 1. Sliding RMS window (3 frames / 60ms) — smooths syllable-level variation
-// 2. Gate with gain decay — during silence, gain drifts toward the speaker's
+// 2. Gate with hold and fade — the gate opens at the threshold and closes only
+//    after 60ms below it; closed, the gain fades to at most unity instead of
+//    switching, so word endings are not chopped and noise is not amplified
+// 3. Gain decay in the gate — the tracked gain drifts toward the speaker's
 //    long-term average gain, so next speech onset starts at the right level
-// 3. Fast release after gate — first 5 frames after gate opening use 5x release
+// 4. Fast release after gate — first 5 frames after gate opening use 5x release
 //    speed (capped at alpha=0.5) for quicker recovery from pauses
-// 4. Asymmetric gain limits — amplification limited more than attenuation
-// 5. Peak limiter acts at once on the applied gain, not only on its target
+// 5. No release near the threshold — within 6 dB above the gate the gain is
+//    not raised, so background noise in pauses does not pump up
+// 6. Asymmetric gain limits — amplification limited more than attenuation
+// 7. Peak limiter acts at once on the applied gain, not only on its target
+// 8. Per-sample gain ramp — the gain moves linearly across each frame
+//    instead of stepping every 20ms (no zipper noise)
 //
 // Thread safe: the decode paths of all codecs call it from their own threads.
 
@@ -24,21 +31,24 @@
 
 struct AGCState
 {
-	float gain = 1.0f;
+	float gain = 1.0f;     // tracked speech gain
+	float applied = 1.0f;  // gain applied at the end of the last frame
 	uint16_t streamId = 0;
 
-	// Sliding RMS window (3 frames)
-	float rmsHistory[3] = {0.0f, 0.0f, 0.0f};
-	int rmsIdx = 0;
-	int rmsCount = 0;  // frames seen (ramps up to 3)
+	// Sliding window of frame mean squares (3 frames)
+	float msHistory[3] = {0.0f, 0.0f, 0.0f};
+	int msIdx = 0;
+	int msCount = 0;  // frames seen (ramps up to 3)
 
 	// Long-term average gain for this stream (exponential moving average)
 	// Used as decay target during gate — maintains speaker-appropriate gain
 	float avgGain = 1.0f;
 
 	// Gate tracking
-	int gateFrames = 0;    // consecutive frames in gate
-	bool wasGated = false; // previous frame was gated
+	bool open = false;      // gate open (speech or hold)
+	int holdFrames = 0;     // frames below the threshold while still open
+	int gateFrames = 0;     // consecutive frames with the gate closed
+	bool wasGated = false;  // gate was closed before this speech
 	int postGateFrames = 0; // frames since gate opened (for fast release)
 
 	std::chrono::steady_clock::time_point lastUsed{}; // to drop ended streams
@@ -69,6 +79,10 @@ private:
 	// Core AGC processing, called with m_mutex held
 	void ProcessCore(int16_t *samples, int count, AGCState &state, float &gain_db_out, bool &gate_out)
 	{
+		static constexpr int   HOLD_FRAMES = 3;       // 60ms (+40ms window lag) before the gate closes
+		static constexpr float GATE_FADE = 0.5f;      // -6 dB per frame when the gate is closed
+		static constexpr float NO_RELEASE_SPAN = 2.0f; // 6 dB above the gate
+
 		// Measure current frame
 		float sumSq = 0.0f, peak = 0.0f;
 		for (int i = 0; i < count; i++)
@@ -78,21 +92,90 @@ private:
 			float a = fabsf(s);
 			if (a > peak) peak = a;
 		}
-		float frameRms = sqrtf(sumSq / count);
 
-		// Update sliding RMS window (3 frames = 60ms)
-		state.rmsHistory[state.rmsIdx] = frameRms;
-		state.rmsIdx = (state.rmsIdx + 1) % 3;
-		if (state.rmsCount < 3) state.rmsCount++;
+		// Update sliding window (3 frames = 60ms) and take its RMS
+		state.msHistory[state.msIdx] = sumSq / count;
+		state.msIdx = (state.msIdx + 1) % 3;
+		if (state.msCount < 3) state.msCount++;
+		float msSum = 0.0f;
+		for (int i = 0; i < state.msCount; i++)
+			msSum += state.msHistory[i];
+		float rms = sqrtf(msSum / state.msCount);
 
-		// Compute windowed RMS (average of available frames)
-		float rmsSum = 0.0f;
-		for (int i = 0; i < state.rmsCount; i++)
-			rmsSum += state.rmsHistory[i];
-		float rms = rmsSum / state.rmsCount;
+		// Peak limiter: the gain that keeps this frame below clipping
+		float peakLimit = 32000.0f / std::max(peak, 1.0f);
 
-		// Noise gate check
-		if (rms < m_noiseGateLinear)
+		// Gate with hold: opens at the threshold, closes after HOLD_FRAMES below it
+		bool speech = (rms >= m_noiseGateLinear);
+		if (speech)
+		{
+			state.open = true;
+			state.holdFrames = 0;
+		}
+		else if (state.open && ++state.holdFrames > HOLD_FRAMES)
+		{
+			state.open = false;
+		}
+
+		float target;
+		if (state.open)
+		{
+			if (speech)
+			{
+				// Speech detected — compute desired gain from windowed RMS
+				float desiredGain = std::clamp(m_targetLinear / rms, m_minGain, m_maxGain);
+				if (desiredGain > peakLimit)
+					desiredGain = peakLimit;
+
+				// Determine smoothing alpha
+				float alpha;
+				if (desiredGain < state.gain)
+				{
+					// Attack (gain decreasing = loud input)
+					alpha = m_attackAlpha;
+				}
+				else if (rms < m_noiseGateLinear * NO_RELEASE_SPAN)
+				{
+					// Just above the gate: likely background noise, keep the gain
+					alpha = 0.0f;
+				}
+				else
+				{
+					// Release (gain increasing = quiet input)
+					alpha = m_releaseAlpha;
+
+					// Fast release after gate: 5x speed for first 5 frames (~100ms)
+					// This prevents the first syllable after a pause from being too quiet
+					if (state.wasGated && state.postGateFrames < 5)
+						alpha = std::min(alpha * 5.0f, 0.5f);  // cap at 0.5 to prevent overshoot
+				}
+
+				state.gain += alpha * (desiredGain - state.gain);
+
+				// Update long-term average gain (slow EMA, ~2s time constant)
+				// Only during speech — gives a stable "typical gain" for this speaker
+				float avgAlpha = 0.01f;  // ~2s at 20ms frames
+				state.avgGain += avgAlpha * (state.gain - state.avgGain);
+
+				// Track post-gate state
+				if (state.wasGated)
+				{
+					state.postGateFrames++;
+					if (state.postGateFrames >= 5)
+						state.wasGated = false;  // back to normal tracking
+				}
+			}
+			// in the hold time the gain stays as it is
+
+			// The smoothed gain may still be above the limit after quiet passages
+			// (attack only closes part of the gap per frame); cut it at once
+			if (state.gain > peakLimit)
+				state.gain = peakLimit;
+
+			state.gateFrames = 0;
+			target = state.gain;
+		}
+		else
 		{
 			state.gateFrames++;
 			state.wasGated = true;
@@ -107,67 +190,25 @@ private:
 				state.gain += decayAlpha * (state.avgGain - state.gain);
 			}
 
-			gate_out = true;
-			gain_db_out = 20.0f * log10f(std::max(state.gain, 0.001f));
-			return;
+			// Fade the applied gain to at most unity: no noise amplification
+			target = std::max(std::min(state.gain, 1.0f), state.applied * GATE_FADE);
+			target = std::min(target, state.applied);  // a fade never raises the gain
 		}
 
-		// Speech detected — compute desired gain from windowed RMS
-		float desiredGain = std::clamp(m_targetLinear / rms, m_minGain, m_maxGain);
-
-		// Peak limiter: never clip
-		float peakLimit = 32000.0f / std::max(peak, 1.0f);
-		if (desiredGain > peakLimit)
-			desiredGain = peakLimit;
-
-		// Determine smoothing alpha
-		float alpha;
-		if (desiredGain < state.gain)
-		{
-			// Attack (gain decreasing = loud input)
-			alpha = m_attackAlpha;
-		}
-		else
-		{
-			// Release (gain increasing = quiet input)
-			alpha = m_releaseAlpha;
-
-			// Fast release after gate: 5x speed for first 5 frames (~100ms)
-			// This prevents the first syllable after a pause from being too quiet
-			if (state.wasGated && state.postGateFrames < 5)
-				alpha = std::min(alpha * 5.0f, 0.5f);  // cap at 0.5 to prevent overshoot
-		}
-
-		state.gain += alpha * (desiredGain - state.gain);
-
-		// The smoothed gain may still be above the limit after quiet passages
-		// (attack only closes part of the gap per frame); cut it at once
-		if (state.gain > peakLimit)
-			state.gain = peakLimit;
-
-		// Update long-term average gain (slow EMA, ~2s time constant)
-		// Only during speech — gives a stable "typical gain" for this speaker
-		float avgAlpha = 0.01f;  // ~2s at 20ms frames
-		state.avgGain += avgAlpha * (state.gain - state.avgGain);
-
-		// Track post-gate state
-		if (state.wasGated)
-		{
-			state.postGateFrames++;
-			if (state.postGateFrames >= 5)
-				state.wasGated = false;  // back to normal tracking
-		}
-		state.gateFrames = 0;
-
-		// Apply gain with hard clip protection
+		// Ramp from the last applied gain to the target across the frame;
+		// both ends below the peak limit keep every sample below clipping
+		target = std::min(target, peakLimit);
+		float start = std::min(state.applied, peakLimit);
+		float step = (target - start) / count;
 		for (int i = 0; i < count; i++)
 		{
-			float s = samples[i] * state.gain;
+			float s = samples[i] * (start + step * (i + 1));
 			samples[i] = (int16_t)std::clamp(s, -32767.0f, 32767.0f);
 		}
+		state.applied = target;
 
-		gain_db_out = 20.0f * log10f(std::max(state.gain, 0.001f));
-		gate_out = false;
+		gain_db_out = 20.0f * log10f(std::max(state.applied, 0.001f));
+		gate_out = !state.open;
 	}
 
 public:
