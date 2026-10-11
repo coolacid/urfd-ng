@@ -366,7 +366,7 @@ void CDmrmmdvmProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Hea
 		uint8_t slot = (Header->GetStreamId() >> 24) & 0xFF;
 		if (slot < DMR_SLOT1 || slot > DMR_SLOT2) slot = DMR_SLOT2;
 		// the TG this slot answers on, TG9 for XLX style links
-		const uint32_t slotTG = SlotTGForLink(sourceTG);
+		const uint32_t slotTG = SlotTGForLink(sourceTG, CallType);
 		// no stream open yet, open a new one
 		// firstfind this client
 		std::shared_ptr<CClient>client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::dmrmmdvm);
@@ -1313,11 +1313,12 @@ uint8_t CDmrmmdvmProtocol::GetClientSlotForModule(const CDmrmmdvmClient *client,
 	return fallback;
 }
 
-uint32_t CDmrmmdvmProtocol::SlotTGForLink(uint32_t tg) const
+uint32_t CDmrmmdvmProtocol::SlotTGForLink(uint32_t tg, uint8_t callType) const
 {
 	// a module linked with a legacy XLX private call 4001-4026 is served on TG9,
-	// as xlxd does; DMRGateway's XLX network takes nothing else
-	if (tg > 4000 && tg < 4027 && m_TGMap.TGToModule(tg) == ' ')
+	// as xlxd does; DMRGateway's XLX network takes nothing else. A group call
+	// to 4001-4026 keeps its TG.
+	if (callType == DMR_PRIVATE_CALL && tg > 4000 && tg < 4027 && m_TGMap.TGToModule(tg) == ' ')
 		return 9;
 	return tg;
 }

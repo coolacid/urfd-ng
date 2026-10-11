@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.7.1-dht** | tcd 0.2.9 | Dashboard v2.8.2
+**urfd 4.7.2-dht** | tcd 0.2.9 | Dashboard v2.8.2
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -193,6 +193,8 @@ TG9 = A,TS2                        # Common hotspot default
 **Talker alias**: Every call reaches the hotspots with a talker alias, as from BrandMeister: the callsign and the first name from the DMR ID database (e.g. `DL4JC Jens-Christian`), at most 27 characters, ISO 8859-1. If the DMR source sends its own alias (BrandMeister, or a radio with one), that one is passed on as it is once it arrived complete; until then, and for D-Star, YSF, M17 and the other modes, it is ours. It goes in the embedded signalling, one LC per superframe; the hotspot shows it and passes it to the radio.
 
 **Hotspot config**: Point the hotspot directly at the reflector IP on port 62030. In WPSD/Pi-Star, use "MMDVM_BRIDGE" or single-network mode. DMRGateway multi-network mode routes traffic to BrandMeister by default and must be disabled.
+
+**XLX master mode** (WPSD/Pi-Star "XLX Master" with a startup module) works too: DMRGateway links the module with a private call to 4001-4026 and gets the module on TS2/TG9, which it maps to the radio's slot and TG (TG6 by default). DMRGateway logs in with the fixed password `passw0rd` from `[XLX Network]` in `/etc/dmrgateway`, which xlxd never checks. Either put the user's urfd password there (WPSD/Pi-Star: Configuration → Expert → DMR GW; check it after saving the main configuration page, which may write `passw0rd` back) or give the user an empty password in `[MMDVM]`, which accepts any password. Otherwise the reflector logs `auth FAILED`.
 
 **Admin commands**:
 ```json
@@ -879,7 +881,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
-- **XLX mode hotspots (4.7.1)**: a module linked with a private call 4001-4026, as Pi-Star/WPSD's XLX master mode (DMRGateway) does, is served on the slot it was linked on and on TG9, like xlxd; DMRGateway's XLX network takes nothing else. The terminator of such a link call no longer logs an orphaned frame
+- **XLX mode hotspots (4.7.1, 4.7.2)**: a module linked with a private call 4001-4026, as Pi-Star/WPSD's XLX master mode (DMRGateway) does, is served on the slot it was linked on and on TG9, like xlxd; DMRGateway's XLX network takes nothing else. A group call to 4001-4026 keeps its TG (4.7.1 answered it on TG9 too). The terminator of a link call no longer logs an orphaned frame
 - **DMR talker alias (4.7.0)**: calls to hotspots on the MMDVM server carry a talker alias, the callsign and first name from the DMR ID database as BrandMeister makes it, or the alias the DMR source sends (BrandMeister, the radio) as soon as it arrived complete
 - **D-Star positions (4.6.0)**: DPRS positions in the slow data of D-Star radios (GPS-A, checked against its CRC, or NMEA `RMC`/`GGA`) show up as locator in the last heard list, the XML and `/json/stations`, like M17 GNSS positions; both are published as the middle of their locator field (about 4.6 × 2.3 km), not the exact position, which other D-Star stations on the module still get with the slow data; from every D-Star protocol and URF peers
 - **CallingHome without a hash file (4.5.0)**: the reflector makes its directory hash at the first start and saves it as `[CallingHome] Hash` in `urfd.ini`; no hash file any more, `HashFile` is gone and `setup.sh` no longer touches the hash (suggested by Jason, VE3YCA)

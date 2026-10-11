@@ -1,5 +1,12 @@
 # MD380 Vocoder Cache – Design Notes & Ideas
 
+> Status (tcd 0.2.9): with two AMBE devices the MD380 is optional. Since 0.2.5
+> `DmrGainMode = ambe` gives DMR → DMR/YSF the AGC in the bitstream without
+> re-encoding, and it sounds better than the MD380 re-encode. The MD380 is still
+> needed as the DMR/YSF codec of a single device setup. Since 0.2.9 every MD380
+> use goes through `Md380SelectStream()`, and a new stream starts from the RAM
+> saved right after `md380_init()`.
+
 ## Current Approach: memcpy-based State Swapping
 
 The MD380 firmware is linked to fixed memory addresses:

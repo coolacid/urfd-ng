@@ -224,7 +224,9 @@ Die AGC arbeitet pro Stream (pro Aussendung):
 - RMS über ein gleitendes Fenster von 3 Frames (60 ms), folgt also Silben statt einzelnen Lauten
 - ein langsamer Mittelwert (etwa 2 s) der Verstärkung, die jeder Sprecher braucht; in Pausen läuft die Verstärkung dorthin zurück, damit die erste Silbe nach einer Pause gleich richtig kommt
 - schnelleres Anheben in den ersten 5 Frames nach dem Öffnen des Gates
-- ein Begrenzer bei -0,1 dBFS, es übersteuert also nie
+- ein Noise-Gate bei `AGCNoiseGate`: Es schließt 60 ms, nachdem der Pegel darunter gefallen ist, und blendet die Verstärkung dann um 6 dB pro Frame auf höchstens 1 aus, damit Wortenden erhalten bleiben und Rauschen nicht angehoben wird; bis 6 dB darüber wird nicht hochgeregelt
+- die Verstärkung läuft als Rampe Sample für Sample durch jeden Frame, statt alle 20 ms zu springen
+- ein Begrenzer knapp unter Vollaussteuerung, der die angewendete Verstärkung sofort kappt, es übersteuert also nie
 
 Die Grenzen sind absichtlich ungleich: Absenken ist unkritisch, Anheben hebt auch das Rauschen. Typisches DMR-Audio liegt um -35 dBFS, für ein Ziel von -16 dBFS braucht es also etwa +20 dB.
 

@@ -4,7 +4,7 @@
 
 Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
-**urfd 4.7.1-dht** | tcd 0.2.9 | Dashboard v2.8.2
+**urfd 4.7.2-dht** | tcd 0.2.9 | Dashboard v2.8.2
 
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
@@ -193,6 +193,8 @@ TG9 = A,TS2                        # Common hotspot default
 **Talker Alias**: Jeder Ruf kommt bei den Hotspots mit Talker Alias an, wie von BrandMeister: Rufzeichen und Vorname aus der DMR-ID-Datenbank (z.B. `DL4JC Jens-Christian`), höchstens 27 Zeichen, ISO 8859-1. Schickt die DMR-Quelle einen eigenen Alias (BrandMeister oder ein Funkgerät mit eigenem), wird dieser unverändert weitergegeben, sobald er vollständig angekommen ist; bis dahin, und bei D-Star, YSF, M17 und den anderen Betriebsarten, ist es unserer. Er steckt in der Embedded Signalling, ein LC pro Superframe; der Hotspot zeigt ihn an und gibt ihn ans Funkgerät weiter.
 
 **Hotspot-Einstellungen**: Den Hotspot direkt auf die IP des Reflektors, Port 62030, einstellen. In WPSD/Pi-Star "MMDVM_BRIDGE" oder den Einzel-Netzwerk-Modus verwenden. Der Multi-Netzwerk-Modus von DMRGateway leitet standardmäßig zu BrandMeister und muss abgeschaltet werden.
+
+**XLX-Master-Modus** (WPSD/Pi-Star „XLX Master“ mit Startmodul) funktioniert ebenfalls: DMRGateway verbindet das Modul per Private Call an 4001-4026 und bekommt das Modul auf TS2/TG9, das es auf Slot und TG des Funkgeräts umsetzt (standardmäßig TG6). DMRGateway meldet sich dabei mit dem festen Passwort `passw0rd` aus `[XLX Network]` in `/etc/dmrgateway` an, das xlxd nie prüft. Entweder dort das urfd-Passwort des Nutzers eintragen (WPSD/Pi-Star: Configuration → Expert → DMR GW; nach dem Speichern der normalen Konfigurationsseite prüfen, die `passw0rd` zurückschreiben kann) oder dem Nutzer in `[MMDVM]` ein leeres Passwort geben, das jedes Passwort annimmt. Sonst meldet der Reflektor `auth FAILED`.
 
 **Admin-Befehle**:
 ```json
@@ -858,7 +860,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
-- **Hotspots im XLX-Modus (4.7.1)**: Ein Modul, das per Private Call 4001-4026 verbunden wurde, wie es der XLX-Master-Modus von Pi-Star/WPSD (DMRGateway) tut, wird auf dem Slot bedient, auf dem verbunden wurde, und auf TG9, wie bei xlxd; das XLX-Netz von DMRGateway nimmt nichts anderes an. Der Terminator eines solchen Link-Rufs erzeugt keinen Orphaned Frame mehr
+- **Hotspots im XLX-Modus (4.7.1, 4.7.2)**: Ein Modul, das per Private Call 4001-4026 verbunden wurde, wie es der XLX-Master-Modus von Pi-Star/WPSD (DMRGateway) tut, wird auf dem Slot bedient, auf dem verbunden wurde, und auf TG9, wie bei xlxd; das XLX-Netz von DMRGateway nimmt nichts anderes an. Ein Group Call an 4001-4026 behält seine TG (4.7.1 antwortete auch darauf auf TG9). Der Terminator eines Link-Rufs erzeugt keinen Orphaned Frame mehr
 - **DMR Talker Alias (4.7.0)**: Rufe an Hotspots am MMDVM-Server tragen einen Talker Alias, Rufzeichen und Vorname aus der DMR-ID-Datenbank wie bei BrandMeister, oder den Alias, den die DMR-Quelle schickt (BrandMeister, das Funkgerät), sobald er vollständig angekommen ist
 - **D-Star-Positionen (4.6.0)**: DPRS-Positionen aus den Slow Data von D-Star-Geräten (GPS-A, gegen seine CRC geprüft, oder NMEA `RMC`/`GGA`) erscheinen als Locator in der Liste der zuletzt Gehörten, im XML und in `/json/stations`, wie M17-GPS-Positionen; veröffentlicht wird bei beiden nur die Mitte des Locator-Feldes (etwa 4,6 × 2,3 km), nicht die genaue Position, die andere D-Star-Stationen auf dem Modul weiterhin mit den Slow Data bekommen; aus allen D-Star-Protokollen und von URF-Partnern
 - **CallingHome ohne Hash-Datei (4.5.0)**: Der Reflektor erzeugt seinen Hash fürs Verzeichnis beim ersten Start und speichert ihn als `[CallingHome] Hash` in `urfd.ini`; keine Hash-Datei mehr, `HashFile` entfällt und `setup.sh` fasst den Hash nicht mehr an (Anregung von Jason, VE3YCA)

@@ -224,7 +224,9 @@ The AGC works per stream (per transmission):
 - RMS over a sliding window of 3 frames (60 ms), following syllables rather than single sounds
 - a slow average (about 2 s) of the gain each speaker needs; in pauses the gain drifts towards it, so the first syllable after a pause starts at the right level
 - faster release for the first 5 frames after the gate opens
-- a peak limiter at -0.1 dBFS, so it never clips
+- a noise gate at `AGCNoiseGate`: it closes 60 ms after the level fell below it and then fades the gain by 6 dB per frame to at most unity, so word endings stay and noise is not amplified; within 6 dB above it the gain is not raised
+- the gain ramps sample by sample across each frame instead of stepping every 20 ms
+- a peak limiter just below full scale that cuts the applied gain at once, so it never clips
 
 The gain limits are asymmetric on purpose: attenuating is safe, amplifying also lifts noise. Typical DMR input sits around -35 dBFS, so about +20 dB are needed to reach a -16 dBFS target.
 
