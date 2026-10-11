@@ -721,11 +721,12 @@ void CController::ReadReflectorThread()
 				{
 					if (mixed_mode)
 					{
-						
 						char mod = packet->GetModule();
-						auto it = std::string(g_Conf.GetTCMods()).find(mod);
-						uint8_t dmr_ch = (it == 0) ? 1 : 2;
-						mixed_dv3003->AddPacketToChannel(packet, dmr_ch);
+						auto pos = std::string(g_Conf.GetTCMods()).find(mod);
+						if (pos != std::string::npos) {
+							uint8_t dmr_ch = (pos == 0) ? 1 : 2;
+							mixed_dv3003->AddPacketToChannel(packet, dmr_ch);
+						}
 					}
 					else
 						dmrsf_device->AddPacket(packet);
@@ -1352,11 +1353,12 @@ void CController::RouteDstPacket(std::shared_ptr<CTranscoderPacket> packet)
 		{
 			if (mixed_mode)
 			{
-
 				char mod = packet->GetModule();
-				auto it = std::string(g_Conf.GetTCMods()).find(mod);
-				uint8_t dmr_ch = (it == 0) ? 1 : 2;
-				mixed_dv3003->AddPacketToChannel(packet, dmr_ch);
+				auto pos = std::string(g_Conf.GetTCMods()).find(mod);
+				if (pos != std::string::npos) {
+					uint8_t dmr_ch = (pos == 0) ? 1 : 2;
+					mixed_dv3003->AddPacketToChannel(packet, dmr_ch);
+				}
 			}
 			else
 				dmrsf_device->AddPacket(packet);
