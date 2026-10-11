@@ -76,8 +76,9 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 	AddUser(heard);
 }
 
-void CUsers::Location(const CCallsign &my, const std::string &loc, double lat, double lon)
+void CUsers::Location(const CCallsign &my, double lat, double lon)
 {
+	const auto loc = CUser::Locator(lat, lon);
 	// the most recent entry of this callsign
 	for ( auto &user : m_Users )
 	{

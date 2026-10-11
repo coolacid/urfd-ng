@@ -628,11 +628,10 @@ bool CM17Protocol::IsListenOnlyClient(const CIp &Ip)
 void CM17Protocol::OnGnssIn(const CCallsign &my, const uint8_t *meta)
 {
 	double lat, lon;
-	const auto loc = CM17Packet::GnssLocator(meta, lat, lon);
-	if ( loc.empty() )
+	if ( !CM17Packet::GnssPosition(meta, lat, lon) )
 		return;
 
-	g_Reflector.GetUsers()->Location(my, loc, lat, lon);
+	g_Reflector.GetUsers()->Location(my, lat, lon);
 	g_Reflector.ReleaseUsers();
 }
 

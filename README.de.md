@@ -516,7 +516,7 @@ Die XML-Statusdatei enthält jetzt:
 - **Zuordnungen pro Modul**: Autolinks (YSF, NXDN, P25), TG-Zuordnungen (MMDVMClient, SvxReflector), D-Star-Client-Zuordnungen (DCSClient, DExtraClient, DPlusClient mit Verbindungsstatus), YSF-Client-Zuordnungen (YSFClient mit DG-ID)
 - **Aktive Protokolle**: Name und Port jedes eingeschalteten Protokolls
 - **Protokoll pro Station**: Über welches Protokoll eine Station gehört wurde (DCS, MMDVMClient, YSF usw.)
-- **Position pro Station**: `<Locator>`, `<Latitude>` und `<Longitude>` für Stationen, die eine M17-GPS-Position gesendet haben
+- **Position pro Station**: `<Locator>`, `<Latitude>` und `<Longitude>` für Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position gesendet haben
 - **Kennzeichnung dynamischer TGs**: `<Dynamic>true</Dynamic>` und `<Remaining>` Sekunden für zur Laufzeit hinzugefügte TGs
 
 Modulnamen werden einmal in `urfd.ini` eingetragen und stehen automatisch im Dashboard zur Verfügung.
@@ -535,7 +535,7 @@ Komplett neu gestaltet mit dunklem Design (v2.6.0), robust gegen Ausfälle des V
 - Dunkles Design mit CSS-Variablen
 - Tabellen für Peers, Repeater und Nutzer auch auf dem Handy lesbar
 - Last-Heard-Tabelle mit Protokollspalte, pulsierender TX-Anzeige und Modul
-- Locator von Stationen, die eine M17-GPS-Position senden, mit Link auf OpenStreetMap statt auf aprs.fi
+- Locator von Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position senden, mit Link auf OpenStreetMap statt auf aprs.fi
 - MOTD-/Wartungsbanner über `$PageOptions['MOTD']` in config.inc.php
 - Modulnamen aus dem urfd-XML (eine einzige Quelle)
 - Kontakt-E-Mail gegen Bots verschleiert
@@ -565,7 +565,7 @@ Nur lesende HTTP-Endpunkte unter `/json/`, ausgeliefert vom Dashboard:
 | `/json/reflector` | Vollständiger Reflektor-Datensatz mit Modulen und Angaben |
 | `/json/links` | Verbundene Knoten mit Rufzeichen, IP, Modul, Protokoll, Verbindungs- und Last-Heard-Zeit |
 | `/json/peers` | Gekoppelte Partner-Reflektoren |
-| `/json/stations` | Zuletzt gehörte Stationen mit Land; `locator`, `latitude` und `longitude`, wenn die Station eine M17-GPS-Position gesendet hat |
+| `/json/stations` | Zuletzt gehörte Stationen mit Land; `locator`, `latitude` und `longitude`, wenn die Station eine M17-GPS- oder eine D-Star-DPRS-Position gesendet hat |
 | `/json/modulesinuse` | Module mit den Rufzeichen, die gerade darauf sind |
 
 Endpunkte für Listen liefern `[]`, wenn sie leer sind (`/json/stations` liefert `{"stations":[]}`); ein unbekannter Pfad liefert 404.
@@ -856,6 +856,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **D-Star-Positionen (4.6.0)**: DPRS-Positionen aus den Slow Data von D-Star-Geräten (GPS-A, gegen seine CRC geprüft, oder NMEA `RMC`/`GGA`) erscheinen als Locator in der Liste der zuletzt Gehörten, im XML und in `/json/stations`, wie M17-GPS-Positionen; aus allen D-Star-Protokollen und von URF-Partnern
 - **CallingHome ohne Hash-Datei (4.5.0)**: Der Reflektor erzeugt seinen Hash fürs Verzeichnis beim ersten Start und speichert ihn als `[CallingHome] Hash` in `urfd.ini`; keine Hash-Datei mehr, `HashFile` entfällt und `setup.sh` fasst den Hash nicht mehr an (Anregung von Jason, VE3YCA)
 - **CallingHome-Hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` setzt den Hash fürs Verzeichnis direkt (Anregung von Jason, VE3YCA)
 - **Härtung (4.3.5)**: DPlus und DMR+ prüfen die Paketlänge vor dem Lesen; der JSON-Bericht übersteht Rufzeichen, die kein gültiges UTF-8 sind; unbekannte Pakete landen nur mit ihren ersten 64 Byte im Log; ein MMDVM-Login-Salt gehört zur DMR-ID und zur anfragenden Adresse, und ein Konfigurationspaket eines nicht angemeldeten Hotspots bekommt keine Antwort; `setup.sh` macht `urfd.ini` nur für root lesbar und gibt `xlxd-ch` dem Dashboard statt allen (`update` korrigiert bestehende Installationen)

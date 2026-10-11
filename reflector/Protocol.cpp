@@ -136,6 +136,13 @@ void CProtocol::OnDvFramePacketIn(std::unique_ptr<CDvFramePacket> &Frame, const 
 	{
 		// set the packet module, the transcoder needs this
 		Frame->SetPacketModule(stream->GetOwnerClient()->GetReflectorModule());
+		// D-Star positions (DPRS) in the slow data go to the last heard list
+		double lat, lon;
+		if ( (ECodecType::dstar == Frame->GetCodecIn()) && stream->DprsIn(*Frame, lat, lon) )
+		{
+			g_Reflector.GetUsers()->Location(stream->GetUserCallsign(), lat, lon);
+			g_Reflector.ReleaseUsers();
+		}
 		// and push
 		stream->Push(std::move(Frame));
 	}

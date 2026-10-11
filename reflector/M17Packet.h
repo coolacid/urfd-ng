@@ -73,8 +73,8 @@ public:
 	EM17Meta GetMetaType() const;
 	uint8_t GetCan() const;
 
-	// GNSS META to a 6 character Maidenhead locator, empty if there is no valid position
-	static std::string GnssLocator(const uint8_t *meta, double &lat, double &lon);
+	// position from GNSS META, false if there is no valid one
+	static bool GnssPosition(const uint8_t *meta, double &lat, double &lon);
 	const uint8_t *GetPayload() const;
 	const uint8_t *GetNonce() const;
 	void SetPayload(const uint8_t *newpayload);

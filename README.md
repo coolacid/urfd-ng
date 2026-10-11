@@ -525,7 +525,7 @@ The XML status file now includes:
 - **Per-module mappings**: autolinks (YSF, NXDN, P25), TG mappings (MMDVMClient, SvxReflector), D-Star client mappings (DCSClient, DExtraClient, DPlusClient with connection status), YSF client mappings (YSFClient with DG-ID)
 - **Enabled protocols**: name and port for each active protocol
 - **Per-station protocol**: which protocol a user was heard on (DCS, MMDVMClient, YSF, etc.)
-- **Per-station position**: `<Locator>`, `<Latitude>` and `<Longitude>` for stations that sent an M17 GNSS position
+- **Per-station position**: `<Locator>`, `<Latitude>` and `<Longitude>` for stations that sent an M17 GNSS or a D-Star DPRS position
 - **Dynamic TG indicators**: `<Dynamic>true</Dynamic>` and `<Remaining>` seconds for runtime-added TGs
 
 Module names are configured once in `urfd.ini` and automatically available in the dashboard.
@@ -544,7 +544,7 @@ Complete redesign with dark mode theme (v2.6.0), hardened against directory outa
 - Dark mode with CSS custom properties
 - Mobile-responsive tables for peers, repeaters, users
 - Last Heard table with protocol column, pulsing TX indicator, module display
-- Locator of stations that send an M17 GNSS position, linked to OpenStreetMap, in place of the aprs.fi link
+- Locator of stations that send an M17 GNSS or a D-Star DPRS position, linked to OpenStreetMap, in place of the aprs.fi link
 - MOTD/maintenance banner via `$PageOptions['MOTD']` in config.inc.php
 - Module names read from urfd XML (single source of truth)
 - Contact email obfuscated against bots
@@ -580,7 +580,7 @@ Read-only HTTP endpoints under `/json/`, served by the dashboard:
 | `/json/reflector` | Full reflector record including modules and metadata |
 | `/json/links` | Connected nodes with callsign, IP, module, protocol, connect and last-heard time |
 | `/json/peers` | Linked peer reflectors |
-| `/json/stations` | Last-heard stations with country lookup; `locator`, `latitude` and `longitude` when the station sent an M17 GNSS position |
+| `/json/stations` | Last-heard stations with country lookup; `locator`, `latitude` and `longitude` when the station sent an M17 GNSS or a D-Star DPRS position |
 | `/json/modulesinuse` | Modules with the callsigns currently on them |
 
 Collection endpoints return `[]` when empty (`/json/stations` returns
@@ -877,6 +877,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **D-Star positions (4.6.0)**: DPRS positions in the slow data of D-Star radios (GPS-A, checked against its CRC, or NMEA `RMC`/`GGA`) show up as locator in the last heard list, the XML and `/json/stations`, like M17 GNSS positions; from every D-Star protocol and URF peers
 - **CallingHome without a hash file (4.5.0)**: the reflector makes its directory hash at the first start and saves it as `[CallingHome] Hash` in `urfd.ini`; no hash file any more, `HashFile` is gone and `setup.sh` no longer touches the hash (suggested by Jason, VE3YCA)
 - **CallingHome hash in urfd.ini (4.4.0)**: `[CallingHome] Hash` sets the directory hash directly (suggested by Jason, VE3YCA)
 - **Hardening (4.3.5)**: DPlus and DMR+ check the packet size before reading it; the JSON report survives callsigns that aren't valid UTF-8; unknown packets are logged with their first 64 bytes only; an MMDVM login salt belongs to the DMR ID and the address that asked for it, and a config packet from a hotspot that isn't logged in gets no answer; `setup.sh` makes `urfd.ini` readable by root only and gives `xlxd-ch` to the dashboard instead of everyone (`update` fixes existing installations)

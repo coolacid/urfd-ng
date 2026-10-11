@@ -22,6 +22,7 @@
 #include "DVHeaderPacket.h"
 #include "Client.h"
 #include "CodecStream.h"
+#include "DStarDprs.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
@@ -55,6 +56,8 @@ public:
 	const CCallsign &GetUserCallsign(void) const    { return m_DvHeader.GetMyCallsign(); }
 	char             GetRpt2Module(void) const      { return m_DvHeader.GetRpt2Module(); }
 	CCodecStream    *GetCodecStream(void) const     { return m_CodecStream.get(); }
+	// a D-Star frame's slow data, true with a new DPRS position
+	bool             DprsIn(const CDvFramePacket &frame, double &lat, double &lon) { return m_Dprs.Add(frame.GetDstarPacketId(), frame.GetDvData(), lat, lon); }
 	bool             HasCodecStream(void) const      { return m_CodecStream != nullptr; }
 	bool             IsCodecPipelineEmpty(void) { return !m_CodecStream || m_CodecStream->IsPipelineEmpty(); }
 	uint32_t         GetSourceTG(void) const        { return m_uiSourceTG; }
@@ -78,4 +81,5 @@ protected:
 	std::shared_ptr<CClient> m_OwnerClient;
 	std::unique_ptr<CCodecStream> m_CodecStream;
 	uint32_t            m_uiSourceTG;
+	CDStarDprs          m_Dprs;
 };

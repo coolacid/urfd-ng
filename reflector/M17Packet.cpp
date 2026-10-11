@@ -115,28 +115,16 @@ uint8_t CM17Packet::GetCan() const
 
 // same GNSS layout as mrefd: byte 0 source/station, byte 1 bit 7 position valid,
 // bytes 3-5 and 6-8 latitude and longitude as signed 24 bit fractions of 90 and 180 degrees
-std::string CM17Packet::GnssLocator(const uint8_t *meta, double &lat, double &lon)
+bool CM17Packet::GnssPosition(const uint8_t *meta, double &lat, double &lon)
 {
 	if (0 == (0x80U & meta[1]))
-		return std::string();
+		return false;
 
 	const int32_t nlat = int32_t(uint32_t(meta[3]) << 24 | uint32_t(meta[4]) << 16 | uint32_t(meta[5]) << 8) >> 8;
 	const int32_t nlon = int32_t(uint32_t(meta[6]) << 24 | uint32_t(meta[7]) << 16 | uint32_t(meta[8]) << 8) >> 8;
 	lat =  90.0 * nlat / 8388607.0;
 	lon = 180.0 * nlon / 8388607.0;
-	if ((lat < -90.0) || (lat >= 90.0) || (lon < -180.0) || (lon >= 180.0))
-		return std::string();
-
-	const double la = lat + 90.0;
-	const double lo = lon + 180.0;
-	std::string loc(6, ' ');
-	loc[0] = 'A' + int(lo) / 20;
-	loc[1] = 'A' + int(la) / 10;
-	loc[2] = '0' + (int(lo) % 20) / 2;
-	loc[3] = '0' + int(la) % 10;
-	loc[4] = 'a' + int(lo * 12.0) % 24;
-	loc[5] = 'a' + int(la * 24.0) % 24;
-	return loc;
+	return (lat >= -90.0) && (lat < 90.0) && (lon >= -180.0) && (lon < 180.0);
 }
 
 const uint8_t *CM17Packet::GetPayload() const

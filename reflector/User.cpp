@@ -51,6 +51,20 @@ CUser::CUser(const CUser &user)
 ////////////////////////////////////////////////////////////////////////////////////////
 // operators
 
+std::string CUser::Locator(double lat, double lon)
+{
+	const double la = lat + 90.0;
+	const double lo = lon + 180.0;
+	std::string loc(6, ' ');
+	loc[0] = 'A' + int(lo) / 20;
+	loc[1] = 'A' + int(la) / 10;
+	loc[2] = '0' + (int(lo) % 20) / 2;
+	loc[3] = '0' + int(la) % 10;
+	loc[4] = 'a' + int(lo * 12.0) % 24;
+	loc[5] = 'a' + int(la * 24.0) % 24;
+	return loc;
+}
+
 bool CUser::operator ==(const CUser &user) const
 {
 	return ((user.m_My == m_My) && (user.m_Rpt1 == m_Rpt1) && (user.m_Rpt2 == m_Rpt2)  && (user.m_Xlx == m_Xlx));

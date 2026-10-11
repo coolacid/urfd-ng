@@ -50,7 +50,7 @@ public:
 	// operation
 	void   Hearing(const CCallsign &, const CCallsign &, const CCallsign &, const std::string &proto = "");
 	void   Hearing(const CCallsign &, const CCallsign &, const CCallsign &, const CCallsign &, const std::string &proto = "");
-	void   Location(const CCallsign &, const std::string &, double, double);
+	void   Location(const CCallsign &, double lat, double lon);
 
 protected:
 	// data
