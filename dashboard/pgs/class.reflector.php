@@ -25,9 +25,12 @@ class xReflector {
 
    public function LoadXML() {
       if ($this->XMLFile != null) {
-         $handle = fopen($this->XMLFile, 'r');
-         $this->XMLContent = fread($handle, filesize($this->XMLFile));
-         fclose($handle);
+         // fread() with the length 0 of an empty file throws on PHP 8
+         $this->XMLContent = @file_get_contents($this->XMLFile);
+         if (($this->XMLContent === false) || ($this->XMLContent === '')) {
+            $this->XMLContent = null;
+            return false;
+         }
 
          $this->ServiceName = substr($this->XMLContent, strpos($this->XMLContent, "<XLX")+4, 3);
          if (preg_match('/[^a-zA-Z0-9]/', $this->ServiceName) == 1) {

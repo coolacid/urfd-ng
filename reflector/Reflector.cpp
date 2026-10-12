@@ -544,11 +544,13 @@ void CReflector::MaintenanceThread()
 
 	while (keep_running)
 	{
-		// report to xml file
+		// report to xml file, written aside and renamed over the old one so the
+		// dashboard never reads it empty or half written
 		if (! xmlpath.empty())
 		{
+			const std::string tmppath(xmlpath + ".tmp");
 			std::ofstream xmlFile;
-			xmlFile.open(xmlpath, std::ios::out | std::ios::trunc);
+			xmlFile.open(tmppath, std::ios::out | std::ios::trunc);
 			if ( xmlFile.is_open() )
 			{
 				// write xml file
@@ -556,10 +558,12 @@ void CReflector::MaintenanceThread()
 
 				// and close file
 				xmlFile.close();
+				if (0 != std::rename(tmppath.c_str(), xmlpath.c_str()))
+					std::cout << "Failed to rename " << tmppath << " to " << xmlpath << std::endl;
 			}
 			else
 			{
-				std::cout << "Failed to open " << xmlpath  << std::endl;
+				std::cout << "Failed to open " << tmppath  << std::endl;
 			}
 		}
 
@@ -568,14 +572,16 @@ void CReflector::MaintenanceThread()
 		{
 			nlohmann::json jreport;
 			JsonReport(jreport);
+			const std::string tmppath(jsonpath + ".tmp");
 			std::ofstream jsonFile;
-			jsonFile.open(jsonpath, std::ios::out | std::ios::trunc);
+			jsonFile.open(tmppath, std::ios::out | std::ios::trunc);
 			if (jsonFile.is_open())
 			{
 				// callsigns come from packets and need not be valid UTF-8, which dump()
 				// would throw on, ending urfd
 				jsonFile << jreport.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 				jsonFile.close();
+				std::rename(tmppath.c_str(), jsonpath.c_str());
 			}
 		}
 
