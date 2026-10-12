@@ -168,18 +168,23 @@ void CAdminSocket::ClientThread(int clientFd, const std::string &clientAddr)
 	tv.tv_usec = 0;
 	setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+	// a command may arrive split over several segments, so collect up to the newline
+	std::string pending;
 	while (m_Running)
 	{
 		char buf[ADMIN_MAX_MSG_SIZE];
-		ssize_t n = recv(clientFd, buf, sizeof(buf) - 1, 0);
+		ssize_t n = recv(clientFd, buf, sizeof(buf), 0);
 		if (n <= 0)
 			break;
-		buf[n] = '\0';
+		pending.append(buf, n);
 
-		std::istringstream iss(buf);
-		std::string line;
-		while (std::getline(iss, line))
+		std::string::size_type eol;
+		while ((eol = pending.find('\n')) != std::string::npos)
 		{
+			std::string line = pending.substr(0, eol);
+			pending.erase(0, eol + 1);
+			if (!line.empty() && line.back() == '\r')
+				line.pop_back();
 			if (line.empty())
 				continue;
 
@@ -204,6 +209,9 @@ void CAdminSocket::ClientThread(int clientFd, const std::string &clientAddr)
 				send(clientFd, respStr.c_str(), respStr.size(), MSG_NOSIGNAL);
 			}
 		}
+		// no command is that long, a client that never sends a newline is dropped
+		if (pending.size() > ADMIN_MAX_MSG_SIZE)
+			break;
 	}
 
 	close(clientFd);

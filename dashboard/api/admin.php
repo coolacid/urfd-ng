@@ -397,7 +397,8 @@ function adminSocketSend(array $cmd): ?array
     $json = json_encode($cmd) . "\n";
     fwrite($sock, $json);
 
-    $response = fgets($sock, 8192);
+    // one reply is one line of any length (user and peer lists pass 8 KB)
+    $response = fgets($sock);
     fclose($sock);
 
     if ($response === false) {
