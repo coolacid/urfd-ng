@@ -138,6 +138,7 @@ protected:
 	std::string m_Password;
 	std::string m_Callsign;
 	std::string m_Host;
+	std::string m_Software;     // "sw" in the node info, urfd unless the ini says otherwise
 
 	// OPUS
 	OpusEncoder *m_OpusEncoder;

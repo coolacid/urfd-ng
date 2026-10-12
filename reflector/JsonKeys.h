@@ -87,8 +87,8 @@ struct SJsonKeys {
 	files { "pidFilePath", "xmlFilePath", "jsonFilePath", "whitelistFilePath", "blacklistFilePath", "interlinkFilePath", "g3TerminalFilePath" };
 	struct MMDVMCLIENT { const std::string enable, address, port, localport, dmrid, password, callsign, latitude, longitude, location, description, url, rxfreq, txfreq, software, firmware, fallbackdmrid, blockprotocols, bmapikey; }
 	mmdvmclient { "mmdvmcliEnable", "mmdvmcliAddress", "mmdvmcliPort", "mmdvmcliLocalPort", "mmdvmcliDmrId", "mmdvmcliPassword", "mmdvmcliCallsign", "mmdvmcliLatitude", "mmdvmcliLongitude", "mmdvmcliLocation", "mmdvmcliDescription", "mmdvmcliUrl", "mmdvmcliRxFreq", "mmdvmcliTxFreq", "mmdvmcliSoftware", "mmdvmcliFirmware", "mmdvmcliFallbackDmrId", "mmdvmcliBlockProtocols", "mmdvmcliBmApiKey" };
-	struct SVX { const std::string enable, host, port, callsign, password, blockprotocols, rxgain, txgain; }
-	svx { "svxEnable", "svxHost", "svxPort", "svxCallsign", "svxPassword", "svxBlockProtocols", "svxRxGain", "svxTxGain" };
+	struct SVX { const std::string enable, host, port, callsign, password, blockprotocols, rxgain, txgain, software; }
+	svx { "svxEnable", "svxHost", "svxPort", "svxCallsign", "svxPassword", "svxBlockProtocols", "svxRxGain", "svxTxGain", "svxSoftware" };
 	struct SVXS { const std::string enable, port, blockprotocols, rxgain, txgain; }
 	svxs { "svxsEnable", "svxsPort", "svxsBlockProtocols", "svxsRxGain", "svxsTxGain" };
 	struct DCSCLIENT { const std::string enable, callsign, blockprotocols; }

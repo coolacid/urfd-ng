@@ -17,6 +17,7 @@
 #include <thread>
 
 #include <openssl/hmac.h>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <map>
 
@@ -388,11 +389,11 @@ void CSvxReflectorProtocol::OnServerInfo(const std::vector<uint8_t> &payload)
 	m_ClientId = SvxUnpack16(payload, pos);
 	std::cout << "SvxReflector: received ServerInfo, client_id=" << m_ClientId << std::endl;
 
-	// Send MsgNodeInfo (JSON metadata)
-	std::string json = "{\"sw\":\"urfd\",\"callsign\":\"" + m_Callsign + "\"}";
+	// Send MsgNodeInfo (JSON metadata), built by the library so any value is escaped
+	nlohmann::json info = { {"sw", m_Software}, {"callsign", m_Callsign} };
 	std::vector<uint8_t> msg;
 	SvxPack16(msg, SVX_TCP_MSG_NODE_INFO);
-	SvxPackString(msg, json);
+	SvxPackString(msg, info.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
 	if (!TcpSendFrame(msg))
 		return;
 
@@ -542,6 +543,11 @@ bool CSvxReflectorProtocol::Initialize(const char *type, const EProtocol ptype,
 	m_Host = g_Configure.GetString(g_Keys.svx.host);
 	m_Password = g_Configure.GetString(g_Keys.svx.password);
 	m_Callsign = g_Configure.GetString(g_Keys.svx.callsign);
+	m_Software = g_Configure.Contains(g_Keys.svx.software) ? g_Configure.GetString(g_Keys.svx.software) : "";
+	if (m_Software.empty())
+		m_Software = "urfd";
+	else
+		std::cout << "SvxReflector: reports its software as '" << m_Software << "'" << std::endl;
 
 	// Parse BlockProtocols (comma-separated, e.g. "MMDVMClient,USRP")
 	if (g_Configure.Contains(g_Keys.svx.blockprotocols))
