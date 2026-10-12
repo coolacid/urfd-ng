@@ -49,6 +49,17 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
+	// Block SIGHUP/SIGTERM/SIGINT before any thread starts, so every thread inherits
+	// the mask and only sigwait in main sees them. Blocked only after the start, the
+	// threads kept SIGHUP's default action, and one arriving while main was not in
+	// sigwait (a second SIGHUP during a reload) ended urfd.
+	sigset_t waitset;
+	sigemptyset(&waitset);
+	sigaddset(&waitset, SIGHUP);
+	sigaddset(&waitset, SIGTERM);
+	sigaddset(&waitset, SIGINT);
+	pthread_sigmask(SIG_BLOCK, &waitset, nullptr);
+
 	if (g_Configure.ReadData(argv[1]))
 		return EXIT_FAILURE;
 
@@ -79,14 +90,6 @@ int main(int argc, char *argv[])
 	std::ofstream ofs(pidpath, std::ofstream::out);
 	ofs << getpid() << std::endl;
 	ofs.close();
-
-	// Block SIGHUP/SIGTERM/SIGINT in all threads, handle via sigwait in main
-	sigset_t waitset;
-	sigemptyset(&waitset);
-	sigaddset(&waitset, SIGHUP);
-	sigaddset(&waitset, SIGTERM);
-	sigaddset(&waitset, SIGINT);
-	pthread_sigmask(SIG_BLOCK, &waitset, nullptr);
 
 	// main loop: reload config on SIGHUP, exit on SIGTERM/SIGINT
 	int sig;
