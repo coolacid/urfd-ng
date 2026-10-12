@@ -65,9 +65,11 @@ public:
 	// talker alias of the stream, one of its LCs per superframe
 	std::vector<std::array<uint8_t, 9>> m_TalkerAlias;
 	unsigned        m_uiSuperframe = 0;
+	unsigned        m_uiTAIndex = 0;	// next of its LCs to send
 	bool            m_bEmbeddedReady = false;
 	CDmrEmbeddedLC  m_Embedded;
-	// a talker alias the DMR source sends (BrandMeister, the radio) replaces ours
+	// a talker alias the DMR source sends (BrandMeister, the radio) replaces
+	// ours, its text in our format
 	CDmrEmbeddedLC  m_SourceLC;
 	std::array<std::array<uint8_t, 9>, 4> m_SourceTA {};
 	uint8_t         m_uiSourceTAMask = 0;	// bit n: LC n of the source's alias arrived

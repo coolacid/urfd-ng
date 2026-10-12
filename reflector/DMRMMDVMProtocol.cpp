@@ -497,6 +497,7 @@ void CDmrmmdvmProtocol::HandleQueue(void)
 			// the talker alias, as BrandMeister sets it: callsign and first name
 			cache.m_TalkerAlias = CDmrEmbeddedLC::TalkerAlias(TalkerAliasText(cache.m_dvHeader.GetMyCallsign()));
 			cache.m_uiSuperframe = 0;
+			cache.m_uiTAIndex = 0;
 			cache.m_bEmbeddedReady = false;
 			cache.m_SourceLC = CDmrEmbeddedLC();
 			cache.m_uiSourceTAMask = 0;
@@ -1440,7 +1441,7 @@ void CDmrmmdvmProtocol::AddTalkerAlias(CDmrmmdvmStreamCacheItem &cache, uint8_t 
 		const unsigned superframe = cache.m_uiSuperframe++;
 		cache.m_bEmbeddedReady = (0 == (superframe % 2));
 		if ( cache.m_bEmbeddedReady )
-			cache.m_Embedded.Encode(cache.m_TalkerAlias[(superframe / 2) % cache.m_TalkerAlias.size()].data());
+			cache.m_Embedded.Encode(cache.m_TalkerAlias[cache.m_uiTAIndex++ % cache.m_TalkerAlias.size()].data());
 	}
 	else if ( cache.m_bEmbeddedReady && (uiDmrPacketId <= 4) )
 	{
@@ -1452,8 +1453,9 @@ void CDmrmmdvmProtocol::AddTalkerAlias(CDmrmmdvmStreamCacheItem &cache, uint8_t 
 }
 
 // A DMR source's own talker alias (from BrandMeister or the radio) is kept
-// in the frames: collect its LCs, and once all of them arrived send those
-// instead of ours, as they are
+// in the frames: collect its LCs, and once all of them arrived send its text
+// instead of ours, in our format: it may be 7 bit, ISO 8 bit or UTF-8, and a
+// Motorola radio shows only UTF-16
 void CDmrmmdvmProtocol::TakeSourceTalkerAlias(CDmrmmdvmStreamCacheItem &cache) const
 {
 	const auto &frame = cache.m_dvFrame0;
@@ -1486,8 +1488,14 @@ void CDmrmmdvmProtocol::TakeSourceTalkerAlias(CDmrmmdvmStreamCacheItem &cache) c
 	if ( (cache.m_uiSourceTAMask & all) != all )
 		return;
 
-	cache.m_TalkerAlias.assign(cache.m_SourceTA.begin(), cache.m_SourceTA.begin() + count);
 	cache.m_bSourceTA = true;
+	const std::vector<std::array<uint8_t, 9>> source(cache.m_SourceTA.begin(), cache.m_SourceTA.begin() + count);
+	auto alias = CDmrEmbeddedLC::TalkerAlias(CDmrEmbeddedLC::TalkerAliasText(source));
+	if ( alias.empty() || alias == cache.m_TalkerAlias )
+		return;
+	// start over with the header, so no block of ours is taken for one of it
+	cache.m_TalkerAlias = std::move(alias);
+	cache.m_uiTAIndex = 0;
 }
 
 // "CALLSIGN Firstname" from the DMR ID database, or the callsign alone

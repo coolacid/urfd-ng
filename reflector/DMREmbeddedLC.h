@@ -31,6 +31,8 @@ public:
 	// the LCs of a talker alias, UTF-16 like BrandMeister's: a header and up
 	// to 3 blocks, at most 13 characters; UTF-8 text is converted
 	static std::vector<std::array<uint8_t, 9>> TalkerAlias(const std::string &utf8);
+	// the text of a talker alias from its LCs, header first, as UTF-8
+	static std::string TalkerAliasText(const std::vector<std::array<uint8_t, 9>> &lcs);
 
 private:
 	bool m_Raw[128] = {};

@@ -221,3 +221,62 @@ std::vector<std::array<uint8_t, 9>> CDmrEmbeddedLC::TalkerAlias(const std::strin
 	}
 	return lcs;
 }
+
+std::string CDmrEmbeddedLC::TalkerAliasText(const std::vector<std::array<uint8_t, 9>> &lcs)
+{
+	if (lcs.empty())
+		return {};
+
+	// the data bytes of all LCs in a row, the header's format and length first
+	std::vector<uint8_t> data;
+	for (const auto &lc : lcs)
+		data.insert(data.end(), lc.begin() + 2, lc.end());
+	const unsigned format = (data[0] >> 6) & 0x03U;
+	const unsigned length = (data[0] >> 1) & 0x1FU;
+
+	std::string utf8;
+	auto append = [&utf8](uint32_t cp)
+	{
+		if (cp < 0x20U)
+			return;
+		if (cp < 0x80U)
+			utf8 += char(cp);
+		else if (cp < 0x800U)
+		{
+			utf8 += char(0xC0U | (cp >> 6));
+			utf8 += char(0x80U | (cp & 0x3FU));
+		}
+		else
+		{
+			utf8 += char(0xE0U | (cp >> 12));
+			utf8 += char(0x80U | ((cp >> 6) & 0x3FU));
+			utf8 += char(0x80U | (cp & 0x3FU));
+		}
+	};
+
+	switch (format)
+	{
+		case 0:	// 7 bit, right after the 7 bits of format and length
+			for (unsigned n = 0, bit = 7; n < length && bit + 7 <= data.size() * 8U; n++, bit += 7)
+			{
+				uint32_t c = 0;
+				for (unsigned i = 0; i < 7U; i++)
+					c = (c << 1) | ((data[(bit + i) / 8U] >> (7U - (bit + i) % 8U)) & 0x01U);
+				append(c);
+			}
+			break;
+		case 1:	// ISO 8859-1
+			for (unsigned n = 0; n < length && 1U + n < data.size(); n++)
+				append(data[1 + n]);
+			break;
+		case 2:	// UTF-8, the length counts bytes
+			for (unsigned n = 0; n < length && 1U + n < data.size() && data[1 + n]; n++)
+				utf8 += char(data[1 + n]);
+			break;
+		default:	// UTF-16, big endian
+			for (unsigned n = 0; n < length && 2U + 2U * n < data.size(); n++)
+				append((uint32_t(data[1 + 2 * n]) << 8) | data[2 + 2 * n]);
+			break;
+	}
+	return utf8;
+}
