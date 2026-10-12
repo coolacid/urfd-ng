@@ -532,15 +532,16 @@ The DMR ID and YSF TX/RX databases survive an outage of their publisher.
 Mode = http
 FilePath = /usr/local/etc/urfd/dmrid.dat
 # Comma separated: first entry is primary, the rest are tried in order
-URL = http://xlxapi.rlx.lu/api/exportdmr.php, https://radioid.net/static/user.csv, http://www.pistar.uk/downloads/DMRIds.dat
+URL = https://radioid.net/static/user.csv, http://www.pistar.uk/downloads/DMRIds.dat, http://xlxapi.rlx.lu/api/exportdmr.php
 ```
 
 **Multiple sources**: `URL` accepts a comma separated list. Sources are tried in
 order until one answers, and a message is logged whenever a fallback is used.
 
 **Separator tolerance**: fields may be separated by `;`, `,` or a tab, so the common
-publishers work unchanged — xlxapi (`id;call;name`), radioid.net CSV
-(`id,call,first,last,…`) and Pi-Star `DMRIds.dat` (tab separated) all parse. Field
+publishers work unchanged — radioid.net CSV (`id,call,first,last,…`),
+Pi-Star `DMRIds.dat` (tab separated) and xlxapi (`id;call;`) all parse. xlxapi carries
+no names, so the DMR talker alias would be the bare callsign; it is therefore last. Field
 order is the same everywhere; lines not starting with an ID, such as a CSV header,
 are skipped.
 

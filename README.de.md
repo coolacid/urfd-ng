@@ -532,12 +532,12 @@ Die DMR-ID- und die YSF-TX/RX-Datenbank überstehen einen Ausfall ihrer Quelle.
 Mode = http
 FilePath = /usr/local/etc/urfd/dmrid.dat
 # Comma separated: first entry is primary, the rest are tried in order
-URL = http://xlxapi.rlx.lu/api/exportdmr.php, https://radioid.net/static/user.csv, http://www.pistar.uk/downloads/DMRIds.dat
+URL = https://radioid.net/static/user.csv, http://www.pistar.uk/downloads/DMRIds.dat, http://xlxapi.rlx.lu/api/exportdmr.php
 ```
 
 **Mehrere Quellen**: `URL` nimmt eine durch Komma getrennte Liste. Die Quellen werden der Reihe nach versucht, bis eine antwortet; wird eine Ersatzquelle verwendet, steht das im Log.
 
-**Trennzeichen**: Die Felder dürfen durch `;`, `,` oder Tabulator getrennt sein, die üblichen Anbieter funktionieren also unverändert: xlxapi (`id;call;name`), radioid.net-CSV (`id,call,first,last,…`) und Pi-Star `DMRIds.dat` (Tabulator). Die Reihenfolge der Felder ist überall gleich; Zeilen, die nicht mit einer ID beginnen, etwa eine CSV-Kopfzeile, werden übersprungen.
+**Trennzeichen**: Die Felder dürfen durch `;`, `,` oder Tabulator getrennt sein, die üblichen Anbieter funktionieren also unverändert: radioid.net-CSV (`id,call,first,last,…`), Pi-Star `DMRIds.dat` (Tabulator) und xlxapi (`id;call;`). xlxapi liefert keine Namen, der DMR-Talker-Alias wäre dann nur das Rufzeichen; deshalb steht es an letzter Stelle. Die Reihenfolge der Felder ist überall gleich; Zeilen, die nicht mit einer ID beginnen, etwa eine CSV-Kopfzeile, werden übersprungen.
 
 **Download-Cache**: Jeder erfolgreiche Download wird in `<FilePath>.cache` gespiegelt. Antwortet beim Start keine Quelle, wird stattdessen der Cache geladen; die Datenbank ist also nie leer, nur weil ein Verzeichnis ausgefallen ist. Das ist getrennt von `FilePath`, das bei `Mode = both` die eigenen zusätzlichen Einträge des Betreibers enthält und nie überschrieben wird.
 
