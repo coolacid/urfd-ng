@@ -539,8 +539,8 @@ Module names are configured once in `urfd.ini` and automatically available in th
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.8.2
-Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2).
+### Dashboard v2.8.3
+Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2), status file and admin socket fixes (v2.8.3).
 
 **New pages:**
 - **Active Users** - Connected nodes per module in card layout
@@ -871,6 +871,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
 - **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
+- **Dashboard v2.8.3**: A page load no longer dies on an empty status file; admin replies past 8 KB (user and peer lists, the log) arrive whole instead of as "No response from admin socket"; `&`, `<` and `>` in callsigns and descriptions show as such
 - **Dashboard v2.8.2**: The admin password is no longer kept in `config.inc.php` (`setup.sh update` removes old copies); the admin page logs in with the `urfd.ini` password
 - **Dashboard v2.8.1**: Everything from outside is escaped (the `show` parameter, the reflector list from the XLX directory, hotspot and node data on the admin page, callsigns and filters); the admin API accepts only requests from its own page (JSON and `X-Requested-With`, no CORS), its session cookie is `HttpOnly` and `SameSite=Strict` and renewed at login
 - **Dashboard v2.8.0**: No CallingHome any more, the reflector registers itself; the reflector list reads `$Directory` (falling back to old `$CallingHome` settings); `/json/metadata` takes the dashboard URL from the reflector's XML
@@ -884,6 +885,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **Status file and admin socket (4.7.4)**: the XML/JSON status file is written aside and renamed into place, so the dashboard never reads it empty or half written; callsigns and `urfd.ini` texts in it are XML-escaped; the admin socket takes a command split over several TCP segments
 - **XLX mode hotspots (4.7.1, 4.7.2)**: a module linked with a private call 4001-4026, as Pi-Star/WPSD's XLX master mode (DMRGateway) does, is served on the slot it was linked on and on TG9, like xlxd; DMRGateway's XLX network takes nothing else. A group call to 4001-4026 keeps its TG (4.7.1 answered it on TG9 too). The terminator of a link call no longer logs an orphaned frame
 - **DMR talker alias (4.7.0)**: calls to hotspots on the MMDVM server carry a talker alias, the callsign and first name from the DMR ID database as BrandMeister makes it, or the alias the DMR source sends (BrandMeister, the radio) as soon as it arrived complete
 - **D-Star positions (4.6.0)**: DPRS positions in the slow data of D-Star radios (GPS-A, checked against its CRC, or NMEA `RMC`/`GGA`) show up as locator in the last heard list, the XML and `/json/stations`, like M17 GNSS positions; both are published as the middle of their locator field (about 4.6 × 2.3 km), not the exact position, which other D-Star stations on the module still get with the slow data; from every D-Star protocol and URF peers

@@ -530,8 +530,8 @@ Modulnamen werden einmal in `urfd.ini` eingetragen und stehen automatisch im Das
 
 Der JSON-Report enthält außerdem ein Array `DynamicTGs` mit Protokoll, TG, Modul und Restlaufzeit aller aktiven dynamischen Zuordnungen.
 
-### Dashboard v2.8.2
-Komplett neu gestaltet mit dunklem Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0), Sicherheitskorrekturen (v2.8.1, v2.8.2).
+### Dashboard v2.8.3
+Komplett neu gestaltet mit dunklem Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0), Sicherheitskorrekturen (v2.8.1, v2.8.2), Korrekturen an Statusdatei und Admin-Socket (v2.8.3).
 
 **Neue Seiten:**
 - **Active Users**: Verbundene Knoten pro Modul als Karten
@@ -850,6 +850,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Dashboard v2.6.0**: Neugestaltung im dunklen Design, Admin-Panel, Modulübersicht mit TG-Zuordnungen und NXDN-RAN, Spalten ausgeschalteter Protokolle ausgeblendet, Protokollliste, QuadNet-Live-Proxy, Reflektorliste mit Suche und Seitenaufteilung
 - **Dashboard v2.6.1**: Übersteht einen Ausfall des XLX-Verzeichnisses. Feste Timeouts bei jeder ausgehenden Anfrage, CallingHome-Fehler werden ins Log geschrieben, statt die Seite abzubrechen, Reflektor- und Peer-Listen aus einem Cache auf der Platte, Admin-API nicht mehr hinter der PHP-Session-Sperre aufgereiht
 - **Dashboard v2.7.0**: Locator-Spalte für Stationen, die eine M17-GPS-Position senden, auch in `/json/stations`
+- **Dashboard v2.8.3**: Ein Seitenaufruf bricht bei leerer Statusdatei nicht mehr ab; Admin-Antworten über 8 KB (Nutzer- und Peer-Listen, das Log) kommen vollständig an statt als "No response from admin socket"; `&`, `<` und `>` in Rufzeichen und Beschreibungen erscheinen als solche
 - **Dashboard v2.8.2**: Das Admin-Passwort steht nicht mehr in `config.inc.php` (`setup.sh update` entfernt alte Kopien); die Admin-Seite meldet sich mit dem Passwort aus `urfd.ini` an
 - **Dashboard v2.8.1**: Alles, was von außen kommt, wird escapet (der Parameter `show`, die Reflektorliste aus dem XLX-Verzeichnis, Hotspot- und Knotendaten auf der Admin-Seite, Rufzeichen und Filter); die Admin-API nimmt nur Anfragen der eigenen Seite an (JSON und `X-Requested-With`, kein CORS), ihr Session-Cookie ist `HttpOnly` und `SameSite=Strict` und wird beim Anmelden erneuert
 - **Dashboard v2.8.0**: Kein CallingHome mehr, der Reflektor trägt sich selbst ein; die Reflektorliste liest `$Directory` (mit Rückfall auf alte `$CallingHome`-Einstellungen); `/json/metadata` nimmt die Dashboard-URL aus dem XML des Reflektors
@@ -863,6 +864,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **Statusdatei und Admin-Socket (4.7.4)**: Die XML/JSON-Statusdatei wird daneben geschrieben und umbenannt, das Dashboard liest sie also nie leer oder halb geschrieben; Rufzeichen und Texte aus `urfd.ini` darin sind XML-maskiert; der Admin-Socket nimmt einen Befehl an, der auf mehrere TCP-Segmente verteilt ankommt
 - **Hotspots im XLX-Modus (4.7.1, 4.7.2)**: Ein Modul, das per Private Call 4001-4026 verbunden wurde, wie es der XLX-Master-Modus von Pi-Star/WPSD (DMRGateway) tut, wird auf dem Slot bedient, auf dem verbunden wurde, und auf TG9, wie bei xlxd; das XLX-Netz von DMRGateway nimmt nichts anderes an. Ein Group Call an 4001-4026 behält seine TG (4.7.1 antwortete auch darauf auf TG9). Der Terminator eines Link-Rufs erzeugt keinen Orphaned Frame mehr
 - **DMR Talker Alias (4.7.0)**: Rufe an Hotspots am MMDVM-Server tragen einen Talker Alias, Rufzeichen und Vorname aus der DMR-ID-Datenbank wie bei BrandMeister, oder den Alias, den die DMR-Quelle schickt (BrandMeister, das Funkgerät), sobald er vollständig angekommen ist
 - **D-Star-Positionen (4.6.0)**: DPRS-Positionen aus den Slow Data von D-Star-Geräten (GPS-A, gegen seine CRC geprüft, oder NMEA `RMC`/`GGA`) erscheinen als Locator in der Liste der zuletzt Gehörten, im XML und in `/json/stations`, wie M17-GPS-Positionen; veröffentlicht wird bei beiden nur die Mitte des Locator-Feldes (etwa 4,6 × 2,3 km), nicht die genaue Position, die andere D-Star-Stationen auf dem Modul weiterhin mit den Slow Data bekommen; aus allen D-Star-Protokollen und von URF-Partnern
