@@ -108,10 +108,12 @@ The reflector then reports to the directory every 5 minutes; `docker logs urfd |
 | Task | Command |
 |---|---|
 | Update to the latest version | `sudo ~/urfd/setup.sh update` |
-| Reflector log | `docker logs -f urfd` |
-| Restart the reflector | `docker restart urfd` |
-| Transcoder log | `journalctl -u tcd -f` |
-| Restart the transcoder | `sudo systemctl restart tcd` |
+| What runs here, in which version | `sudo ~/urfd/setup.sh status` |
+| Reflector log | `sudo ~/urfd/setup.sh logs urfd` (or `docker logs -f urfd`) |
+| Restart the reflector | `sudo ~/urfd/setup.sh restart urfd` (or `docker restart urfd`) |
+| Reload lists, interlink, TG mappings | `sudo ~/urfd/setup.sh reload` |
+| Transcoder log | `sudo ~/urfd/setup.sh logs tcd` (or `journalctl -u tcd -f`) |
+| Restart the transcoder | `sudo ~/urfd/setup.sh restart tcd` (or `sudo systemctl restart tcd`) |
 | Transcoder monitor | `tcdmon` in a terminal, or `http://localhost:8080` in a browser on that machine (from another computer: `ssh -L 8080:localhost:8080 <machine>`, or `MonitorBindAddress = 0.0.0.0` in `tcd.ini` on a trusted LAN) |
 
 The update keeps your configuration. It pulls the new version, rebuilds and restarts.
@@ -126,10 +128,10 @@ The update keeps your configuration. It pulls the new version, rebuilds and rest
 | `/opt/urfd/dashboard/config.inc.php` | Dashboard: banner text, IP privacy, admin page |
 | `/usr/local/etc/tcd.ini` | Transcoder: reflector address, modules, AMBE serial numbers, audio levels |
 
-After editing, restart the reflector (`docker restart urfd`) or the transcoder (`sudo systemctl restart tcd`). Check `urfd.ini` before a restart with:
+After editing, restart the reflector (`sudo ~/urfd/setup.sh restart urfd`) or the transcoder (`sudo ~/urfd/setup.sh restart tcd`). Whitelist, blacklist, interlink and TG mappings need no restart: `sudo ~/urfd/setup.sh reload`. Check `urfd.ini` before a restart with:
 
 ```bash
-docker run --rm -v /opt/urfd/config:/usr/local/etc/urfd:ro urfd:latest inicheck -q /usr/local/etc/urfd/urfd.ini
+sudo ~/urfd/setup.sh check
 ```
 
 The transcoded modules must be the same in `urfd.ini` (`[Transcoder] Modules`) and `tcd.ini` (`Modules`).

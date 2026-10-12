@@ -635,7 +635,7 @@ cmd_logs() {
     if [ "$t" = urfd ]; then docker logs -f --tail 100 urfd; else journalctl -u tcd -f -n 100; fi
 }
 
-# SIGHUP rereads whitelist, blacklist and interlink file. It goes to urfd itself:
+# SIGHUP rereads TG mappings, whitelist, blacklist and interlink. It goes to urfd itself:
 # PID 1 in the container is supervisord, which restarts everything on SIGHUP.
 cmd_reload() {
     targets urfd >/dev/null
@@ -661,7 +661,7 @@ Usage: sudo $0 [command] [urfd|tcd]
   status            show what runs here and in which version
   start|stop|restart [urfd|tcd]
   logs [urfd|tcd]   follow the log (Ctrl-C ends it)
-  reload            urfd rereads whitelist, blacklist and interlink file (SIGHUP)
+  reload            urfd rereads its config: TG mappings, lists, interlink (SIGHUP)
   check             check urfd.ini with inicheck
 
 Without urfd or tcd, start/stop/restart/status act on everything installed here.

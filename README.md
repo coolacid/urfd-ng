@@ -18,7 +18,7 @@ git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.
 `setup.sh` installs the reflector (Docker, with the dashboard) and the transcoder (systemd), on one machine or split across two, after a few questions; it also updates them. The transcoder lives in [`tcd/`](tcd/), so reflector and transcoder always come from the same version. tcd uses the AMBE sticks through the kernel's `ftdi_sio` driver with the USB latency timer at 1 ms, so it no longer needs the libftd2xx driver, which ftdichip.com no longer lets scripts download. See [docs/INSTALL.md](docs/INSTALL.md) and [tcd/README.md](tcd/README.md).
 
 ### Even Levels Across All Modes
-tcd's AGC brings every call to the same level, whatever radio or vocoder it came from, and it also covers DMR → DMR/YSF, where the AMBE2+ frames pass through without a vocoder: the AGC's gain goes into the frame's gain parameter (b2) instead of a decode and re-encode, so the audio stays as clean as the original. Two DVSI devices, e.g. DV3000 + DV3003 for two modules, need no MD380 software vocoder and no ARM machine; a Raspberry Pi 4 is plenty. See [tcd/README.md](tcd/README.md#dmrysf--dmrysf-level-dmrgainmode).
+tcd's AGC brings every call to the same level, whatever radio or vocoder it came from, and it also covers DMR → DMR/YSF, where the AMBE2+ frames pass through without a vocoder: the AGC's gain goes into the frame's gain parameter (b2) instead of a decode and re-encode, so the audio stays as clean as the original. SvxLink and AllStar (SVX, USRP) go through their own AGC analog: FM audio is not silent between words but carries the receiver's noise, which the AGC for digital sources raised by up to 30 dB; 20 minutes of FM-Funknetz traffic kept 32 dB speech-to-noise with it instead of 19. Two DVSI devices, e.g. DV3000 + DV3003 for two modules, need no MD380 software vocoder and no ARM machine; a Raspberry Pi 4 is plenty. See [tcd/README.md](tcd/README.md#dmrysf--dmrysf-level-dmrgainmode).
 
 ### XLX Directory Registration (CallingHome)
 The reflector registers itself in the XLX directory, which lists it in Pi-Star, WPSD and other hotspot software. This used to be the dashboard's job; now it works without the dashboard too, and the dashboard no longer makes the request.
@@ -129,10 +129,12 @@ Password = changeme                 # Authentication password
 
 **One TG at a time**: An SvxReflector node has one selected TG; it gets the audio of that TG only, and its audio goes there. urfd selects the first static TG (the lowest number, the home TG) and monitors all mapped TGs (`MsgTgMonitor`, like SvxLink's `MONITOR_TGS`). A talker on a monitored TG selects that TG when urfd has had no traffic for 3 s; audio from a urfd module whose TG isn't selected selects it unless a talker is on the selected one, then that module's transmission is not sent. After 30 s without traffic urfd goes back to the home TG. With one TG mapped nothing changes.
 
-**RxGain / TxGain**: Static gain applied to SVX audio independently from USRP gain (which is configured in tcd.ini). RxGain is applied after OPUS decode before the transcoder, TxGain after the transcoder before OPUS encode; samples past full scale are clipped. tcd's AGC analog (its own gate at -40 dBFS, see [tcd/README.md](tcd/README.md#agc)) runs on SVX audio after RxGain, so keep RxGain near 0 and let the AGC set the level; a strongly negative RxGain puts quiet FM speech below the gate. Default is 0 dB for both.
+**RxGain / TxGain**: Static gain applied to SVX audio, per connection like `[USRP] RxGain/TxGain`. RxGain is applied after OPUS decode before the transcoder, TxGain after the transcoder before OPUS encode; samples past full scale are clipped. tcd's AGC analog (its own gate at -40 dBFS, see [tcd/README.md](tcd/README.md#agc)) runs on SVX audio after RxGain, so keep RxGain near 0 and let the AGC set the level; a strongly negative RxGain puts quiet FM speech below the gate. Default is 0 dB for both.
+
+**Software**: The software name urfd reports in its node info after the login (`sw`), `urfd` by default. Some reflectors expect a particular one; set it only in agreement with the reflector's operator. The value is sent as JSON-escaped text.
 
 ### SVXServer
-Accept incoming connections from SvxLink nodes. Acts as a SvxReflector server (protocol V2, HMAC-SHA1 auth, OPUS audio). Requires transcoded modules. Users authenticate with callsign + password. TG mapping works like SvxReflector client — clients select TGs via `MsgSelectTG`. Users and TGs can be managed at runtime via the Admin interface.
+Accept incoming connections from SvxLink nodes. Acts as a SvxReflector server (protocol V2, HMAC-SHA1 auth, OPUS audio). Requires transcoded modules. Users authenticate with callsign + password. Each node selects one TG with `MsgSelectTG`, mapped TGs lead to a module, and nodes on the same TG hear each other. Users and TGs can be managed at runtime via the Admin interface.
 
 ```ini
 [SVXServer]
@@ -159,10 +161,28 @@ Port = 5300                         # TCP and UDP port (same)
 
 **Admin commands**:
 ```json
-{"cmd": "svxserver_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
-{"cmd": "svxserver_user_remove", "token": "...", "callsign": "N0CALL-HS"}
-{"cmd": "svxserver_user_list", "token": "..."}
+{"cmd": "svxs_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
+{"cmd": "svxs_user_remove", "token": "...", "callsign": "N0CALL-HS"}
+{"cmd": "svxs_user_list", "token": "..."}
+{"cmd": "svxs_peer_list", "token": "..."}
 ```
+
+### USRP (AllStar)
+Bridges one AllStar node (app_rpt's USRP channel) to a module. Requires a transcoded module.
+
+```ini
+[USRP]
+Enable = true
+Callsign = ALLSTAR
+IPAddress = 1.2.3.4            # AllStar node IP
+RxPort = 34000
+TxPort = 32000
+Module = A                     # Must be a transcoded module
+# RxGain = 0                   # Incoming audio gain in dB (-40 to +40)
+# TxGain = 0                   # Outgoing audio gain in dB (-40 to +40)
+```
+
+**RxGain / TxGain**: like the SVX ones, per connection in `urfd.ini`; samples past full scale are clipped. tcd runs AllStar audio through its AGC analog, so they normally stay 0.
 
 ### MMDVM Server
 Accept incoming connections from MMDVM hotspots and repeaters directly (no BrandMeister needed). Implements the HomeBrew DMR protocol (RPTL→RPTK→RPTC→RPTO handshake). Works without transcoder for pure DMR-to-DMR operation; transcoded modules needed only for cross-mode bridging. TG mapping works like MMDVMClient — TGs map to modules with timeslot support. **Dual-slot**: Each timeslot (TS1/TS2) independently links to its own module, so a hotspot can be on two modules simultaneously.
@@ -354,7 +374,7 @@ $Admin['Port']     = 10101;
 - **MMDVM Server Management**: Add/remove/list users (by DMR-ID or callsign) and TG mappings. View connected hotspot nodes with DMR-ID, frequencies, location, and software info.
 - **Protocol Reconnect**: Force reconnect of MMDVM, SVX, DCSClient, DExtraClient, DPlusClient, or YSFClient connections.
 - **Transcoder Statistics**: Connection status, active codec, packet counts, round-trip time per transcoded module.
-- **Live Log Viewer**: Last 200 log lines with timestamps, auto-refreshing every 10 seconds.
+- **Live Log Viewer**: Last 50 log lines with timestamps, auto-refreshing every 10 seconds (the socket gives up to 200).
 - **Clear Last Heard**: Clears the last heard users list from the dashboard.
 - **Hidden Access**: Access via the pi symbol in the bottom-right corner or directly via `?show=admin`.
 
@@ -377,9 +397,10 @@ $Admin['Port']     = 10101;
 {"cmd": "dcs_map_list", "token": "..."}
 {"cmd": "ysf_map_add", "token": "...", "host": "90.187.72.177", "port": 42099, "local_module": "A", "dgid": 15}
 {"cmd": "ysf_map_list", "token": "..."}
-{"cmd": "svxserver_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
-{"cmd": "svxserver_user_remove", "token": "...", "callsign": "N0CALL-HS"}
-{"cmd": "svxserver_user_list", "token": "..."}
+{"cmd": "svxs_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
+{"cmd": "svxs_user_remove", "token": "...", "callsign": "N0CALL-HS"}
+{"cmd": "svxs_user_list", "token": "..."}
+{"cmd": "svxs_peer_list", "token": "..."}
 {"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2631353, "password": "secret"}
 {"cmd": "mmdvm_user_add", "token": "...", "callsign": "DL4JC", "password": "secret"}
 {"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2632545}
@@ -397,7 +418,7 @@ $Admin['Port']     = 10101;
 The reflector supports hot-reloading configuration without dropping client sessions. Send `SIGHUP` to the urfd process to trigger a reload.
 
 **Reloaded on SIGHUP:**
-- TG mappings (MMDVMClient and SvxReflector) — dynamic TGs are preserved
+- TG mappings (MMDVMClient, SvxReflector and SVXServer) — dynamic TGs are preserved
 - Whitelist, blacklist, and interlink files
 - Transcoder module assignment
 - Reflector metadata (callsign, sponsor, country, URLs)
@@ -411,11 +432,13 @@ The reflector supports hot-reloading configuration without dropping client sessi
 - Echo module assignment
 
 ```bash
-# Docker (signal must reach urfd, not supervisord)
-docker exec urfd kill -HUP $(docker exec urfd pgrep urfd)
+sudo ./setup.sh reload
 
-# Bare metal
-kill -HUP $(cat /var/run/urfd.pid)
+# by hand, Docker: the signal must reach urfd, not supervisord (PID 1 restarts everything on SIGHUP)
+docker exec urfd pkill -HUP -x urfd
+
+# bare metal
+sudo pkill -HUP -x urfd
 ```
 
 ### Reflector Interlinking
@@ -534,7 +557,7 @@ The XML status file now includes:
 
 - **Reflector metadata**: callsign, country, sponsor, dashboard URL, email
 - **Module configuration**: description, linked node count, transcoded status, DMR+ TG ID, YSF DG-ID, NXDN RAN, NXDN destination ID (only when `ModuleDstIdBase` is configured)
-- **Per-module mappings**: autolinks (YSF, NXDN, P25), TG mappings (MMDVMClient, SvxReflector), D-Star client mappings (DCSClient, DExtraClient, DPlusClient with connection status), YSF client mappings (YSFClient with DG-ID)
+- **Per-module mappings**: autolinks (YSF, NXDN, P25), TG mappings (MMDVM, MMDVMClient, SvxReflector, SVXServer), D-Star client mappings (DCSClient, DExtraClient, DPlusClient with connection status), YSF client mappings (YSFClient with DG-ID)
 - **Enabled protocols**: name and port for each active protocol
 - **Per-station protocol**: which protocol a user was heard on (DCS, MMDVMClient, YSF, etc.)
 - **Per-station position**: `<Locator>`, `<Latitude>` and `<Longitude>` for stations that sent an M17 GNSS or a D-Star DPRS position
@@ -767,7 +790,7 @@ Besides installing and updating, `setup.sh` handles the day-to-day work on the r
 sudo ./setup.sh status              # what runs here, in which version
 sudo ./setup.sh restart [urfd|tcd]  # also start, stop
 sudo ./setup.sh logs [urfd|tcd]     # follow the log (Ctrl-C ends it)
-sudo ./setup.sh reload              # urfd rereads whitelist, blacklist, interlink (SIGHUP)
+sudo ./setup.sh reload              # urfd rereads its config: TG mappings, lists, interlink (SIGHUP)
 sudo ./setup.sh check               # check urfd.ini with inicheck
 sudo ./setup.sh update              # pull, rebuild, restart
 ```
@@ -850,13 +873,13 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 ### Runtime Management
 - **Admin interface**: JSON-over-TCP socket + web dashboard — dynamic TG management, protocol reconnect, transcoder stats, live log viewer, runtime protocol blocking, per-client threading with 5s idle timeout
 - **Runtime protocol blocking**: Bidirectional block/unblock of any protocol pair via admin dashboard — thread-safe with shared_mutex, clickable labels to remove, reset-to-config-default button, not persisted (resets on restart)
-- **Dynamic TG management**: Add/remove TGs at runtime with configurable TTL, cross-protocol timer refresh, BM API or kerchunk activation, SELECT_TG(0) cleanup on SVX expiry
+- **Dynamic TG management**: Add/remove TGs at runtime with configurable TTL, cross-protocol timer refresh, BM API or kerchunk activation, expired SVX TGs leave the monitored TGs
 - **SIGHUP config reload**: Hot-reload TG mappings, whitelist/blacklist/interlink, transcoder modules without dropping sessions — thread-safe via sigwait, exception-safe with rollback
 
 ### Audio & Transcoding
 - **NXDN module routing**: Module selection via RAN (Radio Access Number) — RAN 1-26 = Module A-Z, with RAN 1 and the AutoLinkModule's RAN swapped so RAN 1 reaches the AutoLinkModule, RAN 0 = AutoLinkModule. Alternative selection via destination ID (`ModuleDstIdBase`, dstId base+1…base+26 = A-Z) for clients that cannot set a RAN, evaluated in the connect poll and per transmission, with the module's dstId echoed on outgoing frames. NXDN ID resolution via NXDN DB with DMR DB fallback. FallbackNxdnId for unknown callers (drop if unset). Fixed uninitialized `m_uiNXDNid` in CCallsign default constructor.
 - **D-Star slow data**: Transcoded streams include caller callsign, protocol/TG/RAN/module info, operator name from DMR and NXDN ID databases — rotating every ~5 seconds. TG display uses actual source TG (not primary/static) for correct multi-TG display. Client protocols show remote reflector name + module (e.g. `via DCS002 A`), YSFClient shows DG-ID
-- **SVX/USRP codec separation**: Independent codec paths (`ECodecType::svx` vs `ECodecType::usrp`) with separate gain control — SVX gain in urfd.ini, USRP gain in tcd.ini
+- **SVX/USRP codec separation**: Independent codec paths (`ECodecType::svx` vs `ECodecType::usrp`) with gains per connection in urfd.ini (`RxGain`/`TxGain` for SvxReflector, SVXServer and USRP); in tcd both go through the AGC analog
 - **MMDVM dual-slot**: Each timeslot (TS1/TS2) independently links to its own reflector module — a hotspot can receive traffic from two modules simultaneously on separate timeslots. Dashboard shows both linked modules per client.
 - **MMDVM NAT rebind handling**: When a hotspot reconnects with a new UDP source port (NAT rebinding), the stale client entry is replaced by matching the exact raw DMR ID. Slot module links are preserved across reconnects. Multiple clients with different DMR IDs (including extensions) from the same IP are supported.
 - **MMDVM late-entry**: Resolves DMR ID from active stream callsign (prefers cached ID from source protocol over DB lookup) — enables mid-stream block removal
@@ -881,6 +904,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **Analog gains in urfd (4.10.0)**: `[USRP] RxGain/TxGain` set the AllStar levels in `urfd.ini`, like the SVX ones; tcd 0.3.2 dropped `UsrpGainIn`/`UsrpGainOut`, so urfd sets the gain per connection and tcd per codec
 - **SvxReflector software name (4.9.0)**: `[SvxReflector] Software` sets the software name in the node info for reflectors that expect a particular one (default `urfd`); the node info JSON is escaped properly
 - **SvxLink (4.8.0)**: the SvxReflector client selects one TG and monitors the other mapped ones, like an SvxLink node (it used to select every mapped TG, the reflector kept only the last one, and audio of any module went into it); the SVX server keeps one selected TG per node, relays audio between its nodes, sends talker start/stop only to nodes on or monitoring the TG and asks protocol 3 nodes to downgrade. Both: OPUS packets of 10 to 60 ms, lost packets concealed, late ones dropped, a lost flush no longer costs the next transmission, gain clips instead of wrapping around, 8 kHz voice encoder instead of upsampling, a fresh encoder per transmission, TCP messages in pieces, no lock-order deadlock between admin socket and protocol thread
 - **Status file and admin socket (4.7.4)**: the XML/JSON status file is written aside and renamed into place, so the dashboard never reads it empty or half written; callsigns and `urfd.ini` texts in it are XML-escaped; the admin socket takes a command split over several TCP segments; a second SIGHUP during a config reload no longer ends urfd
@@ -895,7 +919,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **CallingHome in the reflector**: `[CallingHome]` in `urfd.ini` registers the reflector in the XLX directory with the same data the dashboard sent, without needing the dashboard
 - **Clean shutdown**: urfd stops within about 2 seconds on SIGTERM. Before, the module router threads waited for packets forever, protocols were deleted while their threads still ran (a crash, hidden because Docker killed urfd first) and the ID database threads slept up to 10 s each, so `docker stop` always ended in a kill
 - **Transcoder link without Nagle delay**: `TCP_NODELAY` on both ends of the urfd–tcd connection. Before, a transcoded frame waited for the reflector's delayed ACK, which only came with the next DMR burst; a frame now returns after about 23 ms instead of 60 ms (URF363, measured at the reflector)
-- **Setup script**: `setup.sh` installs and updates reflector and transcoder, writes the configuration from the templates and checks it with inicheck; Docker compose builds from any checkout, data in `$URFD_DATA` (default `/opt/urfd`)
+- **Setup script**: `setup.sh` installs and updates reflector and transcoder, writes the configuration from the templates and checks it with inicheck, and runs status, start, stop, restart, logs, reload and check; Docker compose builds from any checkout, data in `$URFD_DATA` (default `/opt/urfd`)
 - **Echo module**: Built-in parrot with enable/disable flag
 - **M17 LSTN support**: Listen-only M17 clients for monitoring services, which may not transmit
 - **mrefd interlink**: Share modules with M17 reflectors (`M17-XXX` in `urfd.interlink`, `[M17] Callsign`), including legacy mrefd

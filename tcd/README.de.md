@@ -146,9 +146,8 @@ Alle Werte in dB, -40 bis +40.
 | `OutputGainUSRP` | `0` | USRP- und SVX-Ausgang, nach der AGC (beide bekommen dasselbe PCM von tcd) |
 | `DStarGainIn` / `DStarGainOut` | `0` | im DVSI-Chip, D-Star dekodieren / kodieren |
 | `DmrGainIn` / `DmrGainOut` | `0` | im DVSI-Chip, DMR dekodieren / kodieren |
-| `UsrpGainIn` / `UsrpGainOut` | `0` | USRP-Audio ein / aus; `UsrpGainOut` wirkt auch auf den SVX-Ausgang |
 
-Die SVX-Eingangsverstärkung wird in der `urfd.ini` des Reflektors eingestellt (`RxGain`), der Ausgang ebenfalls dort (`TxGain`), zusätzlich zu `OutputGainUSRP` und `UsrpGainOut` hier.
+Die Verstärkung von SVX und USRP pro Anbindung steht in der `urfd.ini` des Reflektors (`RxGain`/`TxGain` in `[SvxReflector]`, `[SVXServer]` und `[USRP]`); `OutputGainUSRP` hier setzt den Pegel des PCM, das tcd für beide zurückgibt.
 
 ### Pegel DMR/YSF → DMR/YSF (`DmrGainMode`)
 
@@ -214,7 +213,7 @@ M17/P25 (software vocoder):
   codec --[decode]--> PCM --[AGC]--> PCM --[OutputGain]--> target codec
 
 USRP/SVX (PCM):
-  PCM --[UsrpGainIn (nur USRP)]--> PCM --[analoge AGC]--> PCM --[OutputGain]--> target codec
+  PCM --[analoge AGC]--> PCM --[OutputGain]--> target codec   (RxGain/TxGain pro Anbindung in urfd.ini)
 
 DMR -> DMR/YSF with DmrGainMode = reencode:
   AMBE2+ --[decode]--> PCM --[AGC]--> PCM --[OutputGainDMR]--> [DmrReencodeGain] --> MD380 --> AMBE2+
@@ -304,7 +303,7 @@ journalctl -u tcd -f
 - **Ausgangsverstärkung pro Codec**: nach der AGC, für D-Star, M17/Codec2, DMR/YSF, P25/NXDN und USRP, angewendet auf Kopien (der gemeinsame Puffer wird nie verändert)
 - **AMBE2+-Bitstrom-Verstärkung**: `AmbeGainDb` ändert den Parameter b2 im AMBE2+-Frame, mit neu berechnetem Golay(24,12)-FEC für die A-Partition; die B-Partition wird entwürfelt und mit den neuen A-Daten wieder verwürfelt (0.2.3; vorher verlor der Decoder die B-Partition); seit 0.2.5 von der AGC gesteuert und im γ-Bereich gerechnet, die Verstärkung hängt also nicht mehr vom Pegel ab, auch mit nur einem Gerät und dem MD380
 - **AGC v3**: gleitendes RMS-Fenster, Verfolgung pro Sprecher, Gate mit Rücklauf, schnelles Anheben nach dem Gate, ungleiche Grenzen, Noise-Gate, Begrenzer, der die angewendete Verstärkung sofort kappt (0.2.3; vorher clippten laute Einsätze nach leiser Sprache), Änderungen live aus dem Dashboard; seit 0.2.3 threadsicher, da die Dekodier-Threads aller Codecs sie nutzen. Seit 0.2.4 hält das Gate 60 ms nach und blendet aus statt umzuschalten (Wortenden werden nicht mehr abgehackt), Rauschen knapp darüber pumpt die Verstärkung nicht mehr hoch, und die Verstärkung läuft als Rampe durch jeden Frame statt alle 20 ms zu springen
-- **AGC digital und AGC analog** (0.3.0): SVX- und USRP-Eingang haben ein eigenes Gate, eine eigene Grenze für die Verstärkung und eine Verstärkung bei geschlossenem Gate (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), das FM-Rauschen zwischen den Worten wird also abgesenkt statt um bis zu 30 dB angehoben; die übrigen Eingänge nutzen dieselben drei Schlüssel als `AGCDigital…` (0.3.1 hat `AGCNoiseGate` und `AGCMaxGainUp` in `AGCDigitalNoiseGate` und `AGCDigitalMaxGainUp` umbenannt, `AGCDigitalGateFloor` ergänzt, und `agc-analyze` nennt den Schlüssel des Profils des Streams); `UsrpGainIn`/`UsrpGainOut` begrenzen statt überzulaufen; ohne Monitor behält tcd die Werte aus der ini (vorher fiel er nach einer Sekunde auf die eingebauten Standardwerte zurück)
+- **AGC digital und AGC analog** (0.3.0): SVX- und USRP-Eingang haben ein eigenes Gate, eine eigene Grenze für die Verstärkung und eine Verstärkung bei geschlossenem Gate (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), das FM-Rauschen zwischen den Worten wird also abgesenkt statt um bis zu 30 dB angehoben; die übrigen Eingänge nutzen dieselben drei Schlüssel als `AGCDigital…` (0.3.1 hat `AGCNoiseGate` und `AGCMaxGainUp` in `AGCDigitalNoiseGate` und `AGCDigitalMaxGainUp` umbenannt, `AGCDigitalGateFloor` ergänzt, und `agc-analyze` nennt den Schlüssel des Profils des Streams); seit 0.3.2 steht die Verstärkung von SVX und USRP pro Anbindung nur noch in der `urfd.ini` (`UsrpGainIn`/`UsrpGainOut` entfallen); ohne Monitor behält tcd die Werte aus der ini (vorher fiel er nach einer Sekunde auf die eingebauten Standardwerte zurück)
 - **DMR neu kodieren** (`md380=true`): `DmrGainMode = reencode` mit AGC und `DmrReencodeGain` für DMR → DMR/YSF
 - **MD380 pro Stream getrennt**: Kodierer-Zustand pro Stream gesichert, MD380-Aufrufe nacheinander; seit 0.2.7 startet ein neuer Stream mit dem Zustand direkt nach `md380_init()` statt mit dem des vorherigen Streams; seit 0.2.9 bei jeder MD380-Nutzung, auch als primärer DMR-Codec mit nur einem Gerät
 - **Ausgangsverstärkung im Mischbetrieb** (0.2.3): Der D-Star-Kanal des DV3003 nutzt `OutputGainDStar` statt `OutputGainDMR`; M17 mit 1600 bit/s schickt die zweite Hälfte jedes Pakets nicht mehr zweimal durch die AGC; seit 0.2.11 geht ein Modul, das nicht in der Modulliste steht, an keinen DMR-Kanal
@@ -313,7 +312,7 @@ journalctl -u tcd -f
 - **Web-Dashboard**: eingebauter HTTP/WebSocket-Server mit Signalweg, VU-Metern, Verstärkungs- und AGC-Reglern, Geräte- und MD380-Status, Speichern in die INI
 - **tcdmon**: Monitor im Terminal
 - **Statistik-CSV** mit automatischem Aufräumen und dem Werkzeug `agc-analyze`; seit 0.2.9 meldet es Flackern des Gates als Öffnungen unter 100 ms (Rauschen über der Schwelle, das Noise-Gate des Profils anheben), da das Gate seit 0.2.4 vor dem Schließen nachhält
-- **Umbenannte Schlüssel**: `DmrGainIn/Out` (war `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (war `UsrpRxGain/TxGain`), Verstärkungen erweitert auf ±40 dB
+- **Umbenannte Schlüssel**: `DmrGainIn/Out` (war `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (war `UsrpRxGain/TxGain`, seit 0.3.2 entfallen), Verstärkungen erweitert auf ±40 dB
 
 ### Zuverlässigkeit
 - **Monitor standardmäßig nur lokal**: `MonitorBindAddress` (Standard `127.0.0.1`) für Web-Dashboard und Statistik-Socket, die kein Passwort haben

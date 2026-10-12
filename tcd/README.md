@@ -146,9 +146,8 @@ All gains are in dB, -40 to +40.
 | `OutputGainUSRP` | `0` | USRP and SVX output, after the AGC (both get the same PCM from tcd) |
 | `DStarGainIn` / `DStarGainOut` | `0` | inside the DVSI chip, D-Star decode / encode |
 | `DmrGainIn` / `DmrGainOut` | `0` | inside the DVSI chip, DMR decode / encode |
-| `UsrpGainIn` / `UsrpGainOut` | `0` | USRP audio in / out; `UsrpGainOut` also acts on SVX output |
 
-SVX input gain is set in the reflector's `urfd.ini` (`RxGain`), its output there too (`TxGain`), on top of `OutputGainUSRP` and `UsrpGainOut` here.
+SVX and USRP gains per connection are set in the reflector's `urfd.ini` (`RxGain`/`TxGain` in `[SvxReflector]`, `[SVXServer]` and `[USRP]`); `OutputGainUSRP` here sets the level of the PCM tcd returns for both.
 
 ### DMR/YSF → DMR/YSF level (`DmrGainMode`)
 
@@ -214,7 +213,7 @@ M17/P25 (software vocoder):
   codec --[decode]--> PCM --[AGC]--> PCM --[OutputGain]--> target codec
 
 USRP/SVX (PCM):
-  PCM --[UsrpGainIn (USRP only)]--> PCM --[analog AGC]--> PCM --[OutputGain]--> target codec
+  PCM --[analog AGC]--> PCM --[OutputGain]--> target codec   (RxGain/TxGain per connection in urfd.ini)
 
 DMR -> DMR/YSF with DmrGainMode = reencode:
   AMBE2+ --[decode]--> PCM --[AGC]--> PCM --[OutputGainDMR]--> [DmrReencodeGain] --> MD380 --> AMBE2+
@@ -304,7 +303,7 @@ journalctl -u tcd -f
 - **Output gains per codec**: after the AGC, for D-Star, M17/Codec2, DMR/YSF, P25/NXDN and USRP, applied on copies (the shared buffer is never changed)
 - **AMBE2+ bitstream gain**: `AmbeGainDb` adjusts the b2 parameter in the AMBE2+ frame, with Golay(24,12) FEC recomputed for the A partition and the B partition unscrambled and scrambled again with the new A data (0.2.3; before, the decoder lost the B partition); since 0.2.5 driven by the AGC and computed in the gamma domain, so the gain no longer depends on the level, also with a single device and the MD380
 - **AGC v3**: sliding RMS window, per-speaker tracking, gate with decay, fast release after the gate, asymmetric limits, noise gate, peak limiter that cuts the applied gain at once (0.2.3; before, loud onsets after quiet speech clipped), live changes from the dashboard; thread safe since 0.2.3, as every codec's decode thread uses it. Since 0.2.4 the gate holds 60 ms and fades out instead of switching (word endings are no longer chopped), noise just above it no longer pumps the gain up, and the gain ramps across each frame instead of stepping every 20 ms
-- **AGC digital and AGC analog** (0.3.0): SVX and USRP input have their own gate, gain limit and gain while the gate is closed (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), so the FM noise between words is lowered instead of raised by up to 30 dB; the other inputs use the same three keys as `AGCDigital…` (0.3.1 renamed `AGCNoiseGate` and `AGCMaxGainUp` to `AGCDigitalNoiseGate` and `AGCDigitalMaxGainUp`, added `AGCDigitalGateFloor`, and `agc-analyze` names the key of the stream's profile); `UsrpGainIn`/`UsrpGainOut` clip instead of wrapping around; without the monitor tcd keeps the ini settings (before, it fell back to the built-in defaults after a second)
+- **AGC digital and AGC analog** (0.3.0): SVX and USRP input have their own gate, gain limit and gain while the gate is closed (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), so the FM noise between words is lowered instead of raised by up to 30 dB; the other inputs use the same three keys as `AGCDigital…` (0.3.1 renamed `AGCNoiseGate` and `AGCMaxGainUp` to `AGCDigitalNoiseGate` and `AGCDigitalMaxGainUp`, added `AGCDigitalGateFloor`, and `agc-analyze` names the key of the stream's profile); since 0.3.2 the SVX and USRP gains per connection are only in `urfd.ini` (`UsrpGainIn`/`UsrpGainOut` are gone); without the monitor tcd keeps the ini settings (before, it fell back to the built-in defaults after a second)
 - **DMR re-encode** (`md380=true`): `DmrGainMode = reencode` with AGC and `DmrReencodeGain` on DMR → DMR/YSF
 - **MD380 stream isolation**: encoder state saved per stream, MD380 calls serialized; since 0.2.7 a new stream starts from the state right after `md380_init()` instead of the previous stream's; since 0.2.9 for every MD380 use, also the primary DMR codec of a single device setup
 - **Mixed mode output gains** (0.2.3): the DV3003's D-Star channel uses `OutputGainDStar`, not `OutputGainDMR`; M17 at 1600 bit/s no longer runs the second half of each packet through the AGC twice; since 0.2.11 a module missing from the module list is not sent to a DMR channel
@@ -313,7 +312,7 @@ journalctl -u tcd -f
 - **Web dashboard**: embedded HTTP/WebSocket server with signal flow, VU meters, gain and AGC controls, device and MD380 status, save to INI
 - **tcdmon**: terminal monitor
 - **Stats CSV** with automatic cleanup and the `agc-analyze` tool; since 0.2.9 it reports gate flicker as openings under 100 ms (noise crossing the threshold, raise the profile's noise gate), as the gate holds before it closes since 0.2.4
-- **Renamed keys**: `DmrGainIn/Out` (was `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (was `UsrpRxGain/TxGain`), gains extended to ±40 dB
+- **Renamed keys**: `DmrGainIn/Out` (was `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (was `UsrpRxGain/TxGain`, gone since 0.3.2), gains extended to ±40 dB
 
 ### Reliability
 - **Monitor on loopback by default**: `MonitorBindAddress` (default `127.0.0.1`) for the web dashboard and stats socket, which have no password

@@ -108,10 +108,12 @@ Der Reflektor meldet sich dann alle 5 Minuten beim Verzeichnis; `docker logs urf
 | Aufgabe | Befehl |
 |---|---|
 | Auf die neueste Version aktualisieren | `sudo ~/urfd/setup.sh update` |
-| Log des Reflektors | `docker logs -f urfd` |
-| Reflektor neu starten | `docker restart urfd` |
-| Log des Transcoders | `journalctl -u tcd -f` |
-| Transcoder neu starten | `sudo systemctl restart tcd` |
+| Was hier läuft, in welcher Version | `sudo ~/urfd/setup.sh status` |
+| Log des Reflektors | `sudo ~/urfd/setup.sh logs urfd` (oder `docker logs -f urfd`) |
+| Reflektor neu starten | `sudo ~/urfd/setup.sh restart urfd` (oder `docker restart urfd`) |
+| Listen, Interlink, TG-Zuordnungen neu laden | `sudo ~/urfd/setup.sh reload` |
+| Log des Transcoders | `sudo ~/urfd/setup.sh logs tcd` (oder `journalctl -u tcd -f`) |
+| Transcoder neu starten | `sudo ~/urfd/setup.sh restart tcd` (oder `sudo systemctl restart tcd`) |
 | Transcoder-Monitor | `tcdmon` im Terminal, oder `http://localhost:8080` im Browser auf diesem Rechner (von einem anderen Rechner: `ssh -L 8080:localhost:8080 <rechner>`, oder `MonitorBindAddress = 0.0.0.0` in `tcd.ini` in einem vertrauenswürdigen LAN) |
 
 Das Update behält deine Konfiguration. Es holt die neue Version, baut neu und startet neu.
@@ -126,10 +128,10 @@ Das Update behält deine Konfiguration. Es holt die neue Version, baut neu und s
 | `/opt/urfd/dashboard/config.inc.php` | Dashboard: Banner-Text, Anzeige der IP-Adressen, Admin-Seite |
 | `/usr/local/etc/tcd.ini` | Transcoder: Adresse des Reflektors, Module, Seriennummern der AMBE-Geräte, Pegel |
 
-Nach dem Ändern den Reflektor (`docker restart urfd`) oder den Transcoder (`sudo systemctl restart tcd`) neu starten. `urfd.ini` vorher prüfen mit:
+Nach dem Ändern den Reflektor (`sudo ~/urfd/setup.sh restart urfd`) oder den Transcoder (`sudo ~/urfd/setup.sh restart tcd`) neu starten. Whitelist, Blacklist, Interlink und TG-Zuordnungen brauchen keinen Neustart: `sudo ~/urfd/setup.sh reload`. `urfd.ini` vorher prüfen mit:
 
 ```bash
-docker run --rm -v /opt/urfd/config:/usr/local/etc/urfd:ro urfd:latest inicheck -q /usr/local/etc/urfd/urfd.ini
+sudo ~/urfd/setup.sh check
 ```
 
 Die transcodierten Module müssen in `urfd.ini` (`[Transcoder] Modules`) und `tcd.ini` (`Modules`) gleich sein.

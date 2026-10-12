@@ -18,7 +18,7 @@ git clone https://github.com/jcmerg/urfd-ng.git urfd && cd urfd && sudo ./setup.
 `setup.sh` installiert nach ein paar Fragen den Reflektor (in Docker, mit Dashboard) und den Transcoder (mit systemd), auf einem Rechner oder auf zwei verteilt, und aktualisiert beide auch. Der Transcoder liegt in [`tcd/`](tcd/), Reflektor und Transcoder stammen also immer aus derselben Version. tcd spricht die AMBE-Sticks über den Kernel-Treiber `ftdi_sio` mit einem USB-Latenz-Timer von 1 ms an und braucht damit den libftd2xx-Treiber nicht mehr, den ftdichip.com nicht mehr per Script herunterladen lässt. Siehe [docs/INSTALL.de.md](docs/INSTALL.de.md) und [tcd/README.de.md](tcd/README.de.md).
 
 ### Gleicher Pegel in allen Betriebsarten
-Die AGC von tcd bringt jeden Ruf auf denselben Pegel, egal von welchem Funkgerät oder Vocoder er kommt, und zwar auch bei DMR → DMR/YSF, wo die AMBE2+-Frames ohne Vocoder durchgereicht werden: Die Verstärkung der AGC geht in den Verstärkungsparameter des Frames (b2) statt in ein Dekodieren und Neukodieren, der Klang bleibt also so sauber wie das Original. Zwei DVSI-Geräte, z.B. DV3000 + DV3003 für zwei Module, brauchen keinen MD380-Software-Vocoder und keinen ARM-Rechner; ein Raspberry Pi 4 reicht locker. Siehe [tcd/README.de.md](tcd/README.de.md#pegel-dmrysf--dmrysf-dmrgainmode).
+Die AGC von tcd bringt jeden Ruf auf denselben Pegel, egal von welchem Funkgerät oder Vocoder er kommt, und zwar auch bei DMR → DMR/YSF, wo die AMBE2+-Frames ohne Vocoder durchgereicht werden: Die Verstärkung der AGC geht in den Verstärkungsparameter des Frames (b2) statt in ein Dekodieren und Neukodieren, der Klang bleibt also so sauber wie das Original. SvxLink und AllStar (SVX, USRP) laufen durch eine eigene AGC analog: FM-Audio ist zwischen den Worten nicht still, sondern trägt das Rauschen des Empfängers, das die AGC für digitale Quellen um bis zu 30 dB anhob; bei 20 Minuten Verkehr aus dem FM-Funknetz blieb der Abstand zwischen Sprache und Rauschen damit bei 32 statt 19 dB. Zwei DVSI-Geräte, z.B. DV3000 + DV3003 für zwei Module, brauchen keinen MD380-Software-Vocoder und keinen ARM-Rechner; ein Raspberry Pi 4 reicht locker. Siehe [tcd/README.de.md](tcd/README.de.md#pegel-dmrysf--dmrysf-dmrgainmode).
 
 ### XLX-Verzeichnis (CallingHome)
 Der Reflektor trägt sich selbst im XLX-Verzeichnis ein, über das ihn Pi-Star, WPSD und andere Hotspot-Software anbieten. Das war bisher Aufgabe des Dashboards; jetzt geht es auch ohne Dashboard, und das Dashboard stellt die Anfrage nicht mehr.
@@ -129,10 +129,12 @@ Password = changeme                 # Authentication password
 
 **Eine TG zur Zeit**: Ein Knoten am SvxReflector hat genau eine ausgewählte TG; er bekommt nur deren Audio, und sein Audio geht dorthin. urfd wählt die erste feste TG (die niedrigste Nummer, die Heimat-TG) und überwacht alle zugeordneten TGs (`MsgTgMonitor`, wie `MONITOR_TGS` bei SvxLink). Ein Sprecher auf einer überwachten TG wählt diese TG, wenn urfd seit 3 s keinen Verkehr hatte; Audio eines urfd-Moduls, dessen TG nicht gewählt ist, wählt sie, außer auf der gewählten spricht gerade jemand, dann geht der Durchgang dieses Moduls nicht hinaus. Nach 30 s ohne Verkehr kehrt urfd zur Heimat-TG zurück. Mit nur einer zugeordneten TG ändert sich nichts.
 
-**RxGain / TxGain**: Feste Verstärkung für SVX-Audio, unabhängig von der USRP-Verstärkung (die in tcd.ini eingestellt wird). RxGain wirkt nach dem OPUS-Dekodieren vor dem Transcoder, TxGain nach dem Transcoder vor dem OPUS-Kodieren; Werte über Vollaussteuerung werden begrenzt. Die AGC analog von tcd (eigenes Gate bei −40 dBFS, siehe [tcd/README.de.md](tcd/README.de.md#agc)) läuft auf SVX-Audio nach RxGain; RxGain daher nahe 0 lassen und den Pegel der AGC überlassen, ein stark negativer RxGain drückt leise FM-Sprache unter das Gate. Standard ist für beide 0 dB.
+**RxGain / TxGain**: Feste Verstärkung für SVX-Audio, pro Anbindung wie `[USRP] RxGain/TxGain`. RxGain wirkt nach dem OPUS-Dekodieren vor dem Transcoder, TxGain nach dem Transcoder vor dem OPUS-Kodieren; Werte über Vollaussteuerung werden begrenzt. Die AGC analog von tcd (eigenes Gate bei −40 dBFS, siehe [tcd/README.de.md](tcd/README.de.md#agc)) läuft auf SVX-Audio nach RxGain; RxGain daher nahe 0 lassen und den Pegel der AGC überlassen, ein stark negativer RxGain drückt leise FM-Sprache unter das Gate. Standard ist für beide 0 dB.
+
+**Software**: Der Software-Name, den urfd nach der Anmeldung in seiner Node-Info meldet (`sw`), standardmäßig `urfd`. Manche Reflektoren erwarten einen bestimmten; nur in Absprache mit dem Betreiber des Reflektors ändern. Der Wert wird als JSON-maskierter Text gesendet.
 
 ### SVXServer
-Nimmt eingehende Verbindungen von SvxLink-Knoten an. Arbeitet als SvxReflector-Server (Protokoll V2, HMAC-SHA1-Authentifizierung, OPUS-Audio). Benötigt transcodierte Module. Nutzer melden sich mit Rufzeichen und Passwort an. Die TG-Zuordnung funktioniert wie beim SvxReflector-Client, Clients wählen TGs per `MsgSelectTG`. Nutzer und TGs lassen sich zur Laufzeit über die Admin-Oberfläche verwalten.
+Nimmt eingehende Verbindungen von SvxLink-Knoten an. Arbeitet als SvxReflector-Server (Protokoll V2, HMAC-SHA1-Authentifizierung, OPUS-Audio). Benötigt transcodierte Module. Nutzer melden sich mit Rufzeichen und Passwort an. Jeder Knoten wählt per `MsgSelectTG` eine TG, zugeordnete TGs führen zu einem Modul, und Knoten auf derselben TG hören sich gegenseitig. Nutzer und TGs lassen sich zur Laufzeit über die Admin-Oberfläche verwalten.
 
 ```ini
 [SVXServer]
@@ -159,10 +161,28 @@ Port = 5300                         # TCP and UDP port (same)
 
 **Admin-Befehle**:
 ```json
-{"cmd": "svxserver_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
-{"cmd": "svxserver_user_remove", "token": "...", "callsign": "N0CALL-HS"}
-{"cmd": "svxserver_user_list", "token": "..."}
+{"cmd": "svxs_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
+{"cmd": "svxs_user_remove", "token": "...", "callsign": "N0CALL-HS"}
+{"cmd": "svxs_user_list", "token": "..."}
+{"cmd": "svxs_peer_list", "token": "..."}
 ```
+
+### USRP (AllStar)
+Verbindet einen AllStar-Knoten (USRP-Kanal von app_rpt) mit einem Modul. Benötigt ein transcodiertes Modul.
+
+```ini
+[USRP]
+Enable = true
+Callsign = ALLSTAR
+IPAddress = 1.2.3.4            # AllStar node IP
+RxPort = 34000
+TxPort = 32000
+Module = A                     # Must be a transcoded module
+# RxGain = 0                   # Incoming audio gain in dB (-40 to +40)
+# TxGain = 0                   # Outgoing audio gain in dB (-40 to +40)
+```
+
+**RxGain / TxGain**: wie bei SVX pro Anbindung in der `urfd.ini`; Werte über Vollaussteuerung werden begrenzt. tcd schickt AllStar-Audio durch seine AGC analog, die beiden bleiben daher normalerweise 0.
 
 ### MMDVM-Server
 Nimmt Verbindungen von MMDVM-Hotspots und -Repeatern direkt an (ohne BrandMeister). Implementiert das HomeBrew-DMR-Protokoll (Handshake RPTL→RPTK→RPTC→RPTO). Für reinen DMR-zu-DMR-Betrieb ohne Transcoder nutzbar, transcodierte Module sind nur für die Verbindung zwischen Betriebsarten nötig. Die TG-Zuordnung funktioniert wie beim MMDVMClient, mit Timeslots. **Dual-Slot**: Jeder Timeslot (TS1/TS2) verbindet sich unabhängig mit seinem eigenen Modul, ein Hotspot kann also gleichzeitig auf zwei Modulen sein.
@@ -354,7 +374,7 @@ $Admin['Port']     = 10101;
 - **MMDVM-Server-Verwaltung**: Nutzer (per DMR-ID oder Rufzeichen) und TG-Zuordnungen hinzufügen, entfernen und auflisten. Verbundene Hotspots mit DMR-ID, Frequenzen, Standort und Software-Angaben anzeigen.
 - **Protokoll neu verbinden**: Neuverbindung von MMDVM, SVX, DCSClient, DExtraClient, DPlusClient oder YSFClient erzwingen.
 - **Transcoder-Statistik**: Verbindungsstatus, aktiver Codec, Paketzähler und Laufzeit pro transcodiertem Modul.
-- **Live-Log**: Die letzten 200 Log-Zeilen mit Zeitstempel, alle 10 Sekunden aktualisiert.
+- **Live-Log**: Die letzten 50 Log-Zeilen mit Zeitstempel, alle 10 Sekunden aktualisiert (der Socket liefert bis zu 200).
 - **Last Heard leeren**: Leert die Liste der zuletzt gehörten Stationen im Dashboard.
 - **Versteckter Zugang**: Über das Pi-Symbol unten rechts oder direkt mit `?show=admin`.
 
@@ -377,9 +397,10 @@ $Admin['Port']     = 10101;
 {"cmd": "dcs_map_list", "token": "..."}
 {"cmd": "ysf_map_add", "token": "...", "host": "90.187.72.177", "port": 42099, "local_module": "A", "dgid": 15}
 {"cmd": "ysf_map_list", "token": "..."}
-{"cmd": "svxserver_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
-{"cmd": "svxserver_user_remove", "token": "...", "callsign": "N0CALL-HS"}
-{"cmd": "svxserver_user_list", "token": "..."}
+{"cmd": "svxs_user_add", "token": "...", "callsign": "N0CALL-HS", "password": "secret"}
+{"cmd": "svxs_user_remove", "token": "...", "callsign": "N0CALL-HS"}
+{"cmd": "svxs_user_list", "token": "..."}
+{"cmd": "svxs_peer_list", "token": "..."}
 {"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2631353, "password": "secret"}
 {"cmd": "mmdvm_user_add", "token": "...", "callsign": "DL4JC", "password": "secret"}
 {"cmd": "mmdvm_user_add", "token": "...", "dmrid": 2632545}
@@ -397,7 +418,7 @@ $Admin['Port']     = 10101;
 Der Reflektor kann seine Konfiguration im laufenden Betrieb neu laden, ohne Verbindungen zu trennen. Dazu `SIGHUP` an den urfd-Prozess schicken.
 
 **Wird bei SIGHUP neu geladen:**
-- TG-Zuordnungen (MMDVMClient und SvxReflector), dynamische TGs bleiben erhalten
+- TG-Zuordnungen (MMDVMClient, SvxReflector und SVXServer), dynamische TGs bleiben erhalten
 - Whitelist, Blacklist und Interlink-Datei
 - Zuordnung der transcodierten Module
 - Reflektor-Angaben (Rufzeichen, Sponsor, Land, URLs)
@@ -411,11 +432,13 @@ Der Reflektor kann seine Konfiguration im laufenden Betrieb neu laden, ohne Verb
 - Zuordnung des Echo-Moduls
 
 ```bash
-# Docker (signal must reach urfd, not supervisord)
-docker exec urfd kill -HUP $(docker exec urfd pgrep urfd)
+sudo ./setup.sh reload
 
-# Bare metal
-kill -HUP $(cat /var/run/urfd.pid)
+# von Hand, Docker: das Signal muss urfd erreichen, nicht supervisord (PID 1 startet bei SIGHUP alles neu)
+docker exec urfd pkill -HUP -x urfd
+
+# ohne Docker
+sudo pkill -HUP -x urfd
 ```
 
 ### Reflektor-Kopplung
@@ -525,7 +548,7 @@ Die XML-Statusdatei enthält jetzt:
 
 - **Reflektor-Angaben**: Rufzeichen, Land, Sponsor, Dashboard-URL, E-Mail
 - **Modul-Konfiguration**: Beschreibung, Anzahl verbundener Knoten, Transcodierung, DMR+-TG-ID, YSF-DG-ID, NXDN-RAN, NXDN-Ziel-ID (nur wenn `ModuleDstIdBase` gesetzt ist)
-- **Zuordnungen pro Modul**: Autolinks (YSF, NXDN, P25), TG-Zuordnungen (MMDVMClient, SvxReflector), D-Star-Client-Zuordnungen (DCSClient, DExtraClient, DPlusClient mit Verbindungsstatus), YSF-Client-Zuordnungen (YSFClient mit DG-ID)
+- **Zuordnungen pro Modul**: Autolinks (YSF, NXDN, P25), TG-Zuordnungen (MMDVM, MMDVMClient, SvxReflector, SVXServer), D-Star-Client-Zuordnungen (DCSClient, DExtraClient, DPlusClient mit Verbindungsstatus), YSF-Client-Zuordnungen (YSFClient mit DG-ID)
 - **Aktive Protokolle**: Name und Port jedes eingeschalteten Protokolls
 - **Protokoll pro Station**: Über welches Protokoll eine Station gehört wurde (DCS, MMDVMClient, YSF usw.)
 - **Position pro Station**: `<Locator>`, `<Latitude>` und `<Longitude>` für Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position gesendet haben
@@ -746,7 +769,7 @@ Neben Installation und Update erledigt `setup.sh` die Alltagsarbeit am Reflektor
 sudo ./setup.sh status              # was hier läuft, in welcher Version
 sudo ./setup.sh restart [urfd|tcd]  # ebenso start, stop
 sudo ./setup.sh logs [urfd|tcd]     # Log verfolgen (Strg-C beendet)
-sudo ./setup.sh reload              # urfd liest Whitelist, Blacklist, Interlink neu (SIGHUP)
+sudo ./setup.sh reload              # urfd liest seine Konfiguration neu: TG-Zuordnungen, Listen, Interlink (SIGHUP)
 sudo ./setup.sh check               # urfd.ini mit inicheck prüfen
 sudo ./setup.sh update              # pull, neu bauen, neu starten
 ```
@@ -829,13 +852,13 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 ### Verwaltung zur Laufzeit
 - **Admin-Oberfläche**: JSON-over-TCP-Socket und Web-Dashboard: dynamische TG-Verwaltung, Protokolle neu verbinden, Transcoder-Statistik, Live-Log, Protokoll-Sperren, ein Thread pro Client mit 5 s Leerlauf-Timeout
 - **Protokoll-Sperren zur Laufzeit**: Beliebige Protokoll-Paare in beide Richtungen im Admin-Dashboard sperren und freigeben: threadsicher mit shared_mutex, per Klick entfernbar, Rücksetzen auf die Konfiguration, wird nicht gespeichert (gilt nach Neustart nicht mehr)
-- **Dynamische TG-Verwaltung**: TGs zur Laufzeit mit einstellbarer Laufzeit hinzufügen und entfernen, Timer über alle Protokolle hinweg erneuert, Aktivierung per BM-API oder Kerchunk, SELECT_TG(0) beim Ablauf der SVX-TGs
+- **Dynamische TG-Verwaltung**: TGs zur Laufzeit mit einstellbarer Laufzeit hinzufügen und entfernen, Timer über alle Protokolle hinweg erneuert, Aktivierung per BM-API oder Kerchunk, abgelaufene SVX-TGs fallen aus den überwachten TGs
 - **Neu laden per SIGHUP**: TG-Zuordnungen, Whitelist/Blacklist/Interlink und Transcoder-Module neu laden, ohne Verbindungen zu trennen: threadsicher über sigwait, bei Fehlern mit Rückgängigmachen
 
 ### Audio und Transcodierung
 - **NXDN-Modulwahl**: Modulwahl über die RAN (Radio Access Number): RAN 1-26 = Modul A-Z, mit getauschter RAN 1 und RAN des AutoLinkModule, sodass RAN 1 das AutoLinkModule erreicht; RAN 0 = AutoLinkModule. Alternativ Wahl über die Ziel-ID (`ModuleDstIdBase`, Ziel-ID base+1…base+26 = A-Z) für Clients ohne RAN, ausgewertet beim Verbindungs-Poll und bei jeder Aussendung, mit der Ziel-ID des Moduls in ausgehenden Frames. NXDN-ID-Auflösung über die NXDN-Datenbank mit DMR-Datenbank als Ersatz. FallbackNxdnId für unbekannte Anrufer (ohne Einstellung wird verworfen). Nicht initialisiertes `m_uiNXDNid` im Standardkonstruktor von CCallsign behoben.
 - **D-Star-Slow-Data**: Transcodierte Streams enthalten Rufzeichen des Anrufers, Protokoll-/TG-/RAN-/Modulangabe und den Betreibernamen aus der DMR- und NXDN-ID-Datenbank, im Wechsel alle etwa 5 Sekunden. Angezeigt wird die tatsächliche Quell-TG (nicht die primäre/statische), damit es bei mehreren TGs stimmt. Client-Protokolle zeigen Name und Modul des fremden Reflektors (z.B. `via DCS002 A`), YSFClient die DG-ID
-- **Getrennte SVX- und USRP-Codecs**: Unabhängige Codec-Pfade (`ECodecType::svx` und `ECodecType::usrp`) mit getrennter Verstärkung: SVX in urfd.ini, USRP in tcd.ini
+- **Getrennte SVX- und USRP-Codecs**: Unabhängige Codec-Pfade (`ECodecType::svx` und `ECodecType::usrp`) mit Verstärkung pro Anbindung in urfd.ini (`RxGain`/`TxGain` für SvxReflector, SVXServer und USRP); in tcd laufen beide durch die AGC analog
 - **MMDVM Dual-Slot**: Jeder Timeslot (TS1/TS2) verbindet sich unabhängig mit seinem eigenen Reflektor-Modul, ein Hotspot kann also auf zwei Timeslots gleichzeitig zwei Module empfangen. Das Dashboard zeigt beide verbundenen Module pro Client.
 - **MMDVM bei NAT-Neuzuordnung**: Verbindet sich ein Hotspot mit neuem UDP-Quellport neu (NAT), wird der alte Eintrag anhand der exakten DMR-ID ersetzt. Die Modulverbindungen der Slots bleiben erhalten. Mehrere Clients mit verschiedenen DMR-IDs (auch Endungen) hinter derselben IP werden unterstützt.
 - **MMDVM Late-Entry**: Ermittelt die DMR-ID aus dem Rufzeichen des laufenden Streams (bevorzugt die zwischengespeicherte ID des Quell-Protokolls vor der Datenbank), damit lassen sich Sperren mitten im Stream aufheben
@@ -860,6 +883,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **Analoge Verstärkung in urfd (4.10.0)**: `[USRP] RxGain/TxGain` setzen die AllStar-Pegel in der `urfd.ini`, wie bei SVX; tcd 0.3.2 hat `UsrpGainIn`/`UsrpGainOut` entfernt, urfd regelt also pro Anbindung und tcd pro Codec
 - **Software-Name am SvxReflector (4.9.0)**: `[SvxReflector] Software` setzt den Software-Namen in der Node-Info für Reflektoren, die einen bestimmten erwarten (Standard `urfd`); das JSON der Node-Info wird sauber maskiert
 - **SvxLink (4.8.0)**: Der SvxReflector-Client wählt eine TG und überwacht die übrigen zugeordneten, wie ein SvxLink-Knoten (bisher wählte er jede zugeordnete TG, der Reflektor behielt nur die letzte, und Audio jedes Moduls landete dort); der SVX-Server führt pro Knoten eine gewählte TG, leitet Audio zwischen seinen Knoten weiter, schickt Sprecherbeginn und -ende nur an Knoten auf oder mit Überwachung der TG und bittet Knoten mit Protokoll 3 um einen Downgrade. Beide: OPUS-Pakete von 10 bis 60 ms, verlorene Pakete werden überbrückt, verspätete verworfen, ein verlorenes Flush kostet nicht mehr den nächsten Durchgang, die Verstärkung begrenzt statt überzulaufen, 8-kHz-Sprach-Encoder statt Hochrechnen, frischer Encoder pro Durchgang, TCP-Nachrichten in Stücken, keine Verklemmung zwischen Admin-Socket und Protokoll-Thread
 - **Statusdatei und Admin-Socket (4.7.4)**: Die XML/JSON-Statusdatei wird daneben geschrieben und umbenannt, das Dashboard liest sie also nie leer oder halb geschrieben; Rufzeichen und Texte aus `urfd.ini` darin sind XML-maskiert; der Admin-Socket nimmt einen Befehl an, der auf mehrere TCP-Segmente verteilt ankommt; ein zweites SIGHUP während eines Konfigurations-Reloads beendet urfd nicht mehr
@@ -874,7 +898,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **CallingHome im Reflektor**: `[CallingHome]` in `urfd.ini` trägt den Reflektor mit denselben Daten wie bisher das Dashboard im XLX-Verzeichnis ein, auch ohne Dashboard
 - **Sauberes Beenden**: urfd beendet sich bei SIGTERM in etwa 2 Sekunden. Vorher warteten die Router-Threads der Module ewig auf Pakete, Protokolle wurden gelöscht, während ihre Threads noch liefen (ein Absturz, der nur nicht auffiel, weil Docker urfd vorher abschoss), und die ID-Datenbank-Threads schliefen je bis zu 10 s; `docker stop` endete so immer mit einem Kill
 - **Transcoder-Verbindung ohne Nagle-Verzögerung**: `TCP_NODELAY` an beiden Enden der Verbindung urfd–tcd. Vorher wartete ein transcodierter Frame auf das verzögerte ACK des Reflektors, das erst mit dem nächsten DMR-Bündel kam; ein Frame ist jetzt nach etwa 23 ms statt 60 ms zurück (URF363, am Reflektor gemessen)
-- **Setup-Script**: `setup.sh` installiert und aktualisiert Reflektor und Transcoder, schreibt die Konfiguration aus den Vorlagen und prüft sie mit inicheck; Docker Compose baut aus jedem Klon, Daten in `$URFD_DATA` (Standard `/opt/urfd`)
+- **Setup-Script**: `setup.sh` installiert und aktualisiert Reflektor und Transcoder, schreibt die Konfiguration aus den Vorlagen und prüft sie mit inicheck, und erledigt status, start, stop, restart, logs, reload und check; Docker Compose baut aus jedem Klon, Daten in `$URFD_DATA` (Standard `/opt/urfd`)
 - **Echo-Modul**: Eingebauter Papagei, ein- und ausschaltbar
 - **M17 LSTN**: Reine Hör-Clients für Überwachungsdienste, die nicht senden dürfen
 - **mrefd-Kopplung**: Module mit M17-Reflektoren teilen (`M17-XXX` in `urfd.interlink`, `[M17] Callsign`), auch mit alten mrefd
