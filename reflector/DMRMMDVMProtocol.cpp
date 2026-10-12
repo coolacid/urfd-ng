@@ -1472,11 +1472,14 @@ void CDmrmmdvmProtocol::TakeSourceTalkerAlias(CDmrmmdvmStreamCacheItem &cache) c
 	if ( 0 == (cache.m_uiSourceTAMask & 0x01U) )
 		return;
 
-	// the header says how long it is: 48 bits in the header, 56 per block
+	// the header says how long it is: 49 bits in the header (7 bit characters
+	// use all of them, the others only whole bytes, 48), 56 per block
 	const uint8_t *header = cache.m_SourceTA[0].data();
 	static const unsigned bitsPerChar[4] = { 7, 8, 8, 16 };
-	const unsigned bits = ((header[2] >> 1) & 0x1FU) * bitsPerChar[(header[2] >> 6) & 0x03U];
-	unsigned count = 1 + ((bits > 48) ? (bits - 48 + 55) / 56 : 0);
+	const unsigned format = (header[2] >> 6) & 0x03U;
+	const unsigned bits = ((header[2] >> 1) & 0x1FU) * bitsPerChar[format];
+	const unsigned inHeader = (0U == format) ? 49U : 48U;
+	unsigned count = 1 + ((bits > inHeader) ? (bits - inHeader + 55) / 56 : 0);
 	if ( count > 4 )
 		count = 4;
 	const uint8_t all = (1U << count) - 1U;
