@@ -22,26 +22,6 @@
 #define SVX_SEND_TIMEOUT_MS 2000    // a TCP message must be out by then
 
 ////////////////////////////////////////////////////////////////////////////////////////
-// gain
-
-void SvxApplyGain(int16_t *pcm, int count, int32_t gainNum)
-{
-	if (gainNum == 256)
-		return;
-	for (int i = 0; i < count; i++)
-	{
-		int32_t v = ((int32_t)pcm[i] * gainNum) >> 8;
-		pcm[i] = (int16_t)std::max<int32_t>(-32768, std::min<int32_t>(32767, v));
-	}
-}
-
-int32_t SvxGainFromDb(int db)
-{
-	if (db < -40) db = -40; else if (db > 40) db = 40;
-	return (int32_t)roundf(256.0f * powf(10.0f, (float)db / 20.0f));
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
 // OPUS out
 
 OpusEncoder *SvxCreateEncoder(void)

@@ -15,6 +15,7 @@
 #define	Utils_H
 
 #include <string>
+#include <cstdint>
 
 class CUtils
 {
@@ -27,6 +28,10 @@ public:
 
 	// text for an XML element: &, < and > as entities
 	static std::string XmlEscape(const std::string &in);
+
+	// PCM gain as a linear numerator, 256 = 0 dB, clipped to int16; dB clamped to -40..+40
+	static void ApplyGain(int16_t *pcm, int count, int32_t gainNum);
+	static int32_t GainFromDb(int db);
 
 private:
 };

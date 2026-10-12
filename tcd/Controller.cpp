@@ -254,12 +254,10 @@ void CController::Md380SelectStream(uint16_t sid)
 }
 #endif
 
-CController::CController() : keep_running(true), ambe_in_num(256), ambe_out_num(256), usrp_rx_num(256), usrp_tx_num(256), dmr_reencode_num(256), outgain_dstar_num(256), outgain_dmr_num(256), outgain_usrp_num(256), outgain_imbe_num(256), outgain_m17_num(256) {}
+CController::CController() : keep_running(true), ambe_in_num(256), ambe_out_num(256), dmr_reencode_num(256), outgain_dstar_num(256), outgain_dmr_num(256), outgain_usrp_num(256), outgain_imbe_num(256), outgain_m17_num(256) {}
 
 bool CController::Start()
 {
-	usrp_rx_num = calcNumerator(g_Conf.GetGain(EGainType::usrprx));
-	usrp_tx_num = calcNumerator(g_Conf.GetGain(EGainType::usrptx));
 	dmr_reencode_num = calcNumerator(g_Conf.GetGain(EGainType::dmrreencode));
 	outgain_dstar_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_dstar));
 	outgain_dmr_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_dmr));
@@ -311,8 +309,6 @@ void CController::ReconfigureAGC()
 	// Also update gain numerators from live config
 	ambe_in_num = calcNumerator(g_Stats.config.gain_dmr_in.load());
 	ambe_out_num = calcNumerator(g_Stats.config.gain_dmr_out.load());
-	usrp_rx_num = calcNumerator(g_Stats.config.gain_usrp_rx.load());
-	usrp_tx_num = calcNumerator(g_Stats.config.gain_usrp_tx.load());
 	dmr_reencode_num = calcNumerator(g_Stats.config.gain_dmr_reencode.load());
 	outgain_dstar_num = calcNumerator(g_Stats.config.outgain_dstar.load());
 	outgain_dmr_num = calcNumerator(g_Stats.config.outgain_dmr.load());
@@ -1156,7 +1152,6 @@ void CController::AudiotoUSRP(std::shared_ptr<CTranscoderPacket> packet)
 	int16_t tmp[160];
 	memcpy(tmp, packet->GetAudioSamples(), sizeof(tmp));
 	ApplyGain(tmp, 160, outgain_usrp_num);
-	ApplyGain(tmp, 160, usrp_tx_num);
 	packet->SetUSRPData(tmp);
 
 
@@ -1170,7 +1165,6 @@ void CController::USRPtoAudio(std::shared_ptr<CTranscoderPacket> packet)
 {
 	int16_t tmp[160];
 	memcpy(tmp, packet->GetUSRPData(), sizeof(tmp));
-	ApplyGain(tmp, 160, usrp_rx_num);
 	g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 	{
 		float agc_db; bool agc_gate;

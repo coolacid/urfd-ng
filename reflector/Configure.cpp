@@ -538,6 +538,10 @@ bool CConfigure::ReadData(const std::string &path)
 					data[g_Keys.usrp.callsign] = value;
 				else if (0 == key.compare(JFILEPATH))
 					data[g_Keys.usrp.filepath] = value;
+				else if (0 == key.compare("RxGain"))
+					data[g_Keys.usrp.rxgain] = value;
+				else if (0 == key.compare("TxGain"))
+					data[g_Keys.usrp.txgain] = value;
 				else
 					badParam(key);
 				break;

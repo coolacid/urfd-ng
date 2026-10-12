@@ -73,4 +73,6 @@ private:
 	CCallsign m_Callsign;
 	char m_Module;
 	uint16_t m_txPort;
+	int32_t m_RxGainNum = 256;   // [USRP] RxGain / TxGain, 256 = 0 dB
+	int32_t m_TxGainNum = 256;
 };

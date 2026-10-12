@@ -26,6 +26,7 @@
 #include "SvxProtocol.h"
 #include "SvxClient.h"
 #include "Global.h"
+#include "Utils.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor / destructor
@@ -843,7 +844,7 @@ void CSvxProtocol::OnPeerUdpAudio(uint32_t clientId, const CBuffer &buffer)
 		return;
 	for (auto &f : frames)
 	{
-		SvxApplyGain(f.data(), 160, m_RxGainNum);
+		CUtils::ApplyGain(f.data(), 160, m_RxGainNum);
 		PushPeerFrame(peer, f.data(), false);
 	}
 }
@@ -1073,7 +1074,7 @@ void CSvxProtocol::HandleQueue(void)
 
 			int16_t out[160];
 			memcpy(out, pcm, sizeof(out));
-			SvxApplyGain(out, 160, m_TxGainNum);
+			CUtils::ApplyGain(out, 160, m_TxGainNum);
 
 			// encoded once, the same packet for every node on the TG
 			uint8_t payload[2 + 512];
@@ -1172,7 +1173,7 @@ bool CSvxProtocol::Initialize(const char *type, const EProtocol ptype,
 	{
 		try {
 			int db = std::stoi(g_Configure.GetString(g_Keys.svxs.rxgain));
-			m_RxGainNum = SvxGainFromDb(db);
+			m_RxGainNum = CUtils::GainFromDb(db);
 			std::cout << "SVXServer: RxGain = " << db << " dB" << std::endl;
 		} catch (const std::exception &e) {
 			std::cerr << "SVXServer: invalid RxGain value: " << e.what() << std::endl;
@@ -1182,7 +1183,7 @@ bool CSvxProtocol::Initialize(const char *type, const EProtocol ptype,
 	{
 		try {
 			int db = std::stoi(g_Configure.GetString(g_Keys.svxs.txgain));
-			m_TxGainNum = SvxGainFromDb(db);
+			m_TxGainNum = CUtils::GainFromDb(db);
 			std::cout << "SVXServer: TxGain = " << db << " dB" << std::endl;
 		} catch (const std::exception &e) {
 			std::cerr << "SVXServer: invalid TxGain value: " << e.what() << std::endl;

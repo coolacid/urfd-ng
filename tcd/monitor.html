@@ -122,9 +122,6 @@ h2 { color: #81d4fa; font-size: 15px; margin: 12px 0 8px; }
       <div class="config-row"><label>D-Star DVSI Out</label><input type="range" min="-40" max="40" id="g_dstar_out"><span class="val" id="v_dstar_out">0</span></div>
       <div class="config-row"><label>DMR DVSI In</label><input type="range" min="-40" max="40" id="g_dmr_in"><span class="val" id="v_dmr_in">0</span></div>
       <div class="config-row"><label>DMR DVSI Out</label><input type="range" min="-40" max="40" id="g_dmr_out"><span class="val" id="v_dmr_out">0</span></div>
-      <h2 style="font-size:13px">USRP / SVX</h2>
-      <div class="config-row"><label>USRP Receive</label><input type="range" min="-40" max="40" id="g_usrp_rx"><span class="val" id="v_usrp_rx">0</span></div>
-      <div class="config-row"><label>USRP Transmit</label><input type="range" min="-40" max="40" id="g_usrp_tx"><span class="val" id="v_usrp_tx">0</span></div>
       <h2 style="font-size:13px">DMR → DMR/YSF</h2>
       <div class="config-row"><label>Mode</label><select id="dmr_gain_mode" style="flex:1;max-width:200px;background:#0a0a1a;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px;padding:2px 4px;font-family:inherit;font-size:13px">
         <option value="off">Off (pass through)</option>
@@ -223,7 +220,7 @@ function flowDiagram(mod, m, cfg) {
   let gainIn = 0, gainLabel = '';
   if (cl.includes('star')) { gainIn = cfg.gain_dstar_in; gainLabel = 'DStarIn'; }
   else if (cl.includes('dmr')) { gainIn = cfg.gain_dmr_in; gainLabel = 'DmrIn'; }
-  else if (cl === 'usrp') { gainIn = cfg.gain_usrp_rx; gainLabel = 'UsrpRx'; }
+  else if (cl === 'usrp') { gainLabel = 'USRP'; }
   else if (cl === 'svx') { gainLabel = 'SVX'; }
   else if (cl.includes('p25')) { gainLabel = codec; }
   else if (cl.includes('codec2')) { gainLabel = codec; }
@@ -325,7 +322,7 @@ function render() {
 }
 
 // Config sliders
-const gainKeys = ['dstar_in','dstar_out','dmr_in','dmr_out','usrp_rx','usrp_tx','dmr_reencode'];
+const gainKeys = ['dstar_in','dstar_out','dmr_in','dmr_out','dmr_reencode'];
 const outgainKeys = ['outgain_dstar','outgain_m17','outgain_dmr','outgain_imbe','outgain_usrp'];
 
 function loadConfig(cfg) {

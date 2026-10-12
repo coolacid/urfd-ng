@@ -160,8 +160,6 @@ std::string CMonitorServer::BuildStatsJson()
 	   << ",\"gain_dstar_out\":" << g_Stats.config.gain_dstar_out.load()
 	   << ",\"gain_dmr_in\":" << g_Stats.config.gain_dmr_in.load()
 	   << ",\"gain_dmr_out\":" << g_Stats.config.gain_dmr_out.load()
-	   << ",\"gain_usrp_rx\":" << g_Stats.config.gain_usrp_rx.load()
-	   << ",\"gain_usrp_tx\":" << g_Stats.config.gain_usrp_tx.load()
 	   << ",\"gain_dmr_reencode\":" << g_Stats.config.gain_dmr_reencode.load()
 	   << ",\"outgain_dstar\":" << g_Stats.config.outgain_dstar.load()
 	   << ",\"outgain_dmr\":" << g_Stats.config.outgain_dmr.load()
@@ -239,8 +237,6 @@ void CMonitorServer::HandleRest(struct mg_connection *c, struct mg_http_message 
 				else if (strncmp(p, "dstar_out", 9) == 0)     g_Stats.config.gain_dstar_out.store(db);
 				else if (strncmp(p, "dmr_in", 6) == 0)        g_Stats.config.gain_dmr_in.store(db);
 				else if (strncmp(p, "dmr_out", 7) == 0)       g_Stats.config.gain_dmr_out.store(db);
-				else if (strncmp(p, "usrp_rx", 7) == 0)       g_Stats.config.gain_usrp_rx.store(db);
-				else if (strncmp(p, "usrp_tx", 7) == 0)       g_Stats.config.gain_usrp_tx.store(db);
 				else if (strncmp(p, "dmr_reencode", 12) == 0)  g_Stats.config.gain_dmr_reencode.store(db);
 				else if (strncmp(p, "outgain_dstar", 13) == 0) g_Stats.config.outgain_dstar.store(db);
 				else if (strncmp(p, "outgain_dmr", 11) == 0)   g_Stats.config.outgain_dmr.store(db);
@@ -513,8 +509,6 @@ bool CMonitorServer::SaveConfig(const std::string &ini_path)
 				if (key == "DStarGainOut")      { out << key << " = " << g_Stats.config.gain_dstar_out.load() << "\n"; continue; }
 				if (key == "DmrGainIn")         { out << key << " = " << g_Stats.config.gain_dmr_in.load() << "\n"; continue; }
 				if (key == "DmrGainOut")        { out << key << " = " << g_Stats.config.gain_dmr_out.load() << "\n"; continue; }
-				if (key == "UsrpGainIn")        { out << key << " = " << g_Stats.config.gain_usrp_rx.load() << "\n"; continue; }
-				if (key == "UsrpGainOut")       { out << key << " = " << g_Stats.config.gain_usrp_tx.load() << "\n"; continue; }
 				if (key == "DmrReencodeGain")   { out << key << " = " << g_Stats.config.gain_dmr_reencode.load() << "\n"; continue; }
 				if (key == "OutputGainDStar")   { out << key << " = " << g_Stats.config.outgain_dstar.load() << "\n"; continue; }
 				if (key == "OutputGainDMR")    { out << key << " = " << g_Stats.config.outgain_dmr.load() << "\n"; continue; }

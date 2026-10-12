@@ -25,8 +25,6 @@
 #include "Configure.h"
 
 // ini file keywords
-#define USRPTXGAIN     "UsrpGainOut"
-#define USRPRXGAIN     "UsrpGainIn"
 #define DMRGAININ      "DmrGainIn"
 #define DMRGAINOUT     "DmrGainOut"
 #define DSTARGAININ    "DStarGainIn"
@@ -152,10 +150,6 @@ bool CConfigure::ReadData(const std::string &path)
 			dmr_in = getSigned(key, value);
 		else if (0 == key.compare(DMRGAINOUT))
 			dmr_out = getSigned(key, value);
-		else if (0 == key.compare(USRPTXGAIN))
-			usrp_tx = getSigned(key, value);
-		else if (0 == key.compare(USRPRXGAIN))
-			usrp_rx = getSigned(key, value);
 		else if (0 == key.compare(DMRREENCODE))
 			dmr_reencode = getSigned(key, value);
 		else if (0 == key.compare(OUTGAIN_DSTAR))
@@ -263,8 +257,6 @@ bool CConfigure::ReadData(const std::string &path)
 	std::cout << DSTARGAINOUT << " = " << dstar_out << std::endl;
 	std::cout << DMRGAININ << " = " << dmr_in << std::endl;
 	std::cout << DMRGAINOUT << " = " << dmr_out << std::endl;
-	std::cout << USRPTXGAIN << " = " << usrp_tx << std::endl;
-	std::cout << USRPRXGAIN << " = " << usrp_rx << std::endl;
 	if (dmr_reencode != 0)
 		std::cout << DMRREENCODE << " = " << dmr_reencode << std::endl;
 	if (outgain_dstar != 0) std::cout << OUTGAIN_DSTAR << " = " << outgain_dstar << std::endl;
@@ -322,8 +314,6 @@ int CConfigure::GetGain(EGainType gt) const
 		case EGainType::dmrout:   return dmr_out;
 		case EGainType::dstarin:  return dstar_in;
 		case EGainType::dstarout: return dstar_out;
-		case EGainType::usrptx:   return usrp_tx;
-		case EGainType::usrprx:      return usrp_rx;
 		case EGainType::dmrreencode:  return dmr_reencode;
 		case EGainType::outgain_dstar: return outgain_dstar;
 		case EGainType::outgain_dmr:   return outgain_dmr;

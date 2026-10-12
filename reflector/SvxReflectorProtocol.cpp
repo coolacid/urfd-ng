@@ -24,6 +24,7 @@
 #include "SvxReflectorProtocol.h"
 #include "SvxReflectorClient.h"
 #include "Global.h"
+#include "Utils.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor / destructor
@@ -585,13 +586,13 @@ bool CSvxReflectorProtocol::Initialize(const char *type, const EProtocol ptype,
 	if (g_Configure.Contains(g_Keys.svx.rxgain))
 	{
 		int db = std::stoi(g_Configure.GetString(g_Keys.svx.rxgain));
-		m_RxGainNum = SvxGainFromDb(db);
+		m_RxGainNum = CUtils::GainFromDb(db);
 		std::cout << "SvxReflector: RxGain = " << db << " dB" << std::endl;
 	}
 	if (g_Configure.Contains(g_Keys.svx.txgain))
 	{
 		int db = std::stoi(g_Configure.GetString(g_Keys.svx.txgain));
-		m_TxGainNum = SvxGainFromDb(db);
+		m_TxGainNum = CUtils::GainFromDb(db);
 		std::cout << "SvxReflector: TxGain = " << db << " dB" << std::endl;
 	}
 
@@ -1005,7 +1006,7 @@ void CSvxReflectorProtocol::OnUdpAudio(const CBuffer &buffer)
 
 	for (auto &f : frames)
 	{
-		SvxApplyGain(f.data(), 160, m_RxGainNum);
+		CUtils::ApplyGain(f.data(), 160, m_RxGainNum);
 		PushInFrame(f.data(), false);
 	}
 }
@@ -1197,7 +1198,7 @@ void CSvxReflectorProtocol::HandleQueue(void)
 				{
 					int16_t out[160];
 					memcpy(out, pcm, sizeof(out));
-					SvxApplyGain(out, 160, m_TxGainNum);
+					CUtils::ApplyGain(out, 160, m_TxGainNum);
 					EncodeAndSendAudio(out);
 					m_TGActivityTimer.start();
 					m_OutActivity[module].start();

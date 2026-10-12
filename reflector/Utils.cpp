@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <cassert>
+#include <cmath>
 
 void CUtils::byteToBitsBE(unsigned char byte, bool* bits)
 {
@@ -86,4 +87,21 @@ std::string CUtils::XmlEscape(const std::string &in)
 		}
 	}
 	return out;
+}
+
+void CUtils::ApplyGain(int16_t *pcm, int count, int32_t gainNum)
+{
+	if (gainNum == 256)
+		return;
+	for (int i = 0; i < count; i++)
+	{
+		int32_t v = ((int32_t)pcm[i] * gainNum) >> 8;
+		pcm[i] = (int16_t)(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
+	}
+}
+
+int32_t CUtils::GainFromDb(int db)
+{
+	if (db < -40) db = -40; else if (db > 40) db = 40;
+	return (int32_t)roundf(256.0f * powf(10.0f, (float)db / 20.0f));
 }

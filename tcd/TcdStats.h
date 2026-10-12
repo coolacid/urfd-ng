@@ -102,8 +102,6 @@ public:
 		std::atomic<int>   gain_dstar_out{0};
 		std::atomic<int>   gain_dmr_in{0};
 		std::atomic<int>   gain_dmr_out{0};
-		std::atomic<int>   gain_usrp_rx{0};
-		std::atomic<int>   gain_usrp_tx{0};
 		std::atomic<int>   gain_dmr_reencode{0};
 		std::atomic<int>   outgain_dstar{0};
 		std::atomic<int>   outgain_dmr{0};

@@ -15,10 +15,6 @@
 
 using SvxPcmFrame = std::array<int16_t, 160>;
 
-// gain as a linear numerator, 256 = 0 dB; the result is clipped to int16
-void SvxApplyGain(int16_t *pcm, int count, int32_t gainNum);
-int32_t SvxGainFromDb(int db);
-
 // OPUS encoder for urfd audio: 8 kHz voice, the SvxLink side decodes it at its own rate
 OpusEncoder *SvxCreateEncoder(void);
 

@@ -23,6 +23,7 @@
 #include "USRPProtocol.h"
 
 #include "Global.h"
+#include "Utils.h"
 
 const uint8_t USRP_TYPE_VOICE = 0;
 const uint8_t USRP_TYPE_TEXT  = 2;
@@ -47,6 +48,20 @@ bool CUSRPProtocol::Initialize(const char *type, const EProtocol ptype, const ui
 		return false;
 
 	m_Module = g_Configure.GetAutolinkModule(g_Keys.usrp.module);
+
+	// gain in dB, -40 to +40, before the transcoder and after it
+	if (g_Configure.Contains(g_Keys.usrp.rxgain))
+	{
+		int db = std::stoi(g_Configure.GetString(g_Keys.usrp.rxgain));
+		m_RxGainNum = CUtils::GainFromDb(db);
+		std::cout << "USRP: RxGain = " << db << " dB" << std::endl;
+	}
+	if (g_Configure.Contains(g_Keys.usrp.txgain))
+	{
+		int db = std::stoi(g_Configure.GetString(g_Keys.usrp.txgain));
+		m_TxGainNum = CUtils::GainFromDb(db);
+		std::cout << "USRP: TxGain = " << db << " dB" << std::endl;
+	}
 
 	// create the one special USRP Tx/Rx client
 	auto scs = g_Configure.GetString(g_Keys.usrp.callsign);
@@ -304,6 +319,7 @@ bool CUSRPProtocol::IsValidDvPacket(const CIp &Ip, const CBuffer &Buffer, std::u
 		for(int i = 0; i < 160; ++i){
 			pcm[i] = (Buffer.data()[32+(i*2)+1] << 8) | Buffer.data()[32+(i*2)];
 		}
+		CUtils::ApplyGain(pcm, 160, m_RxGainNum);
 
 		frame = std::unique_ptr<CDvFramePacket>(new CDvFramePacket(pcm, m_uiStreamId, false));
 		return true;
@@ -376,7 +392,10 @@ void CUSRPProtocol::EncodeUSRPPacket(const CDvHeaderPacket &Header, const CDvFra
 		memcpy(Buffer.data(), "USRP", 4);
 		memcpy(Buffer.data() + 4, &cnt, 4);
 		Buffer.data()[15] = USRP_KEYUP_TRUE;
-		memcpy(Buffer.data() + 32, DvFrame.GetCodecData(ECodecType::usrp), 320);
+		int16_t pcm[160];
+		memcpy(pcm, DvFrame.GetCodecData(ECodecType::usrp), sizeof(pcm));
+		CUtils::ApplyGain(pcm, 160, m_TxGainNum);
+		memcpy(Buffer.data() + 32, pcm, 320);
 	}
 }
 

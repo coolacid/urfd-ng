@@ -23,7 +23,7 @@
 #include <vector>
 #include <regex>
 
-enum class EGainType { dmrin, dmrout, dstarin, dstarout, usrptx, usrprx, dmrreencode, outgain_dstar, outgain_dmr, outgain_usrp, outgain_imbe, outgain_m17 };
+enum class EGainType { dmrin, dmrout, dstarin, dstarout, dmrreencode, outgain_dstar, outgain_dmr, outgain_usrp, outgain_imbe, outgain_m17 };
 
 #define IS_TRUE(a) ((a)=='t' || (a)=='T' || (a)=='1')
 
@@ -73,7 +73,7 @@ private:
 	std::string tcmods, address, ini_path;
 	std::vector<std::string> device_serials;
 	uint16_t port;
-	int dstar_in, dstar_out, dmr_in, dmr_out, usrp_tx, usrp_rx, dmr_reencode;
+	int dstar_in = 0, dstar_out = 0, dmr_in = 0, dmr_out = 0, dmr_reencode = 0;
 	int outgain_dstar = 0, outgain_dmr = 0, outgain_usrp = 0, outgain_imbe = 0, outgain_m17 = 0;
 	EDmrGainMode dmr_gain_mode = EDmrGainMode::ambe;
 	int  ambe_gain_db = 0;

@@ -76,7 +76,7 @@ protected:
 	std::vector<uint8_t> md380_fresh_state;  // RAM right after md380_init(), for new streams
 	void Md380SelectStream(uint16_t sid);    // with md380_mux held
 #endif
-	int32_t ambe_in_num, ambe_out_num, usrp_rx_num, usrp_tx_num, dmr_reencode_num;
+	int32_t ambe_in_num, ambe_out_num, dmr_reencode_num;
 	int32_t outgain_dstar_num, outgain_dmr_num, outgain_usrp_num, outgain_imbe_num, outgain_m17_num;
 	imbe_vocoder p25vocoder;
 	CAGC m_agcDigital;  // D-Star, DMR/YSF, M17, P25/NXDN
