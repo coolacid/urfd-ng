@@ -148,6 +148,10 @@ The transcoded modules must be the same in `urfd.ini` (`[Transcoder] Modules`) a
 
 **Run the setup again.** `sudo ./setup.sh` on an installed machine offers an update. To start over, answer no to the update and yes to set it up again: this overwrites `urfd.ini`, the dashboard config and `tcd.ini`.
 
+## Setting it up by hand
+
+Without the setup script, or without Docker: [INSTALL-ADVANCED.md](INSTALL-ADVANCED.md).
+
 ## Removing everything
 
 ```bash

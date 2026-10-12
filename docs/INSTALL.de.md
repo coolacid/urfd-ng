@@ -148,6 +148,10 @@ Die transcodierten Module müssen in `urfd.ini` (`[Transcoder] Modules`) und `tc
 
 **Das Setup noch einmal ausführen.** `sudo ./setup.sh` bietet auf einem eingerichteten Rechner ein Update an. Um neu anzufangen, das Update ablehnen und dem Neu-Einrichten zustimmen: Das überschreibt `urfd.ini`, die Dashboard-Konfiguration und `tcd.ini`.
 
+## Von Hand einrichten
+
+Ohne Setup-Script oder ohne Docker: [INSTALL-ADVANCED.de.md](INSTALL-ADVANCED.de.md).
+
 ## Alles entfernen
 
 ```bash

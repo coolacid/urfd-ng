@@ -6,7 +6,7 @@ The tcd transcoder (in [`../tcd`](../tcd/)) runs natively, not in Docker: Docker
 
 ## Quick Start
 
-The easiest way is [`setup.sh`](../setup.sh) in the repository root, see [docs/INSTALL.md](../docs/INSTALL.md). It creates the configuration and runs the steps below.
+The easiest way is [`setup.sh`](../setup.sh) in the repository root, see [docs/INSTALL.md](../docs/INSTALL.md). It creates the configuration and runs the steps below; the configuration by hand is in [docs/INSTALL-ADVANCED.md](../docs/INSTALL-ADVANCED.md#reflector-in-docker).
 
 ```bash
 # Build and start

@@ -694,7 +694,7 @@ cd urfd
 sudo ./setup.sh
 ```
 
-By hand, with the configuration in `/opt/urfd` (see the comments in `docker/docker-compose.yml`):
+By hand, with the configuration in `/opt/urfd` (the steps before are in [docs/INSTALL-ADVANCED.md](docs/INSTALL-ADVANCED.md#reflector-in-docker)):
 
 ```bash
 cd docker
@@ -723,63 +723,14 @@ Dashboard config at `/opt/urfd/dashboard/config.inc.php` (mounted into container
 - `$PageOptions['ContactEmail']` - Footer contact (obfuscated)
 - `$Directory` - XLX directory server and cache for the reflector list (registration is `[CallingHome]` in `urfd.ini`)
 
-## Installation (Bare Metal)
+## Installation by Hand
 
-### Required packages
-
-```bash
-sudo apt update && sudo apt upgrade
-sudo apt install git apache2 php build-essential nlohmann-json3-dev libcurl4-gnutls-dev libopus-dev libssl-dev
-```
-
-### OpenDHT support (recommended)
+Without the setup script: the reflector in Docker by hand, the reflector without Docker (`reflector/build.sh`), the dashboard on your own web server and the transcoder alone are in [docs/INSTALL-ADVANCED.md](docs/INSTALL-ADVANCED.md).
 
 ```bash
-sudo apt install libopendht-dev
+sudo bash reflector/build.sh   # urfd without Docker, with its systemd unit
+sudo bash tcd/build.sh         # tcd
 ```
-
-If not available as a package, build from source: [OpenDHT Wiki](https://github.com/savoirfairelinux/opendht/wiki/Build-the-library).
-
-### Build
-
-```bash
-git clone https://github.com/jcmerg/urfd-ng.git urfd
-cd urfd/reflector
-cp ../config/* .
-# Edit urfd.ini with your configuration
-make
-sudo make install
-```
-
-### Configuration
-
-Edit `urfd.ini` to set:
-- Reflector callsign and IP addresses
-- Modules (A-Z, non-contiguous allowed)
-- Transcoder port and modules (set port to 0 if no transcoder)
-- Protocol-specific settings (ports, enable flags, autolink modules)
-- Echo module assignment
-- MMDVMClient TG mappings (multi-TG per module supported)
-- SvxReflector connection and TG mappings
-- Admin interface (port, password, bind address)
-- Database URLs for DMR ID, NXDN ID, YSF TX/RX lookups (comma separated for fallback sources, see [Resilient ID Database Loading](#resilient-id-database-loading))
-
-### Transcoder
-
-```bash
-sudo bash tcd/build.sh               # two or more AMBE devices
-sudo bash tcd/build.sh --with-md380  # a single DV3000, DMR/YSF in software
-```
-
-Installs the vocoder libraries, builds tcd as the owner of the checkout and installs it with its systemd unit. Configuration in `/usr/local/etc/tcd.ini`, see [tcd/README.md](tcd/README.md).
-
-### Dashboard
-
-```bash
-sudo cp -r ~/urfd/dashboard /var/www/urf
-```
-
-Edit `pgs/config.inc.php` for email and Admin settings. Module names are read from the urfd XML output. For the Admin panel, set `$Admin['Enable'] = true` and match the password with `urfd.ini`.
 
 ## Administration Tools
 
