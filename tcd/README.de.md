@@ -143,12 +143,12 @@ Alle Werte in dB, -40 bis +40.
 | `OutputGainDMR` | `-18` | DMR/YSF-Ausgang, nach der AGC; jeder Weg nach DMR/YSF, auch DMR → DMR/YSF |
 | `OutputGainM17` | `0` | M17/Codec2-Ausgang, nach der AGC |
 | `OutputGainIMBE` | `0` | P25/NXDN-Ausgang, nach der AGC |
-| `OutputGainUSRP` | `0` | USRP-Ausgang, nach der AGC |
+| `OutputGainUSRP` | `0` | USRP- und SVX-Ausgang, nach der AGC (beide bekommen dasselbe PCM von tcd) |
 | `DStarGainIn` / `DStarGainOut` | `0` | im DVSI-Chip, D-Star dekodieren / kodieren |
 | `DmrGainIn` / `DmrGainOut` | `0` | im DVSI-Chip, DMR dekodieren / kodieren |
-| `UsrpGainIn` / `UsrpGainOut` | `0` | USRP-Audio ein / aus |
+| `UsrpGainIn` / `UsrpGainOut` | `0` | USRP-Audio ein / aus; `UsrpGainOut` wirkt auch auf den SVX-Ausgang |
 
-Die SVX-Verstärkung wird in der `urfd.ini` des Reflektors eingestellt (`RxGain`/`TxGain`), nicht hier.
+Die SVX-Eingangsverstärkung wird in der `urfd.ini` des Reflektors eingestellt (`RxGain`), der Ausgang ebenfalls dort (`TxGain`), zusätzlich zu `OutputGainUSRP` und `UsrpGainOut` hier.
 
 ### Pegel DMR/YSF → DMR/YSF (`DmrGainMode`)
 
@@ -181,6 +181,11 @@ So arbeitet `ambe`: Der Decoder rechnet γ = Δγ[b2] + 0,5·γ<sub>alt</sub>, u
 | `AGCMaxGainUp` | `30` | `30` | höchste Verstärkung in dB |
 | `AGCMaxGainDown` | `24` | `24` | höchste Absenkung in dB |
 | `AGCNoiseGate` | `-55` | `-55` | Gate-Schwelle in dBFS: Das Gate schließt 60 ms, nachdem der Pegel darunter gefallen ist, und blendet die Verstärkung auf höchstens 1 aus; bis 6 dB darüber wird nicht hochgeregelt. Über den Rauschboden der Quellen legen |
+| `AGCAnalogNoiseGate` | `-40` | `-40` | Gate-Schwelle für SVX- und USRP-Eingang |
+| `AGCAnalogMaxGainUp` | `12` | `12` | höchste Verstärkung für SVX- und USRP-Eingang |
+| `AGCAnalogGateFloor` | `-12` | `-12` | Verstärkung für SVX- und USRP-Eingang bei geschlossenem Gate, in dB (0 = Faktor 1, wie bei digitalen Quellen) |
+
+**Analoge Quellen (SVX, USRP)** liefern FM-Audio, dessen Pausen nicht still sind, sondern der Rauschboden des Empfängers, oft −45 bis −35 dBFS. Mit den Einstellungen für digitale Quellen schließt das Gate darauf nie, und die AGC hob das Rauschen zwischen den Worten um bis zu 30 dB an: Bei einem guten FM-Signal (Rauschen −45 dBFS, Sprache −28 dBFS) fiel der Abstand zwischen Sprache und Rauschen von 17 auf 11 dB. SVX und USRP haben deshalb ein eigenes Gate, eine eigene Grenze für die Verstärkung und eine Untergrenze bei geschlossenem Gate; Zielpegel, Attack, Release und `AGCMaxGainDown` sind gemeinsam. Mit den Standardwerten steigt der Abstand im selben Fall auf 25 dB, stärker verrauschte Signale werden nicht mehr verschlechtert (per Simulation durch `AGC.h` gemessen). Das Gate arbeitet auf dem Pegel nach dem `RxGain` von urfd; der sollte daher nahe 0 bleiben und die AGC den Pegel setzen lassen, ein stark negativer `RxGain` drückt leise FM-Sprache unter das Gate. Ein Squelch-Schwanz ist lauter als jedes Gate: `SQL_TAIL_ELIM` im Empfänger des SvxLink-Knotens entfernt ihn an der Quelle.
 
 ### Überwachung und Protokoll
 
@@ -206,7 +211,7 @@ M17/P25 (software vocoder):
   codec --[decode]--> PCM --[AGC]--> PCM --[OutputGain]--> target codec
 
 USRP/SVX (PCM):
-  PCM --[UsrpGainIn]--> PCM --[AGC]--> PCM --[OutputGain]--> target codec
+  PCM --[UsrpGainIn (nur USRP)]--> PCM --[analoge AGC]--> PCM --[OutputGain]--> target codec
 
 DMR -> DMR/YSF with DmrGainMode = reencode:
   AMBE2+ --[decode]--> PCM --[AGC]--> PCM --[OutputGainDMR]--> [DmrReencodeGain] --> MD380 --> AMBE2+
