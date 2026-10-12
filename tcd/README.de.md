@@ -178,14 +178,17 @@ So arbeitet `ambe`: Der Decoder rechnet γ = Δγ[b2] + 0,5·γ<sub>alt</sub>, u
 | `AGCTarget` | `-16` | `-16` | Zielpegel in dBFS |
 | `AGCAttack` | `50` | `50` | ms, um lautes Audio abzusenken |
 | `AGCRelease` | `500` | `500` | ms, um leises Audio anzuheben |
-| `AGCMaxGainUp` | `30` | `30` | höchste Verstärkung in dB |
 | `AGCMaxGainDown` | `24` | `24` | höchste Absenkung in dB |
-| `AGCNoiseGate` | `-55` | `-55` | Gate-Schwelle in dBFS: Das Gate schließt 60 ms, nachdem der Pegel darunter gefallen ist, und blendet die Verstärkung auf höchstens 1 aus; bis 6 dB darüber wird nicht hochgeregelt. Über den Rauschboden der Quellen legen |
-| `AGCAnalogNoiseGate` | `-40` | `-40` | Gate-Schwelle für SVX- und USRP-Eingang |
-| `AGCAnalogMaxGainUp` | `12` | `12` | höchste Verstärkung für SVX- und USRP-Eingang |
-| `AGCAnalogGateFloor` | `-12` | `-12` | Verstärkung für SVX- und USRP-Eingang bei geschlossenem Gate, in dB (0 = Faktor 1, wie bei digitalen Quellen) |
 
-**Analoge Quellen (SVX, USRP)** liefern FM-Audio, dessen Pausen nicht still sind, sondern der Rauschboden des Empfängers, oft −45 bis −35 dBFS. Mit den Einstellungen für digitale Quellen schließt das Gate darauf nie, und die AGC hob das Rauschen zwischen den Worten um bis zu 30 dB an: Bei einem guten FM-Signal (Rauschen −45 dBFS, Sprache −28 dBFS) fiel der Abstand zwischen Sprache und Rauschen von 17 auf 11 dB. SVX und USRP haben deshalb ein eigenes Gate, eine eigene Grenze für die Verstärkung und eine Untergrenze bei geschlossenem Gate; Zielpegel, Attack, Release und `AGCMaxGainDown` sind gemeinsam. Mit den Standardwerten steigt der Abstand im selben Fall auf 25 dB, stärker verrauschte Signale werden nicht mehr verschlechtert (per Simulation durch `AGC.h` gemessen). Das Gate arbeitet auf dem Pegel nach dem `RxGain` von urfd; der sollte daher nahe 0 bleiben und die AGC den Pegel setzen lassen, ein stark negativer `RxGain` drückt leise FM-Sprache unter das Gate. Ein Squelch-Schwanz ist lauter als jedes Gate: `SQL_TAIL_ELIM` im Empfänger des SvxLink-Knotens entfernt ihn an der Quelle.
+Gate und Grenze für die Verstärkung gibt es in zwei Profilen: **AGC digital** für D-Star-, DMR/YSF-, M17- und P25/NXDN-Eingang, **AGC analog** für SVX- und USRP-Eingang.
+
+| Schlüssel | Vorlage | Standard im Code | Bedeutung |
+|---|---|---|---|
+| `AGCDigitalNoiseGate` / `AGCAnalogNoiseGate` | `-55` / `-40` | `-55` / `-40` | Gate-Schwelle in dBFS: Das Gate schließt 60 ms, nachdem der Pegel darunter gefallen ist, und blendet die Verstärkung auf die Untergrenze aus; bis 6 dB darüber wird nicht hochgeregelt. Über den Rauschboden der Quellen legen |
+| `AGCDigitalMaxGainUp` / `AGCAnalogMaxGainUp` | `30` / `12` | `30` / `12` | höchste Verstärkung in dB |
+| `AGCDigitalGateFloor` / `AGCAnalogGateFloor` | `0` / `-12` | `0` / `-12` | Verstärkung bei geschlossenem Gate, in dB (0 = höchstens Faktor 1) |
+
+**Analoge Quellen (SVX, USRP)** liefern FM-Audio, dessen Pausen nicht still sind, sondern der Rauschboden des Empfängers, oft −45 bis −35 dBFS. Mit den Einstellungen für digitale Quellen schließt das Gate darauf nie, und die AGC hob das Rauschen zwischen den Worten um bis zu 30 dB an: Bei einem guten FM-Signal (Rauschen −45 dBFS, Sprache −28 dBFS) fiel der Abstand zwischen Sprache und Rauschen von 17 auf 11 dB. SVX und USRP laufen deshalb durch die AGC analog mit eigenem Gate, eigener Grenze für die Verstärkung und eigener Untergrenze bei geschlossenem Gate; Zielpegel, Attack, Release und `AGCMaxGainDown` sind gemeinsam. Mit den Standardwerten steigt der Abstand im selben Fall auf 25 dB, stärker verrauschte Signale werden nicht mehr verschlechtert (Simulation durch `AGC.h`). 20 Minuten an einem SvxLink-Knoten aufgezeichneter Verkehr des FM-Funknetzes bestätigen das: Über HF fiel der Abstand mit der AGC digital von 34 auf 19 dB und bleibt mit der AGC analog bei 32 dB, bei App- und RoIP-Clients bei 36 dB (vorher 19,7). Das Gate arbeitet auf dem Pegel nach dem `RxGain` von urfd; der sollte daher nahe 0 bleiben und die AGC den Pegel setzen lassen, ein stark negativer `RxGain` drückt leise FM-Sprache unter das Gate. Ein Squelch-Schwanz ist lauter als jedes Gate: `SQL_TAIL_ELIM` im Empfänger des SvxLink-Knotens entfernt ihn an der Quelle.
 
 ### Überwachung und Protokoll
 
@@ -229,7 +232,7 @@ Die AGC arbeitet pro Stream (pro Aussendung):
 - RMS über ein gleitendes Fenster von 3 Frames (60 ms), folgt also Silben statt einzelnen Lauten
 - ein langsamer Mittelwert (etwa 2 s) der Verstärkung, die jeder Sprecher braucht; in Pausen läuft die Verstärkung dorthin zurück, damit die erste Silbe nach einer Pause gleich richtig kommt
 - schnelleres Anheben in den ersten 5 Frames nach dem Öffnen des Gates
-- ein Noise-Gate bei `AGCNoiseGate`: Es schließt 60 ms, nachdem der Pegel darunter gefallen ist, und blendet die Verstärkung dann um 6 dB pro Frame auf höchstens 1 aus, damit Wortenden erhalten bleiben und Rauschen nicht angehoben wird; bis 6 dB darüber wird nicht hochgeregelt
+- ein Noise-Gate bei `AGCDigitalNoiseGate` / `AGCAnalogNoiseGate`: Es schließt 60 ms, nachdem der Pegel darunter gefallen ist, und blendet die Verstärkung dann um 6 dB pro Frame auf höchstens die Untergrenze aus (`AGCDigitalGateFloor` / `AGCAnalogGateFloor`), damit Wortenden erhalten bleiben und Rauschen nicht angehoben wird; bis 6 dB darüber wird nicht hochgeregelt
 - die Verstärkung läuft als Rampe Sample für Sample durch jeden Frame, statt alle 20 ms zu springen
 - ein Begrenzer knapp unter Vollaussteuerung, der die angewendete Verstärkung sofort kappt, es übersteuert also nie
 
@@ -301,7 +304,7 @@ journalctl -u tcd -f
 - **Ausgangsverstärkung pro Codec**: nach der AGC, für D-Star, M17/Codec2, DMR/YSF, P25/NXDN und USRP, angewendet auf Kopien (der gemeinsame Puffer wird nie verändert)
 - **AMBE2+-Bitstrom-Verstärkung**: `AmbeGainDb` ändert den Parameter b2 im AMBE2+-Frame, mit neu berechnetem Golay(24,12)-FEC für die A-Partition; die B-Partition wird entwürfelt und mit den neuen A-Daten wieder verwürfelt (0.2.3; vorher verlor der Decoder die B-Partition); seit 0.2.5 von der AGC gesteuert und im γ-Bereich gerechnet, die Verstärkung hängt also nicht mehr vom Pegel ab, auch mit nur einem Gerät und dem MD380
 - **AGC v3**: gleitendes RMS-Fenster, Verfolgung pro Sprecher, Gate mit Rücklauf, schnelles Anheben nach dem Gate, ungleiche Grenzen, Noise-Gate, Begrenzer, der die angewendete Verstärkung sofort kappt (0.2.3; vorher clippten laute Einsätze nach leiser Sprache), Änderungen live aus dem Dashboard; seit 0.2.3 threadsicher, da die Dekodier-Threads aller Codecs sie nutzen. Seit 0.2.4 hält das Gate 60 ms nach und blendet aus statt umzuschalten (Wortenden werden nicht mehr abgehackt), Rauschen knapp darüber pumpt die Verstärkung nicht mehr hoch, und die Verstärkung läuft als Rampe durch jeden Frame statt alle 20 ms zu springen
-- **AGC für analoge Quellen** (0.3.0): SVX- und USRP-Eingang haben ein eigenes Gate, eine eigene Grenze für die Verstärkung und eine Verstärkung bei geschlossenem Gate (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), das FM-Rauschen zwischen den Worten wird also abgesenkt statt um bis zu 30 dB angehoben; `UsrpGainIn`/`UsrpGainOut` begrenzen statt überzulaufen; ohne Monitor behält tcd die Werte aus der ini (vorher fiel er nach einer Sekunde auf die eingebauten Standardwerte zurück)
+- **AGC digital und AGC analog** (0.3.0): SVX- und USRP-Eingang haben ein eigenes Gate, eine eigene Grenze für die Verstärkung und eine Verstärkung bei geschlossenem Gate (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), das FM-Rauschen zwischen den Worten wird also abgesenkt statt um bis zu 30 dB angehoben; die übrigen Eingänge nutzen dieselben drei Schlüssel als `AGCDigital…` (0.3.1 hat `AGCNoiseGate` und `AGCMaxGainUp` in `AGCDigitalNoiseGate` und `AGCDigitalMaxGainUp` umbenannt, `AGCDigitalGateFloor` ergänzt, und `agc-analyze` nennt den Schlüssel des Profils des Streams); `UsrpGainIn`/`UsrpGainOut` begrenzen statt überzulaufen; ohne Monitor behält tcd die Werte aus der ini (vorher fiel er nach einer Sekunde auf die eingebauten Standardwerte zurück)
 - **DMR neu kodieren** (`md380=true`): `DmrGainMode = reencode` mit AGC und `DmrReencodeGain` für DMR → DMR/YSF
 - **MD380 pro Stream getrennt**: Kodierer-Zustand pro Stream gesichert, MD380-Aufrufe nacheinander; seit 0.2.7 startet ein neuer Stream mit dem Zustand direkt nach `md380_init()` statt mit dem des vorherigen Streams; seit 0.2.9 bei jeder MD380-Nutzung, auch als primärer DMR-Codec mit nur einem Gerät
 - **Ausgangsverstärkung im Mischbetrieb** (0.2.3): Der D-Star-Kanal des DV3003 nutzt `OutputGainDStar` statt `OutputGainDMR`; M17 mit 1600 bit/s schickt die zweite Hälfte jedes Pakets nicht mehr zweimal durch die AGC; seit 0.2.11 geht ein Modul, das nicht in der Modulliste steht, an keinen DMR-Kanal
@@ -309,7 +312,7 @@ journalctl -u tcd -f
 ### Überwachung und Konfiguration
 - **Web-Dashboard**: eingebauter HTTP/WebSocket-Server mit Signalweg, VU-Metern, Verstärkungs- und AGC-Reglern, Geräte- und MD380-Status, Speichern in die INI
 - **tcdmon**: Monitor im Terminal
-- **Statistik-CSV** mit automatischem Aufräumen und dem Werkzeug `agc-analyze`; seit 0.2.9 meldet es Flackern des Gates als Öffnungen unter 100 ms (Rauschen über der Schwelle, `AGCNoiseGate` anheben), da das Gate seit 0.2.4 vor dem Schließen nachhält
+- **Statistik-CSV** mit automatischem Aufräumen und dem Werkzeug `agc-analyze`; seit 0.2.9 meldet es Flackern des Gates als Öffnungen unter 100 ms (Rauschen über der Schwelle, das Noise-Gate des Profils anheben), da das Gate seit 0.2.4 vor dem Schließen nachhält
 - **Umbenannte Schlüssel**: `DmrGainIn/Out` (war `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (war `UsrpRxGain/TxGain`), Verstärkungen erweitert auf ±40 dB
 
 ### Zuverlässigkeit

@@ -47,9 +47,10 @@
 #define AGCTARGET      "AGCTarget"
 #define AGCATTACK      "AGCAttack"
 #define AGCRELEASE     "AGCRelease"
-#define AGCMAXGAINUP   "AGCMaxGainUp"
 #define AGCMAXGAINDOWN "AGCMaxGainDown"
-#define AGCNOISEGATE   "AGCNoiseGate"
+#define AGCDIGITALGATE  "AGCDigitalNoiseGate"
+#define AGCDIGITALUP    "AGCDigitalMaxGainUp"
+#define AGCDIGITALFLOOR "AGCDigitalGateFloor"
 #define AGCANALOGGATE  "AGCAnalogNoiseGate"
 #define AGCANALOGUP    "AGCAnalogMaxGainUp"
 #define AGCANALOGFLOOR "AGCAnalogGateFloor"
@@ -193,12 +194,14 @@ bool CConfigure::ReadData(const std::string &path)
 			agc_attack = std::stof(value);
 		else if (0 == key.compare(AGCRELEASE))
 			agc_release = std::stof(value);
-		else if (0 == key.compare(AGCMAXGAINUP))
-			agc_maxgain_up = std::stof(value);
 		else if (0 == key.compare(AGCMAXGAINDOWN))
 			agc_maxgain_down = std::stof(value);
-		else if (0 == key.compare(AGCNOISEGATE))
-			agc_noisegate = std::stof(value);
+		else if (0 == key.compare(AGCDIGITALGATE))
+			agc_digital_noisegate = std::stof(value);
+		else if (0 == key.compare(AGCDIGITALUP))
+			agc_digital_maxgain_up = std::stof(value);
+		else if (0 == key.compare(AGCDIGITALFLOOR))
+			agc_digital_gatefloor = std::min(std::stof(value), 0.0f);
 		else if (0 == key.compare(AGCANALOGGATE))
 			agc_analog_noisegate = std::stof(value);
 		else if (0 == key.compare(AGCANALOGUP))
@@ -278,7 +281,8 @@ bool CConfigure::ReadData(const std::string &path)
 	}
 	if (agc_enabled)
 	{
-		std::cout << "AGC = enabled, Target=" << agc_target << "dBFS, Attack=" << agc_attack << "ms, Release=" << agc_release << "ms, Up=+" << agc_maxgain_up << "dB, Down=-" << agc_maxgain_down << "dB, Gate=" << agc_noisegate << "dBFS" << std::endl;
+		std::cout << "AGC = enabled, Target=" << agc_target << "dBFS, Attack=" << agc_attack << "ms, Release=" << agc_release << "ms, Down=-" << agc_maxgain_down << "dB" << std::endl;
+		std::cout << "AGC digital: Up=+" << agc_digital_maxgain_up << "dB, Gate=" << agc_digital_noisegate << "dBFS, GateFloor=" << agc_digital_gatefloor << "dB" << std::endl;
 		std::cout << "AGC analog (SVX/USRP): Up=+" << agc_analog_maxgain_up << "dB, Gate=" << agc_analog_noisegate << "dBFS, GateFloor=" << agc_analog_gatefloor << "dB" << std::endl;
 	}
 	else

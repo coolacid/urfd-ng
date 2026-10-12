@@ -144,8 +144,11 @@ h2 { color: #81d4fa; font-size: 15px; margin: 12px 0 8px; }
       <div class="config-row"><label>Target (dBFS)</label><input type="range" min="-40" max="0" id="agc_target"><span class="val" id="v_agc_target">-16</span></div>
       <div class="config-row"><label>Attack (ms)</label><input type="range" min="5" max="200" id="agc_attack"><span class="val" id="v_agc_attack">50</span></div>
       <div class="config-row"><label>Release (ms)</label><input type="range" min="50" max="2000" id="agc_release"><span class="val" id="v_agc_release">500</span></div>
-      <div class="config-row"><label>Max Gain Up (dB)</label><input type="range" min="1" max="40" id="agc_maxgain_up"><span class="val" id="v_agc_maxgain_up">20</span></div>
       <div class="config-row"><label>Max Gain Down (dB)</label><input type="range" min="1" max="40" id="agc_maxgain_down"><span class="val" id="v_agc_maxgain_down">24</span></div>
+      <h2 style="font-size:13px;margin-top:10px">AGC digital (D-Star, DMR/YSF, M17, P25/NXDN)</h2>
+      <div class="config-row"><label>Noise Gate (dBFS)</label><input type="range" min="-70" max="-20" id="agc_digital_noisegate"><span class="val" id="v_agc_digital_noisegate">-55</span></div>
+      <div class="config-row"><label>Max Gain Up (dB)</label><input type="range" min="0" max="40" id="agc_digital_maxgain_up"><span class="val" id="v_agc_digital_maxgain_up">30</span></div>
+      <div class="config-row"><label>Gate Floor (dB)</label><input type="range" min="-40" max="0" id="agc_digital_gatefloor"><span class="val" id="v_agc_digital_gatefloor">0</span></div>
       <h2 style="font-size:13px;margin-top:10px">AGC analog (SVX, USRP)</h2>
       <div class="config-row"><label>Noise Gate (dBFS)</label><input type="range" min="-70" max="-20" id="agc_analog_noisegate"><span class="val" id="v_agc_analog_noisegate">-40</span></div>
       <div class="config-row"><label>Max Gain Up (dB)</label><input type="range" min="0" max="40" id="agc_analog_maxgain_up"><span class="val" id="v_agc_analog_maxgain_up">12</span></div>
@@ -347,11 +350,10 @@ function loadConfig(cfg) {
   document.getElementById('v_agc_attack').textContent = cfg.agc_attack;
   document.getElementById('agc_release').value = cfg.agc_release;
   document.getElementById('v_agc_release').textContent = cfg.agc_release;
-  document.getElementById('agc_maxgain_up').value = cfg.agc_maxgain_up;
-  document.getElementById('v_agc_maxgain_up').textContent = cfg.agc_maxgain_up;
   document.getElementById('agc_maxgain_down').value = cfg.agc_maxgain_down;
   document.getElementById('v_agc_maxgain_down').textContent = cfg.agc_maxgain_down;
-  ['agc_analog_noisegate','agc_analog_maxgain_up','agc_analog_gatefloor'].forEach(k => {
+  ['agc_digital_noisegate','agc_digital_maxgain_up','agc_digital_gatefloor',
+   'agc_analog_noisegate','agc_analog_maxgain_up','agc_analog_gatefloor'].forEach(k => {
     if (cfg[k] === undefined) return;
     document.getElementById(k).value = cfg[k];
     document.getElementById('v_' + k).textContent = cfg[k];
@@ -380,7 +382,8 @@ outgainKeys.forEach(k => {
 });
 
 // Send AGC changes
-['agc_target','agc_attack','agc_release','agc_maxgain_up','agc_maxgain_down',
+['agc_target','agc_attack','agc_release','agc_maxgain_down',
+ 'agc_digital_noisegate','agc_digital_maxgain_up','agc_digital_gatefloor',
  'agc_analog_noisegate','agc_analog_maxgain_up','agc_analog_gatefloor'].forEach(k => {
   const el = document.getElementById(k);
   if (!el) return;

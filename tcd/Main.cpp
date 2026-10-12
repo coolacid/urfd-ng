@@ -61,9 +61,10 @@ int main(int argc, char *argv[])
 	g_Stats.config.agc_target.store(g_Conf.GetAGCTarget());
 	g_Stats.config.agc_attack.store(g_Conf.GetAGCAttack());
 	g_Stats.config.agc_release.store(g_Conf.GetAGCRelease());
-	g_Stats.config.agc_maxgain_up.store(g_Conf.GetAGCMaxGainUp());
 	g_Stats.config.agc_maxgain_down.store(g_Conf.GetAGCMaxGainDown());
-	g_Stats.config.agc_noisegate.store(g_Conf.GetAGCNoiseGate());
+	g_Stats.config.agc_digital_noisegate.store(g_Conf.GetAGCDigitalNoiseGate());
+	g_Stats.config.agc_digital_maxgain_up.store(g_Conf.GetAGCDigitalMaxGainUp());
+	g_Stats.config.agc_digital_gatefloor.store(g_Conf.GetAGCDigitalGateFloor());
 	g_Stats.config.agc_analog_noisegate.store(g_Conf.GetAGCAnalogNoiseGate());
 	g_Stats.config.agc_analog_maxgain_up.store(g_Conf.GetAGCAnalogMaxGainUp());
 	g_Stats.config.agc_analog_gatefloor.store(g_Conf.GetAGCAnalogGateFloor());

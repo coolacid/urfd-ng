@@ -123,6 +123,16 @@ def analyze_file(path):
     return result
 
 
+def profile(r):
+    """AGC profile of a stream: SVX and USRP carry analog FM audio"""
+    return "Analog" if r["codec"].lower() in ("svx", "usrp") else "Digital"
+
+
+def keys(rows, setting):
+    """the ini key(s) of a per-profile setting for these streams"""
+    return " / ".join(f"AGC{p}{setting}" for p in sorted({profile(r) for r in rows}))
+
+
 def diagnose(r):
     """Return list of diagnostic messages with severity (info/warn/fix)."""
     if r["speech_frames"] == 0:
@@ -144,7 +154,7 @@ def diagnose(r):
         msgs.append(("fix",
             f"Output {abs(dev):.0f}dB too quiet, AGC at ceiling {ceil_pct:.0f}% of the time. "
             f"Input needs {needed:.0f}dB total gain. "
-            f"-> Increase AGCMaxGainUp to {needed + 3:.0f} (currently max {gmax:.0f}dB)"))
+            f"-> Increase AGC{profile(r)}MaxGainUp to {needed + 3:.0f} (currently max {gmax:.0f}dB)"))
 
     # Case 2: Output too quiet but gain NOT at ceiling — target too low or release too slow
     elif dev < -4 and ceil_pct < 10:
@@ -181,7 +191,7 @@ def diagnose(r):
     if dur > 5 and gshort / dur > 0.5:
         msgs.append(("fix",
             f"Noise opens the gate: {gshort} openings under 100 ms in {dur:.0f}s ({gshort/dur:.1f}/s). "
-            f"-> Raise AGCNoiseGate by about 3 dB"))
+            f"-> Raise AGC{profile(r)}NoiseGate by about 3 dB"))
     elif dur > 5 and gshort / dur > 0.2:
         msgs.append(("warn",
             f"Some short gate openings: {gshort} under 100 ms in {dur:.0f}s"))
@@ -287,13 +297,13 @@ def print_summary(results):
                 f"{len(ceiling_streams)}/{n} streams hit gain ceiling (>30% of speech). "
                 f"Quietest input needs {max_needed:.0f}dB total gain, but >30dB amplifies noise. "
                 f"These are likely sender-side mic gain problems.",
-                f"-> Set AGCMaxGainUp = {recommended:.0f} (practical limit, won't fix extremely quiet input)"
+                f"-> Set {keys(ceiling_streams, 'MaxGainUp')} = {recommended:.0f} (practical limit, won't fix extremely quiet input)"
             ))
         else:
             issues.append((
                 f"{len(ceiling_streams)}/{n} streams hit gain ceiling (>30% of speech). "
                 f"Quietest input needs {max_needed:.0f}dB total gain.",
-                f"-> Set AGCMaxGainUp = {recommended:.0f}"
+                f"-> Set {keys(ceiling_streams, 'MaxGainUp')} = {recommended:.0f}"
             ))
 
     # Check if output is systematically off-target without ceiling
@@ -321,7 +331,7 @@ def print_summary(results):
     if flickery:
         issues.append((
             f"{len(flickery)}/{n} streams have noise opening the gate (openings under 100 ms).",
-            f"-> Raise AGCNoiseGate by about 3 dB"
+            f"-> Raise {keys(flickery, 'NoiseGate')} by about 3 dB"
         ))
 
     # Check pumping

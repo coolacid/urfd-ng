@@ -149,9 +149,10 @@ std::string CMonitorServer::BuildStatsJson()
 	   << ",\"agc_target\":" << g_Stats.config.agc_target.load()
 	   << ",\"agc_attack\":" << g_Stats.config.agc_attack.load()
 	   << ",\"agc_release\":" << g_Stats.config.agc_release.load()
-	   << ",\"agc_maxgain_up\":" << g_Stats.config.agc_maxgain_up.load()
 	   << ",\"agc_maxgain_down\":" << g_Stats.config.agc_maxgain_down.load()
-	   << ",\"agc_noisegate\":" << g_Stats.config.agc_noisegate.load()
+	   << ",\"agc_digital_noisegate\":" << g_Stats.config.agc_digital_noisegate.load()
+	   << ",\"agc_digital_maxgain_up\":" << g_Stats.config.agc_digital_maxgain_up.load()
+	   << ",\"agc_digital_gatefloor\":" << g_Stats.config.agc_digital_gatefloor.load()
 	   << ",\"agc_analog_noisegate\":" << g_Stats.config.agc_analog_noisegate.load()
 	   << ",\"agc_analog_maxgain_up\":" << g_Stats.config.agc_analog_maxgain_up.load()
 	   << ",\"agc_analog_gatefloor\":" << g_Stats.config.agc_analog_gatefloor.load()
@@ -262,14 +263,16 @@ void CMonitorServer::HandleRest(struct mg_connection *c, struct mg_http_message 
 			g_Stats.config.agc_attack.store(attack);
 		if (json_get_float(hm->body.buf, hm->body.len, "release", release))
 			g_Stats.config.agc_release.store(release);
-		float maxgain_up, maxgain_down;
-		if (json_get_float(hm->body.buf, hm->body.len, "maxgain_up", maxgain_up))
-			g_Stats.config.agc_maxgain_up.store(maxgain_up);
+		float maxgain_down;
 		if (json_get_float(hm->body.buf, hm->body.len, "maxgain_down", maxgain_down))
 			g_Stats.config.agc_maxgain_down.store(maxgain_down);
-		float noisegate;
-		if (json_get_float(hm->body.buf, hm->body.len, "noisegate", noisegate))
-			g_Stats.config.agc_noisegate.store(noisegate);
+		float digital;
+		if (json_get_float(hm->body.buf, hm->body.len, "digital_noisegate", digital))
+			g_Stats.config.agc_digital_noisegate.store(digital);
+		if (json_get_float(hm->body.buf, hm->body.len, "digital_maxgain_up", digital))
+			g_Stats.config.agc_digital_maxgain_up.store(digital);
+		if (json_get_float(hm->body.buf, hm->body.len, "digital_gatefloor", digital))
+			g_Stats.config.agc_digital_gatefloor.store(std::min(digital, 0.0f));
 		float analog;
 		if (json_get_float(hm->body.buf, hm->body.len, "analog_noisegate", analog))
 			g_Stats.config.agc_analog_noisegate.store(analog);
@@ -465,10 +468,13 @@ bool CMonitorServer::SaveConfig(const std::string &ini_path)
 	std::ifstream in(ini_path);
 	if (!in.is_open()) return false;
 
-	// keys of the analog AGC: replaced where they stand, else written after
-	// AGCNoiseGate (or at the end), so an older ini gets them on the first save
+	// keys of AGC digital and AGC analog: replaced where they stand, else written
+	// after AGCMaxGainDown (or at the end), so an ini without them gets them
 	struct SKey { const char *key; float value; bool present; bool written; };
-	std::vector<SKey> analog = {
+	std::vector<SKey> profile = {
+		{ "AGCDigitalNoiseGate", g_Stats.config.agc_digital_noisegate.load(), false, false },
+		{ "AGCDigitalMaxGainUp", g_Stats.config.agc_digital_maxgain_up.load(), false, false },
+		{ "AGCDigitalGateFloor", g_Stats.config.agc_digital_gatefloor.load(), false, false },
 		{ "AGCAnalogNoiseGate", g_Stats.config.agc_analog_noisegate.load(), false, false },
 		{ "AGCAnalogMaxGainUp", g_Stats.config.agc_analog_maxgain_up.load(), false, false },
 		{ "AGCAnalogGateFloor", g_Stats.config.agc_analog_gatefloor.load(), false, false },
@@ -480,7 +486,7 @@ bool CMonitorServer::SaveConfig(const std::string &ini_path)
 			if (l.empty() || l[0] == '#') continue;
 			std::string k = l.substr(0, l.find('='));
 			while (!k.empty() && k.back() == ' ') k.pop_back();
-			for (auto &a : analog)
+			for (auto &a : profile)
 				if (k == a.key) a.present = true;
 		}
 		in.clear();
@@ -521,18 +527,16 @@ bool CMonitorServer::SaveConfig(const std::string &ini_path)
 				if (key == "AGCTarget")         { out << key << " = " << g_Stats.config.agc_target.load() << "\n"; continue; }
 				if (key == "AGCAttack")         { out << key << " = " << g_Stats.config.agc_attack.load() << "\n"; continue; }
 				if (key == "AGCRelease")        { out << key << " = " << g_Stats.config.agc_release.load() << "\n"; continue; }
-				if (key == "AGCMaxGainUp")     { out << key << " = " << g_Stats.config.agc_maxgain_up.load() << "\n"; continue; }
-				if (key == "AGCMaxGainDown")   { out << key << " = " << g_Stats.config.agc_maxgain_down.load() << "\n"; continue; }
-				if (key == "AGCNoiseGate")
+				if (key == "AGCMaxGainDown")
 				{
-					out << key << " = " << g_Stats.config.agc_noisegate.load() << "\n";
-					// the analog settings follow it when the ini doesn't have them yet
-					for (auto &a : analog)
+					out << key << " = " << g_Stats.config.agc_maxgain_down.load() << "\n";
+					// the per-profile settings follow it when the ini doesn't have them yet
+					for (auto &a : profile)
 						if (!a.present && !a.written) { out << a.key << " = " << a.value << "\n"; a.written = true; }
 					continue;
 				}
 				bool done = false;
-				for (auto &a : analog)
+				for (auto &a : profile)
 					if (key == a.key) { out << key << " = " << a.value << "\n"; a.written = true; done = true; }
 				if (done) continue;
 				}
@@ -540,7 +544,7 @@ bool CMonitorServer::SaveConfig(const std::string &ini_path)
 		out << line << "\n";
 	}
 	in.close();
-	for (auto &a : analog)
+	for (auto &a : profile)
 		if (!a.written) out << a.key << " = " << a.value << "\n";
 
 	std::ofstream of(ini_path);

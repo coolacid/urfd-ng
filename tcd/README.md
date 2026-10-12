@@ -178,14 +178,17 @@ How `ambe` works: the decoder computes γ = Δγ[b2] + 0.5·γ<sub>prev</sub>, a
 | `AGCTarget` | `-16` | `-16` | target level in dBFS |
 | `AGCAttack` | `50` | `50` | ms to bring loud audio down |
 | `AGCRelease` | `500` | `500` | ms to bring quiet audio up |
-| `AGCMaxGainUp` | `30` | `30` | most amplification in dB |
 | `AGCMaxGainDown` | `24` | `24` | most attenuation in dB |
-| `AGCNoiseGate` | `-55` | `-55` | gate threshold in dBFS: the gate closes 60 ms after the level fell below it and fades the gain to at most unity; within 6 dB above it the gain is not raised. Set it above the noise floor of the sources |
-| `AGCAnalogNoiseGate` | `-40` | `-40` | gate threshold for SVX and USRP input |
-| `AGCAnalogMaxGainUp` | `12` | `12` | most amplification for SVX and USRP input |
-| `AGCAnalogGateFloor` | `-12` | `-12` | gain for SVX and USRP input while the gate is closed, in dB (0 = unity, as for digital sources) |
 
-**Analog sources (SVX, USRP)** carry FM audio, whose pauses are not silent but the receiver's noise floor, often -45 to -35 dBFS. With the settings for digital sources the gate never closes on it, and the AGC raised the noise between words by up to 30 dB: on a good FM signal (noise at -45 dBFS, speech at -28 dBFS) the speech-to-noise distance fell from 17 to 11 dB. SVX and USRP therefore have their own gate, gain limit and gate floor; target, attack, release and `AGCMaxGainDown` are shared. With the defaults the distance rises to 25 dB in the same case, and noisier signals are no longer made worse (measured by simulation through `AGC.h`). The gate works on the level after urfd's `RxGain`, so keep that near 0 and let the AGC set the level; a strongly negative `RxGain` puts quiet FM speech below the gate. A squelch tail is louder than any gate: `SQL_TAIL_ELIM` in the SvxLink node's receiver removes it at the source.
+Gate and gain limit come in two profiles: **AGC digital** for D-Star, DMR/YSF, M17 and P25/NXDN input, **AGC analog** for SVX and USRP input.
+
+| Key | Template | Code default | Meaning |
+|---|---|---|---|
+| `AGCDigitalNoiseGate` / `AGCAnalogNoiseGate` | `-55` / `-40` | `-55` / `-40` | gate threshold in dBFS: the gate closes 60 ms after the level fell below it and fades the gain to the gate floor; within 6 dB above it the gain is not raised. Set it above the noise floor of the sources |
+| `AGCDigitalMaxGainUp` / `AGCAnalogMaxGainUp` | `30` / `12` | `30` / `12` | most amplification in dB |
+| `AGCDigitalGateFloor` / `AGCAnalogGateFloor` | `0` / `-12` | `0` / `-12` | gain while the gate is closed, in dB (0 = unity, at most) |
+
+**Analog sources (SVX, USRP)** carry FM audio, whose pauses are not silent but the receiver's noise floor, often -45 to -35 dBFS. With the settings for digital sources the gate never closes on it, and the AGC raised the noise between words by up to 30 dB: on a good FM signal (noise at -45 dBFS, speech at -28 dBFS) the speech-to-noise distance fell from 17 to 11 dB. SVX and USRP therefore go through AGC analog with its own gate, gain limit and gate floor; target, attack, release and `AGCMaxGainDown` are shared. With the defaults the distance rises to 25 dB in the same case, and noisier signals are no longer made worse (simulation through `AGC.h`). 20 minutes of FM-Funknetz traffic recorded at an SvxLink node confirm it: on RF the distance fell from 34 to 19 dB with AGC digital and stays at 32 dB with AGC analog, for app and RoIP clients at 36 dB (19.7 before). The gate works on the level after urfd's `RxGain`, so keep that near 0 and let the AGC set the level; a strongly negative `RxGain` puts quiet FM speech below the gate. A squelch tail is louder than any gate: `SQL_TAIL_ELIM` in the SvxLink node's receiver removes it at the source.
 
 ### Monitoring and logging
 
@@ -229,7 +232,7 @@ The AGC works per stream (per transmission):
 - RMS over a sliding window of 3 frames (60 ms), following syllables rather than single sounds
 - a slow average (about 2 s) of the gain each speaker needs; in pauses the gain drifts towards it, so the first syllable after a pause starts at the right level
 - faster release for the first 5 frames after the gate opens
-- a noise gate at `AGCNoiseGate`: it closes 60 ms after the level fell below it and then fades the gain by 6 dB per frame to at most unity, so word endings stay and noise is not amplified; within 6 dB above it the gain is not raised
+- a noise gate at `AGCDigitalNoiseGate` / `AGCAnalogNoiseGate`: it closes 60 ms after the level fell below it and then fades the gain by 6 dB per frame to at most the gate floor (`AGCDigitalGateFloor` / `AGCAnalogGateFloor`), so word endings stay and noise is not amplified; within 6 dB above it the gain is not raised
 - the gain ramps sample by sample across each frame instead of stepping every 20 ms
 - a peak limiter just below full scale that cuts the applied gain at once, so it never clips
 
@@ -301,7 +304,7 @@ journalctl -u tcd -f
 - **Output gains per codec**: after the AGC, for D-Star, M17/Codec2, DMR/YSF, P25/NXDN and USRP, applied on copies (the shared buffer is never changed)
 - **AMBE2+ bitstream gain**: `AmbeGainDb` adjusts the b2 parameter in the AMBE2+ frame, with Golay(24,12) FEC recomputed for the A partition and the B partition unscrambled and scrambled again with the new A data (0.2.3; before, the decoder lost the B partition); since 0.2.5 driven by the AGC and computed in the gamma domain, so the gain no longer depends on the level, also with a single device and the MD380
 - **AGC v3**: sliding RMS window, per-speaker tracking, gate with decay, fast release after the gate, asymmetric limits, noise gate, peak limiter that cuts the applied gain at once (0.2.3; before, loud onsets after quiet speech clipped), live changes from the dashboard; thread safe since 0.2.3, as every codec's decode thread uses it. Since 0.2.4 the gate holds 60 ms and fades out instead of switching (word endings are no longer chopped), noise just above it no longer pumps the gain up, and the gain ramps across each frame instead of stepping every 20 ms
-- **AGC for analog sources** (0.3.0): SVX and USRP input have their own gate, gain limit and gain while the gate is closed (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), so the FM noise between words is lowered instead of raised by up to 30 dB; `UsrpGainIn`/`UsrpGainOut` clip instead of wrapping around; without the monitor tcd keeps the ini settings (before, it fell back to the built-in defaults after a second)
+- **AGC digital and AGC analog** (0.3.0): SVX and USRP input have their own gate, gain limit and gain while the gate is closed (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), so the FM noise between words is lowered instead of raised by up to 30 dB; the other inputs use the same three keys as `AGCDigital…` (0.3.1 renamed `AGCNoiseGate` and `AGCMaxGainUp` to `AGCDigitalNoiseGate` and `AGCDigitalMaxGainUp`, added `AGCDigitalGateFloor`, and `agc-analyze` names the key of the stream's profile); `UsrpGainIn`/`UsrpGainOut` clip instead of wrapping around; without the monitor tcd keeps the ini settings (before, it fell back to the built-in defaults after a second)
 - **DMR re-encode** (`md380=true`): `DmrGainMode = reencode` with AGC and `DmrReencodeGain` on DMR → DMR/YSF
 - **MD380 stream isolation**: encoder state saved per stream, MD380 calls serialized; since 0.2.7 a new stream starts from the state right after `md380_init()` instead of the previous stream's; since 0.2.9 for every MD380 use, also the primary DMR codec of a single device setup
 - **Mixed mode output gains** (0.2.3): the DV3003's D-Star channel uses `OutputGainDStar`, not `OutputGainDMR`; M17 at 1600 bit/s no longer runs the second half of each packet through the AGC twice; since 0.2.11 a module missing from the module list is not sent to a DMR channel
@@ -309,7 +312,7 @@ journalctl -u tcd -f
 ### Monitoring and configuration
 - **Web dashboard**: embedded HTTP/WebSocket server with signal flow, VU meters, gain and AGC controls, device and MD380 status, save to INI
 - **tcdmon**: terminal monitor
-- **Stats CSV** with automatic cleanup and the `agc-analyze` tool; since 0.2.9 it reports gate flicker as openings under 100 ms (noise crossing the threshold, raise `AGCNoiseGate`), as the gate holds before it closes since 0.2.4
+- **Stats CSV** with automatic cleanup and the `agc-analyze` tool; since 0.2.9 it reports gate flicker as openings under 100 ms (noise crossing the threshold, raise the profile's noise gate), as the gate holds before it closes since 0.2.4
 - **Renamed keys**: `DmrGainIn/Out` (was `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (was `UsrpRxGain/TxGain`), gains extended to ±40 dB
 
 ### Reliability

@@ -266,7 +266,7 @@ bool CController::Start()
 	outgain_usrp_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_usrp));
 	outgain_imbe_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_imbe));
 	outgain_m17_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_m17));
-	m_agc.Configure(g_Conf.GetAGCEnabled(), g_Conf.GetAGCTarget(), g_Conf.GetAGCAttack(), g_Conf.GetAGCRelease(), g_Conf.GetAGCMaxGainUp(), g_Conf.GetAGCMaxGainDown(), g_Conf.GetAGCNoiseGate());
+	m_agcDigital.Configure(g_Conf.GetAGCEnabled(), g_Conf.GetAGCTarget(), g_Conf.GetAGCAttack(), g_Conf.GetAGCRelease(), g_Conf.GetAGCDigitalMaxGainUp(), g_Conf.GetAGCMaxGainDown(), g_Conf.GetAGCDigitalNoiseGate(), g_Conf.GetAGCDigitalGateFloor());
 	m_agcAnalog.Configure(g_Conf.GetAGCEnabled(), g_Conf.GetAGCTarget(), g_Conf.GetAGCAttack(), g_Conf.GetAGCRelease(), g_Conf.GetAGCAnalogMaxGainUp(), g_Conf.GetAGCMaxGainDown(), g_Conf.GetAGCAnalogNoiseGate(), g_Conf.GetAGCAnalogGateFloor());
 
 	if (InitVocoders() || tcClient.Open(g_Conf.GetAddress(), g_Conf.GetTCMods(), g_Conf.GetPort()))
@@ -288,14 +288,15 @@ bool CController::Start()
 
 void CController::ReconfigureAGC()
 {
-	m_agc.Configure(
+	m_agcDigital.Configure(
 		g_Stats.config.agc_enabled.load(),
 		g_Stats.config.agc_target.load(),
 		g_Stats.config.agc_attack.load(),
 		g_Stats.config.agc_release.load(),
-		g_Stats.config.agc_maxgain_up.load(),
+		g_Stats.config.agc_digital_maxgain_up.load(),
 		g_Stats.config.agc_maxgain_down.load(),
-		g_Stats.config.agc_noisegate.load()
+		g_Stats.config.agc_digital_noisegate.load(),
+		g_Stats.config.agc_digital_gatefloor.load()
 	);
 	m_agcAnalog.Configure(
 		g_Stats.config.agc_enabled.load(),
@@ -677,7 +678,7 @@ void CController::ReadReflectorThread()
 					g_Stats.md380.active_module.store(' ', std::memory_order_relaxed);
 				g_Stats.md380.reencode_active.store(
 					(g_Stats.config.dmr_gain_mode.load(std::memory_order_relaxed) == 2) &&
-					(m_agc.IsEnabled() || outgain_dmr_num != 256 || dmr_reencode_num != 256),
+					(m_agcDigital.IsEnabled() || outgain_dmr_num != 256 || dmr_reencode_num != 256),
 					std::memory_order_relaxed);
 				g_Stats.md380.cached_streams.store((int)md380_state_cache.size(), std::memory_order_relaxed);
 #endif
@@ -808,7 +809,7 @@ void CController::Codec2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 			memcpy(tmp, audio_store[packet->GetModule()], sizeof(tmp));
 			g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 			float agc_db; bool agc_gate;
-			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+			m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
 		}
@@ -818,7 +819,7 @@ void CController::Codec2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 			c2_32[packet->GetModule()]->codec2_decode(tmp, packet->GetM17Data()+8);
 			g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 			float agc_db; bool agc_gate;
-			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+			m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
 		}
@@ -832,7 +833,7 @@ void CController::Codec2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 			c2_16[m]->codec2_decode(tmp, packet->GetM17Data());
 			g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 			float agc_db; bool agc_gate;
-			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+			m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
 			// the second half goes through the AGC with the second packet
@@ -844,7 +845,7 @@ void CController::Codec2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 			c2_32[m]->codec2_decode(tmp, packet->GetM17Data());
 			g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 			float agc_db; bool agc_gate;
-			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+			m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
 		}
@@ -991,7 +992,7 @@ void CController::SWAMBE2toAudio(std::shared_ptr<CTranscoderPacket> packet)
 	float agc_db = 0.0f;
 	{
 		bool agc_gate;
-		m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+		m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 		g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 	}
 	packet->SetAudioSamples(tmp, false);
@@ -1082,7 +1083,7 @@ void CController::IMBEtoAudio(std::shared_ptr<CTranscoderPacket> packet)
 	g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 	{
 		float agc_db; bool agc_gate;
-		m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+		m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 		g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 	}
 	packet->SetAudioSamples(tmp, false);
@@ -1323,12 +1324,12 @@ void CController::RouteDstPacket(std::shared_ptr<CTranscoderPacket> packet)
 	{
 		// codec_in is dstar, the audio has just completed — apply AGC before encoding
 		g_Stats.UpdateLevelsIn(packet->GetModule(), packet->GetAudioSamples(), 160);
-		if (m_agc.IsEnabled())
+		if (m_agcDigital.IsEnabled())
 		{
 			int16_t tmp[160];
 			float agc_db; bool agc_gate;
 			memcpy(tmp, packet->GetAudioSamples(), sizeof(tmp));
-			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+			m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
 			g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 		}
@@ -1378,12 +1379,12 @@ void CController::RouteDmrPacket(std::shared_ptr<CTranscoderPacket> packet)
 		// codec_in is dmr (hardware decode), apply AGC before encoding
 		g_Stats.UpdateLevelsIn(packet->GetModule(), packet->GetAudioSamples(), 160);
 		float agc_db = 0.0f;
-		if (m_agc.IsEnabled())
+		if (m_agcDigital.IsEnabled())
 		{
 			int16_t tmp[160];
 			bool agc_gate;
 			memcpy(tmp, packet->GetAudioSamples(), sizeof(tmp));
-			m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+			m_agcDigital.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 			packet->SetAudioSamples(tmp, false);
 			g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 		}
@@ -1403,7 +1404,7 @@ void CController::RouteDmrPacket(std::shared_ptr<CTranscoderPacket> packet)
 		// original (un-gained) AMBE data passes through unchanged
 #ifdef WITH_MD380_VOCODER
 		if ((g_Stats.config.dmr_gain_mode.load(std::memory_order_relaxed) == 2) &&
-		    (m_agc.IsEnabled() || outgain_dmr_num != 256 || dmr_reencode_num != 256))
+		    (m_agcDigital.IsEnabled() || outgain_dmr_num != 256 || dmr_reencode_num != 256))
 		{
 			uint8_t ambe2[9];
 			const int16_t *pcm = packet->GetAudioSamples();

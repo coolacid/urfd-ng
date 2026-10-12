@@ -91,9 +91,10 @@ public:
 		std::atomic<float> agc_target{-16.0f};
 		std::atomic<float> agc_attack{50.0f};
 		std::atomic<float> agc_release{500.0f};
-		std::atomic<float> agc_maxgain_up{20.0f};
 		std::atomic<float> agc_maxgain_down{24.0f};
-		std::atomic<float> agc_noisegate{-55.0f};
+		std::atomic<float> agc_digital_noisegate{-55.0f};
+		std::atomic<float> agc_digital_maxgain_up{30.0f};
+		std::atomic<float> agc_digital_gatefloor{0.0f};
 		std::atomic<float> agc_analog_noisegate{-40.0f};
 		std::atomic<float> agc_analog_maxgain_up{12.0f};
 		std::atomic<float> agc_analog_gatefloor{-12.0f};
