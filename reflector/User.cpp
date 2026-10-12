@@ -21,6 +21,7 @@
 #include <sstream>
 #include <iomanip>
 #include "User.h"
+#include "Utils.h"
 
 CUser::CUser()
 {
@@ -83,10 +84,10 @@ bool CUser::operator <(const CUser &user) const
 void CUser::WriteXml(std::ofstream &xmlFile)
 {
 	xmlFile << "<STATION>" << std::endl;
-	xmlFile << "\t<Callsign>" << m_My << "</Callsign>" << std::endl;
-	xmlFile << "\t<Via node>" << m_Rpt1 << "</Via node>" << std::endl;
-	xmlFile << "\t<On module>" << m_Rpt2.GetCSModule() << "</On module>" << std::endl;
-	xmlFile << "\t<Via peer>" << m_Xlx << "</Via peer>" << std::endl;
+	xmlFile << "\t<Callsign>" << CUtils::XmlEscape(m_My.GetLogString()) << "</Callsign>" << std::endl;
+	xmlFile << "\t<Via node>" << CUtils::XmlEscape(m_Rpt1.GetLogString()) << "</Via node>" << std::endl;
+	xmlFile << "\t<On module>" << CUtils::XmlEscape(std::string(1, m_Rpt2.GetCSModule())) << "</On module>" << std::endl;
+	xmlFile << "\t<Via peer>" << CUtils::XmlEscape(m_Xlx.GetLogString()) << "</Via peer>" << std::endl;
 	if (!m_Protocol.empty())
 		xmlFile << "\t<Protocol>" << m_Protocol << "</Protocol>" << std::endl;
 	if (!m_Locator.empty())

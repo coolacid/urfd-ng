@@ -16,24 +16,9 @@
 #include "CallingHome.h"
 #include "CurlGet.h"
 #include "Global.h"
+#include "Utils.h"
 
 #define CALLINGHOME_SERVER   "http://xlxapi.rlx.lu/api.php"
-
-static std::string XmlEscape(const std::string &in)
-{
-	std::string out;
-	for (const char c : in)
-	{
-		switch (c)
-		{
-			case '&': out += "&amp;"; break;
-			case '<': out += "&lt;"; break;
-			case '>': out += "&gt;"; break;
-			default:  out += c; break;
-		}
-	}
-	return out;
-}
 
 void CCallingHome::Start(void)
 {
@@ -195,10 +180,10 @@ std::string CCallingHome::BuildXml(void) const
 	    << "   <name>" << m_Name << "</name>\n"
 	    << "   <uptime>" << uptime << "</uptime>\n"
 	    << "   <hash>" << m_Hash << "</hash>\n"
-	    << "   <url>" << XmlEscape(m_Url) << "</url>\n"
-	    << "   <country>" << XmlEscape(m_Country) << "</country>\n"
-	    << "   <comment>" << XmlEscape(m_Comment) << "</comment>\n"
-	    << "   <ip>" << XmlEscape(m_OverrideIP) << "</ip>\n"
+	    << "   <url>" << CUtils::XmlEscape(m_Url) << "</url>\n"
+	    << "   <country>" << CUtils::XmlEscape(m_Country) << "</country>\n"
+	    << "   <comment>" << CUtils::XmlEscape(m_Comment) << "</comment>\n"
+	    << "   <ip>" << CUtils::XmlEscape(m_OverrideIP) << "</ip>\n"
 	    << "   <reflectorversion>" << version.str() << "</reflectorversion>\n"
 	    << "</reflector>\n<interlinks>";
 
@@ -213,7 +198,7 @@ std::string CCallingHome::BuildXml(void) const
 #endif
 			address = it->second.GetIp().GetAddress();
 		xml << "\n   <interlink>\n"
-		    << "      <name>" << XmlEscape(it->first) << "</name>\n"
+		    << "      <name>" << CUtils::XmlEscape(it->first) << "</name>\n"
 		    << "      <address>" << address << "</address>\n"
 		    << "      <modules>" << it->second.GetModules() << "</modules>\n"
 		    << "   </interlink>";

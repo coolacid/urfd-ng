@@ -20,6 +20,7 @@
 #include <string.h>
 #include "Reflector.h"
 #include "Peer.h"
+#include "Utils.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -109,7 +110,7 @@ void CPeer::Alive(void)
 void CPeer::WriteXml(std::ofstream &xmlFile)
 {
 	xmlFile << "<PEER>" << std::endl;
-	xmlFile << "\t<Callsign>" << m_Callsign << "</Callsign>" << std::endl;
+	xmlFile << "\t<Callsign>" << CUtils::XmlEscape(m_Callsign.GetLogString()) << "</Callsign>" << std::endl;
 	xmlFile << "\t<IP>" << m_Ip.GetAddress() << "</IP>" << std::endl;
 	xmlFile << "\t<LinkedModule>" << m_ReflectorModules << "</LinkedModule>" << std::endl;
 	xmlFile << "\t<Protocol>" << GetProtocolName() << "</Protocol>" << std::endl;

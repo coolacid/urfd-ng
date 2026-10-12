@@ -12,8 +12,8 @@ if ($Reflector->GetXMLContent() !== null) {
     if ($modulesBlock) {
         $tmpModules = $XML->GetAllElements($modulesBlock, 'Module');
         for ($i = 0; $i < count($tmpModules); $i++) {
-            $name = trim($XML->GetElement($tmpModules[$i], 'Name'));
-            $desc = trim($XML->GetElement($tmpModules[$i], 'Description'));
+            $name = trim($XML->GetText($tmpModules[$i], 'Name'));
+            $desc = trim($XML->GetText($tmpModules[$i], 'Description'));
             if ($name != '') $ModuleNames[$name] = $desc;
         }
     }

@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "Global.h"
+#include "Utils.h"
 #include "DMRMMDVMProtocol.h"
 #include "MMDVMClientProtocol.h"
 #include "SvxReflectorProtocol.h"
@@ -717,15 +718,15 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 
 	// reflector metadata
 	xmlFile << "<Reflector>" << std::endl;
-	xmlFile << "\t<Callsign>" << g_Configure.GetString(g_Keys.names.callsign) << "</Callsign>" << std::endl;
+	xmlFile << "\t<Callsign>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.names.callsign)) << "</Callsign>" << std::endl;
 	if (g_Configure.Contains(g_Keys.names.country))
-		xmlFile << "\t<Country>" << g_Configure.GetString(g_Keys.names.country) << "</Country>" << std::endl;
+		xmlFile << "\t<Country>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.names.country)) << "</Country>" << std::endl;
 	if (g_Configure.Contains(g_Keys.names.sponsor))
-		xmlFile << "\t<Sponsor>" << g_Configure.GetString(g_Keys.names.sponsor) << "</Sponsor>" << std::endl;
+		xmlFile << "\t<Sponsor>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.names.sponsor)) << "</Sponsor>" << std::endl;
 	if (g_Configure.Contains(g_Keys.names.url))
-		xmlFile << "\t<DashboardURL>" << g_Configure.GetString(g_Keys.names.url) << "</DashboardURL>" << std::endl;
+		xmlFile << "\t<DashboardURL>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.names.url)) << "</DashboardURL>" << std::endl;
 	if (g_Configure.Contains(g_Keys.names.email))
-		xmlFile << "\t<Email>" << g_Configure.GetString(g_Keys.names.email) << "</Email>" << std::endl;
+		xmlFile << "\t<Email>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.names.email)) << "</Email>" << std::endl;
 	xmlFile << "</Reflector>" << std::endl;
 
 	// configured modules
@@ -738,7 +739,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 		xmlFile << "\t<Name>" << m << "</Name>" << std::endl;
 		auto descKey = g_Keys.modules.descriptor[m - 'A'];
 		if (g_Configure.Contains(descKey))
-			xmlFile << "\t<Description>" << g_Configure.GetString(descKey) << "</Description>" << std::endl;
+			xmlFile << "\t<Description>" << CUtils::XmlEscape(g_Configure.GetString(descKey)) << "</Description>" << std::endl;
 		// auto-set Echo description
 		if (g_Configure.Contains(g_Keys.echo.module) && g_Configure.GetString(g_Keys.echo.module)[0] == m)
 			xmlFile << "\t<Echo>true</Echo>" << std::endl;
@@ -780,7 +781,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 			if (g_Configure.Contains(g_Keys.ysf.ysfreflectordb.id))
 				xmlFile << "<ID>" << g_Configure.GetUnsigned(g_Keys.ysf.ysfreflectordb.id) << "</ID>";
 			if (g_Configure.Contains(g_Keys.ysf.ysfreflectordb.name))
-				xmlFile << "<RemoteName>" << g_Configure.GetString(g_Keys.ysf.ysfreflectordb.name) << "</RemoteName>";
+				xmlFile << "<RemoteName>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.ysf.ysfreflectordb.name)) << "</RemoteName>";
 			xmlFile << "</Mapping>" << std::endl;
 		}
 		if (XML_PROTO_ENABLED(g_Keys.nxdn.enable)
@@ -804,7 +805,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 		{
 			xmlFile << "\t<Mapping><Protocol>USRP</Protocol><Type>Bridge</Type>";
 			if (g_Configure.Contains(g_Keys.usrp.callsign))
-				xmlFile << "<RemoteName>" << g_Configure.GetString(g_Keys.usrp.callsign) << "</RemoteName>";
+				xmlFile << "<RemoteName>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.usrp.callsign)) << "</RemoteName>";
 			xmlFile << "</Mapping>" << std::endl;
 		}
 		// MMDVM Server TG mappings for this module (static + dynamic)
@@ -867,7 +868,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 					xmlFile << "\t<Mapping><Protocol>SvxReflector</Protocol><Type>TG</Type>";
 					xmlFile << "<ID>" << mi.tg << "</ID>";
 					if (g_Configure.Contains(g_Keys.svx.host))
-						xmlFile << "<RemoteName>" << g_Configure.GetString(g_Keys.svx.host) << "</RemoteName>";
+						xmlFile << "<RemoteName>" << CUtils::XmlEscape(g_Configure.GetString(g_Keys.svx.host)) << "</RemoteName>";
 					if (!mi.is_static)
 					{
 						xmlFile << "<Dynamic>true</Dynamic>";
@@ -912,7 +913,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 					if (mi.localModule != m) continue;
 					xmlFile << "\t<Mapping><Protocol>DCSClient</Protocol><Type>Module</Type>";
 					xmlFile << "<ID>" << mi.remoteModule << "</ID>";
-					xmlFile << "<RemoteName>" << mi.host << ":" << mi.port << "</RemoteName>";
+					xmlFile << "<RemoteName>" << CUtils::XmlEscape(mi.host) << ":" << mi.port << "</RemoteName>";
 					if (mi.connected)
 						xmlFile << "<Connected>true</Connected>";
 					xmlFile << "</Mapping>" << std::endl;
@@ -932,7 +933,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 					if (mi.localModule != m) continue;
 					xmlFile << "\t<Mapping><Protocol>DExtraClient</Protocol><Type>Module</Type>";
 					xmlFile << "<ID>" << mi.remoteModule << "</ID>";
-					xmlFile << "<RemoteName>" << mi.host << ":" << mi.port << "</RemoteName>";
+					xmlFile << "<RemoteName>" << CUtils::XmlEscape(mi.host) << ":" << mi.port << "</RemoteName>";
 					if (mi.connected)
 						xmlFile << "<Connected>true</Connected>";
 					xmlFile << "</Mapping>" << std::endl;
@@ -952,7 +953,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 					if (mi.localModule != m) continue;
 					xmlFile << "\t<Mapping><Protocol>DPlusClient</Protocol><Type>Module</Type>";
 					xmlFile << "<ID>" << mi.remoteModule << "</ID>";
-					xmlFile << "<RemoteName>" << mi.host << ":" << mi.port << "</RemoteName>";
+					xmlFile << "<RemoteName>" << CUtils::XmlEscape(mi.host) << ":" << mi.port << "</RemoteName>";
 					if (mi.connected)
 						xmlFile << "<Connected>true</Connected>";
 					xmlFile << "</Mapping>" << std::endl;
@@ -973,7 +974,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 					xmlFile << "\t<Mapping><Protocol>YSFClient</Protocol><Type>DG-ID</Type>";
 					if (mi.dgid > 0)
 						xmlFile << "<ID>" << (int)mi.dgid << "</ID>";
-					xmlFile << "<RemoteName>" << mi.host << ":" << mi.port << "</RemoteName>";
+					xmlFile << "<RemoteName>" << CUtils::XmlEscape(mi.host) << ":" << mi.port << "</RemoteName>";
 					if (mi.connected)
 						xmlFile << "<Connected>true</Connected>";
 					xmlFile << "</Mapping>" << std::endl;

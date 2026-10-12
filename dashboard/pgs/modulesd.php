@@ -12,8 +12,8 @@ if ($Reflector->GetXMLContent() !== null) {
     // Parse <Reflector> metadata
     $refBlock = $XML->GetElement($xmlContent, 'Reflector');
     if ($refBlock) {
-        $xmlReflector['Callsign'] = $XML->GetElement($refBlock, 'Callsign');
-        $xmlReflector['Country'] = $XML->GetElement($refBlock, 'Country');
+        $xmlReflector['Callsign'] = $XML->GetText($refBlock, 'Callsign');
+        $xmlReflector['Country'] = $XML->GetText($refBlock, 'Country');
     }
 
     // Parse <Modules> section with mappings
@@ -21,7 +21,7 @@ if ($Reflector->GetXMLContent() !== null) {
     if ($modulesBlock) {
         $tmpModules = $XML->GetAllElements($modulesBlock, 'Module');
         for ($i = 0; $i < count($tmpModules); $i++) {
-            $name = trim($XML->GetElement($tmpModules[$i], 'Name'));
+            $name = trim($XML->GetText($tmpModules[$i], 'Name'));
             if ($name == '') continue;
 
             // Parse all <Mapping> entries for this module
@@ -29,23 +29,23 @@ if ($Reflector->GetXMLContent() !== null) {
             $tmpMappings = $XML->GetAllElements($tmpModules[$i], 'Mapping');
             for ($j = 0; $j < count($tmpMappings); $j++) {
                 $mappings[] = array(
-                    'protocol'   => $XML->GetElement($tmpMappings[$j], 'Protocol'),
-                    'type'       => $XML->GetElement($tmpMappings[$j], 'Type'),
-                    'id'         => $XML->GetElement($tmpMappings[$j], 'ID'),
-                    'timeslot'   => $XML->GetElement($tmpMappings[$j], 'Timeslot'),
-                    'remoteName' => $XML->GetElement($tmpMappings[$j], 'RemoteName'),
+                    'protocol'   => $XML->GetText($tmpMappings[$j], 'Protocol'),
+                    'type'       => $XML->GetText($tmpMappings[$j], 'Type'),
+                    'id'         => $XML->GetText($tmpMappings[$j], 'ID'),
+                    'timeslot'   => $XML->GetText($tmpMappings[$j], 'Timeslot'),
+                    'remoteName' => $XML->GetText($tmpMappings[$j], 'RemoteName'),
                 );
             }
 
             $xmlModules[$name] = array(
-                'description' => $XML->GetElement($tmpModules[$i], 'Description'),
-                'linkedNodes' => (int)$XML->GetElement($tmpModules[$i], 'LinkedNodes'),
-                'transcoded'  => ($XML->GetElement($tmpModules[$i], 'Transcoded') === 'true'),
+                'description' => $XML->GetText($tmpModules[$i], 'Description'),
+                'linkedNodes' => (int)$XML->GetText($tmpModules[$i], 'LinkedNodes'),
+                'transcoded'  => ($XML->GetText($tmpModules[$i], 'Transcoded') === 'true'),
                 'mappings'    => $mappings,
-                'dmrplus'     => $XML->GetElement($tmpModules[$i], 'DMRplus'),
-                'ysfdgid'     => $XML->GetElement($tmpModules[$i], 'YSFDGID'),
-                'nxdnran'     => $XML->GetElement($tmpModules[$i], 'NXDNRAN'),
-                'nxdndstid'   => $XML->GetElement($tmpModules[$i], 'NXDNDstId'),
+                'dmrplus'     => $XML->GetText($tmpModules[$i], 'DMRplus'),
+                'ysfdgid'     => $XML->GetText($tmpModules[$i], 'YSFDGID'),
+                'nxdnran'     => $XML->GetText($tmpModules[$i], 'NXDNRAN'),
+                'nxdndstid'   => $XML->GetText($tmpModules[$i], 'NXDNDstId'),
             );
         }
     }
@@ -55,8 +55,8 @@ if ($Reflector->GetXMLContent() !== null) {
     if ($protocolsBlock) {
         $tmpProtocols = $XML->GetAllElements($protocolsBlock, 'Protocol');
         for ($i = 0; $i < count($tmpProtocols); $i++) {
-            $pName = trim($XML->GetElement($tmpProtocols[$i], 'Name'));
-            $pPort = trim($XML->GetElement($tmpProtocols[$i], 'Port'));
+            $pName = trim($XML->GetText($tmpProtocols[$i], 'Name'));
+            $pPort = trim($XML->GetText($tmpProtocols[$i], 'Port'));
             if ($pName != '') {
                 $xmlProtocols[] = array('name' => $pName, 'port' => $pPort);
             }

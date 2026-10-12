@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include "Client.h"
+#include "Utils.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -80,7 +81,7 @@ bool CClient::operator ==(const CClient &client) const
 void CClient::WriteXml(std::ofstream &xmlFile)
 {
 	xmlFile << "<NODE>" << std::endl;
-	xmlFile << "\t<Callsign>" << m_Callsign << "</Callsign>" << std::endl;
+	xmlFile << "\t<Callsign>" << CUtils::XmlEscape(m_Callsign.GetLogString()) << "</Callsign>" << std::endl;
 	xmlFile << "\t<IP>" << m_Ip.GetAddress() << "</IP>" << std::endl;
 	xmlFile << "\t<LinkedModule>" << m_ReflectorModule << "</LinkedModule>" << std::endl;
 	xmlFile << "\t<Protocol>" << GetProtocolName() << "</Protocol>" << std::endl;

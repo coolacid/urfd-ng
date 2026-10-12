@@ -71,3 +71,19 @@ void CUtils::bitsToByteLE(const bool* bits, unsigned char& byte)
 	byte |= bits[6U] ? 0x40U : 0x00U;
 	byte |= bits[7U] ? 0x80U : 0x00U;
 }
+
+std::string CUtils::XmlEscape(const std::string &in)
+{
+	std::string out;
+	for (const char c : in)
+	{
+		switch (c)
+		{
+			case '&': out += "&amp;"; break;
+			case '<': out += "&lt;"; break;
+			case '>': out += "&gt;"; break;
+			default:  out += c; break;
+		}
+	}
+	return out;
+}

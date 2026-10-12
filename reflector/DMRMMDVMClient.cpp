@@ -19,6 +19,7 @@
 
 #include <fstream>
 #include "DMRMMDVMClient.h"
+#include "Utils.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -56,7 +57,7 @@ bool CDmrmmdvmClient::IsAlive(void) const
 void CDmrmmdvmClient::WriteXml(std::ofstream &xmlFile)
 {
 	xmlFile << "<NODE>" << std::endl;
-	xmlFile << "\t<Callsign>" << m_Callsign << "</Callsign>" << std::endl;
+	xmlFile << "\t<Callsign>" << CUtils::XmlEscape(m_Callsign.GetLogString()) << "</Callsign>" << std::endl;
 	xmlFile << "\t<IP>" << m_Ip.GetAddress() << "</IP>" << std::endl;
 	xmlFile << "\t<LinkedModule>" << GetReflectorModule() << "</LinkedModule>" << std::endl;
 	xmlFile << "\t<LinkedModuleTS1>" << m_SlotModule[0] << "</LinkedModuleTS1>" << std::endl;

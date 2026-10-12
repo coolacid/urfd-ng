@@ -25,6 +25,9 @@ public:
 	static void bitsToByteBE(const bool* bits, unsigned char& byte);
 	static void bitsToByteLE(const bool* bits, unsigned char& byte);
 
+	// text for an XML element: &, < and > as entities
+	static std::string XmlEscape(const std::string &in);
+
 private:
 };
 
