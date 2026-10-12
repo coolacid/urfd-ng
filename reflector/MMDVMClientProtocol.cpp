@@ -635,21 +635,30 @@ void CMMDVMClientProtocol::OnDMRDVoiceHeaderIn(const CBuffer &Buffer, uint32_t s
 	rpt2.SetCSModule(module);
 
 	// Check if this master streamId is already mapped
+	bool retry = false;
 	auto existing = m_IncomingStreams.find(streamId);
 	if (existing != m_IncomingStreams.end())
 	{
 		if (existing->second == 0)
-			return; // already rejected, ignore silently
-
-		// Already mapped - tickle the stream if it still exists
-		auto stream = GetStream(existing->second, &m_MasterIp);
-		if (stream)
 		{
-			stream->Tickle();
-			return;
+			// rejected while the module was busy: the previous stream closes
+			// a moment after its last frame, and a talker who starts within
+			// that moment would otherwise be lost for the whole call, so try
+			// again with every frame until the module is free
+			retry = true;
 		}
-		// Stream closed - remove stale mapping so we can re-open
-		m_IncomingStreams.erase(existing);
+		else
+		{
+			// Already mapped - tickle the stream if it still exists
+			auto stream = GetStream(existing->second, &m_MasterIp);
+			if (stream)
+			{
+				stream->Tickle();
+				return;
+			}
+			// Stream closed - remove stale mapping so we can re-open
+			m_IncomingStreams.erase(existing);
+		}
 	}
 
 	// Generate unique URFD stream ID
@@ -659,7 +668,8 @@ void CMMDVMClientProtocol::OnDMRDVoiceHeaderIn(const CBuffer &Buffer, uint32_t s
 	if (s_nextId == 0) s_nextId = 0x100;
 
 	CCallsign my = DmrIdToCallsign(srcId);
-	std::cout << "MMDVMClient: voice from " << my << " (ID " << srcId << ") TG" << dstId << " -> Module " << module << std::endl;
+	if (!retry)
+		std::cout << "MMDVMClient: voice from " << my << " (ID " << srcId << ") TG" << dstId << " -> Module " << module << std::endl;
 
 	auto header = std::unique_ptr<CDvHeaderPacket>(new CDvHeaderPacket(srcId, CCallsign("CQCQCQ"), rpt1, rpt2, urfStreamId, 0, 0));
 
@@ -686,9 +696,16 @@ void CMMDVMClientProtocol::OnDMRDVoiceFrameIn(const CBuffer &Buffer, uint32_t sr
 			return;
 	}
 
+	if (it->second == 0)
+	{
+		// rejected so far, the module may be free by now
+		OnDMRDVoiceHeaderIn(Buffer, srcId, dstId, streamId);
+		it = m_IncomingStreams.find(streamId);
+		if (it == m_IncomingStreams.end() || it->second == 0)
+			return;
+	}
+
 	uint16_t urfStreamId = it->second;
-	if (urfStreamId == 0)
-		return; // rejected stream
 	const uint8_t *dmrframe = Buffer.data() + 20;
 
 	// Extract 3 x 9-byte AMBE2+ from interleaved DMR frame

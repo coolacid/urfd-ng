@@ -4,7 +4,7 @@
 
 Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
-**urfd 4.10.1-dht** | tcd 0.3.2 | Dashboard v2.8.3
+**urfd 4.10.2-dht** | tcd 0.3.2 | Dashboard v2.8.3
 
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
@@ -883,6 +883,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **MMDVMClient-Sprecherwechsel (4.10.2)**: Ein BrandMeister-Sprecher, der anfängt, während das Modul noch den vorigen Stream hält (der schließt kurz nach seinem letzten Frame), steigt ein, sobald das Modul frei ist, statt für den ganzen Ruf verworfen zu werden
 - **Analoge Verstärkung in urfd (4.10.0)**: `[USRP] RxGain/TxGain` setzen die AllStar-Pegel in der `urfd.ini`, wie bei SVX; tcd 0.3.2 hat `UsrpGainIn`/`UsrpGainOut` entfernt, urfd regelt also pro Anbindung und tcd pro Codec
 - **Software-Name am SvxReflector (4.9.0)**: `[SvxReflector] Software` setzt den Software-Namen in der Node-Info für Reflektoren, die einen bestimmten erwarten (Standard `urfd`); das JSON der Node-Info wird sauber maskiert
 - **SvxLink (4.8.0)**: Der SvxReflector-Client wählt eine TG und überwacht die übrigen zugeordneten, wie ein SvxLink-Knoten (bisher wählte er jede zugeordnete TG, der Reflektor behielt nur die letzte, und Audio jedes Moduls landete dort); der SVX-Server führt pro Knoten eine gewählte TG, leitet Audio zwischen seinen Knoten weiter, schickt Sprecherbeginn und -ende nur an Knoten auf oder mit Überwachung der TG und bittet Knoten mit Protokoll 3 um einen Downgrade. Beide: OPUS-Pakete von 10 bis 60 ms, verlorene Pakete werden überbrückt, verspätete verworfen, ein verlorenes Flush kostet nicht mehr den nächsten Durchgang, die Verstärkung begrenzt statt überzulaufen, 8-kHz-Sprach-Encoder statt Hochrechnen, frischer Encoder pro Durchgang, TCP-Nachrichten in Stücken, keine Verklemmung zwischen Admin-Socket und Protokoll-Thread

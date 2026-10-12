@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.10.1-dht** | tcd 0.3.2 | Dashboard v2.8.3
+**urfd 4.10.2-dht** | tcd 0.3.2 | Dashboard v2.8.3
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -905,6 +905,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **MMDVMClient talker change (4.10.2)**: a BrandMeister talker who starts while the module still holds the previous stream (it closes a moment after its last frame) joins as soon as the module is free, instead of being dropped for the whole call
 - **Analog gains in urfd (4.10.0)**: `[USRP] RxGain/TxGain` set the AllStar levels in `urfd.ini`, like the SVX ones; tcd 0.3.2 dropped `UsrpGainIn`/`UsrpGainOut`, so urfd sets the gain per connection and tcd per codec
 - **SvxReflector software name (4.9.0)**: `[SvxReflector] Software` sets the software name in the node info for reflectors that expect a particular one (default `urfd`); the node info JSON is escaped properly
 - **SvxLink (4.8.0)**: the SvxReflector client selects one TG and monitors the other mapped ones, like an SvxLink node (it used to select every mapped TG, the reflector kept only the last one, and audio of any module went into it); the SVX server keeps one selected TG per node, relays audio between its nodes, sends talker start/stop only to nodes on or monitoring the TG and asks protocol 3 nodes to downgrade. Both: OPUS packets of 10 to 60 ms, lost packets concealed, late ones dropped, a lost flush no longer costs the next transmission, gain clips instead of wrapping around, 8 kHz voice encoder instead of upsampling, a fresh encoder per transmission, TCP messages in pieces, no lock-order deadlock between admin socket and protocol thread
