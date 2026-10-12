@@ -1336,6 +1336,8 @@ void CDmrmmdvmProtocol::AppendVoiceLCToBuffer(CBuffer *buffer, uint32_t uiSrcId,
 	// LC data
 	uint8_t lc[12];
 	{
+		// service options (lc[2]) stay 0 on purpose: a reflector does not pass
+		// a single source's OVCM, emergency or privacy on to every linked client
 		memset(lc, 0, sizeof(lc));
 		// uiDstId
 		lc[3] = (uint8_t)LOBYTE(HIWORD(uiDstId));
@@ -1425,15 +1427,20 @@ void CDmrmmdvmProtocol::AppendTerminatorLCToBuffer(CBuffer *buffer, uint32_t uiS
 
 // The talker alias is the same for every client, so it goes into the voice
 // frame built once for all of them: at burst A the next of its LCs is encoded,
-// bursts B-E carry it, F carries nothing
+// bursts B-E carry it, F carries nothing.
+// Every other superframe stays empty: MMDVMHost puts its own voice LC (with
+// this client's TG and its OVCM setting) into a superframe without valid
+// embedded data, which a radio needs for late entry
 void CDmrmmdvmProtocol::AddTalkerAlias(CDmrmmdvmStreamCacheItem &cache, uint8_t uiDmrPacketId, CBuffer &buffer) const
 {
 	if ( cache.m_TalkerAlias.empty() )
 		return;
 	if ( 0 == uiDmrPacketId )
 	{
-		cache.m_Embedded.Encode(cache.m_TalkerAlias[cache.m_uiSuperframe++ % cache.m_TalkerAlias.size()].data());
-		cache.m_bEmbeddedReady = true;
+		const unsigned superframe = cache.m_uiSuperframe++;
+		cache.m_bEmbeddedReady = (0 == (superframe % 2));
+		if ( cache.m_bEmbeddedReady )
+			cache.m_Embedded.Encode(cache.m_TalkerAlias[(superframe / 2) % cache.m_TalkerAlias.size()].data());
 	}
 	else if ( cache.m_bEmbeddedReady && (uiDmrPacketId <= 4) )
 	{
