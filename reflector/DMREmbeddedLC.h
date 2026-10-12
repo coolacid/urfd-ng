@@ -28,8 +28,8 @@ public:
 	// arrived and passed its checks, it is then in lc
 	bool Collect(const uint8_t *sync, uint8_t *lc);
 
-	// the LCs of a talker alias, ISO 8 bit: a header with 6 characters and
-	// up to 3 blocks of 7, so at most 27 characters; UTF-8 text is converted
+	// the LCs of a talker alias, UTF-16 like BrandMeister's: a header and up
+	// to 3 blocks, at most 13 characters; UTF-8 text is converted
 	static std::vector<std::array<uint8_t, 9>> TalkerAlias(const std::string &utf8);
 
 private:

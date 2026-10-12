@@ -15,7 +15,7 @@
 
 // full link control opcodes of the talker alias (ETSI TS 102 361-2 7.1.1)
 #define FLCO_TALKER_ALIAS_HEADER 0x04U
-#define TA_FORMAT_ISO8           1U
+#define TA_FORMAT_UTF16          3U
 
 void CDmrEmbeddedLC::Encode(const uint8_t *lc)
 {
@@ -171,43 +171,52 @@ bool CDmrEmbeddedLC::Collect(const uint8_t *sync, uint8_t *lc)
 
 std::vector<std::array<uint8_t, 9>> CDmrEmbeddedLC::TalkerAlias(const std::string &utf8)
 {
-	// to ISO 8859-1, what the radios show; anything beyond it becomes '?'
-	std::string text;
-	for (size_t i = 0; i < utf8.size() && text.size() < 27U; i++)
+	// to UTF-16, as BrandMeister sends it: Motorola radios ignore an ISO 8 bit
+	// alias. 26 bytes fit (6 in the header, 7 in each of the 3 blocks), so at
+	// most 13 characters; anything beyond the BMP becomes '?'
+	std::vector<uint16_t> text;
+	for (size_t i = 0; i < utf8.size() && text.size() < 13U; i++)
 	{
 		const uint8_t c = utf8[i];
-		if (c < 0x80U)
-		{
-			if (c >= 0x20U)
-				text += char(c);
-		}
-		else if ((0xC2U == c || 0xC3U == c) && i + 1 < utf8.size() && 0x80U == (0xC0U & uint8_t(utf8[i + 1])))
-			text += char(((c & 0x1FU) << 6) | (uint8_t(utf8[++i]) & 0x3FU));
-		else if (0xC0U == (0xC0U & c))
-		{
-			text += '?';
-			while (i + 1 < utf8.size() && 0x80U == (0xC0U & uint8_t(utf8[i + 1])))
-				i++;
-		}
+		unsigned extra = 0;
+		uint32_t cp = c;
+		if (c >= 0xF0U) { extra = 3; cp = c & 0x07U; }
+		else if (c >= 0xE0U) { extra = 2; cp = c & 0x0FU; }
+		else if (c >= 0xC0U) { extra = 1; cp = c & 0x1FU; }
+		else if (c >= 0x80U) continue;	// stray continuation byte
+		for (; extra > 0 && i + 1 < utf8.size() && 0x80U == (0xC0U & uint8_t(utf8[i + 1])); extra--)
+			cp = (cp << 6) | (uint8_t(utf8[++i]) & 0x3FU);
+		if (extra > 0)
+			continue;	// truncated sequence
+		if (cp < 0x20U)
+			continue;
+		text.push_back((cp > 0xFFFFU || (cp >= 0xD800U && cp <= 0xDFFFU)) ? uint16_t('?') : uint16_t(cp));
 	}
 
 	std::vector<std::array<uint8_t, 9>> lcs;
 	if (text.empty())
 		return lcs;
 
-	// header: format, length, then 6 characters; blocks 1-3: 7 characters each
+	std::vector<uint8_t> bytes;
+	for (const auto ch : text)
+	{
+		bytes.push_back(uint8_t(ch >> 8));
+		bytes.push_back(uint8_t(ch & 0xFFU));
+	}
+
+	// header: format, length in characters, then 6 bytes; blocks 1-3: 7 bytes each
 	std::array<uint8_t, 9> lc {};
 	lc[0] = FLCO_TALKER_ALIAS_HEADER;
-	lc[2] = uint8_t((TA_FORMAT_ISO8 << 6) | (text.size() << 1));
-	for (size_t i = 0; i < 6U && i < text.size(); i++)
-		lc[3 + i] = uint8_t(text[i]);
+	lc[2] = uint8_t((TA_FORMAT_UTF16 << 6) | (text.size() << 1));
+	for (size_t i = 0; i < 6U && i < bytes.size(); i++)
+		lc[3 + i] = bytes[i];
 	lcs.push_back(lc);
-	for (size_t pos = 6; pos < text.size(); pos += 7U)
+	for (size_t pos = 6; pos < bytes.size(); pos += 7U)
 	{
 		lc.fill(0);
 		lc[0] = uint8_t(FLCO_TALKER_ALIAS_HEADER + lcs.size());
-		for (size_t i = 0; i < 7U && pos + i < text.size(); i++)
-			lc[2 + i] = uint8_t(text[pos + i]);
+		for (size_t i = 0; i < 7U && pos + i < bytes.size(); i++)
+			lc[2 + i] = bytes[pos + i];
 		lcs.push_back(lc);
 	}
 	return lcs;
