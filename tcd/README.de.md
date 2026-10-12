@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.2.12** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.3.0** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -301,6 +301,7 @@ journalctl -u tcd -f
 - **Ausgangsverstärkung pro Codec**: nach der AGC, für D-Star, M17/Codec2, DMR/YSF, P25/NXDN und USRP, angewendet auf Kopien (der gemeinsame Puffer wird nie verändert)
 - **AMBE2+-Bitstrom-Verstärkung**: `AmbeGainDb` ändert den Parameter b2 im AMBE2+-Frame, mit neu berechnetem Golay(24,12)-FEC für die A-Partition; die B-Partition wird entwürfelt und mit den neuen A-Daten wieder verwürfelt (0.2.3; vorher verlor der Decoder die B-Partition); seit 0.2.5 von der AGC gesteuert und im γ-Bereich gerechnet, die Verstärkung hängt also nicht mehr vom Pegel ab, auch mit nur einem Gerät und dem MD380
 - **AGC v3**: gleitendes RMS-Fenster, Verfolgung pro Sprecher, Gate mit Rücklauf, schnelles Anheben nach dem Gate, ungleiche Grenzen, Noise-Gate, Begrenzer, der die angewendete Verstärkung sofort kappt (0.2.3; vorher clippten laute Einsätze nach leiser Sprache), Änderungen live aus dem Dashboard; seit 0.2.3 threadsicher, da die Dekodier-Threads aller Codecs sie nutzen. Seit 0.2.4 hält das Gate 60 ms nach und blendet aus statt umzuschalten (Wortenden werden nicht mehr abgehackt), Rauschen knapp darüber pumpt die Verstärkung nicht mehr hoch, und die Verstärkung läuft als Rampe durch jeden Frame statt alle 20 ms zu springen
+- **AGC für analoge Quellen** (0.3.0): SVX- und USRP-Eingang haben ein eigenes Gate, eine eigene Grenze für die Verstärkung und eine Verstärkung bei geschlossenem Gate (`AGCAnalogNoiseGate`, `AGCAnalogMaxGainUp`, `AGCAnalogGateFloor`), das FM-Rauschen zwischen den Worten wird also abgesenkt statt um bis zu 30 dB angehoben; `UsrpGainIn`/`UsrpGainOut` begrenzen statt überzulaufen; ohne Monitor behält tcd die Werte aus der ini (vorher fiel er nach einer Sekunde auf die eingebauten Standardwerte zurück)
 - **DMR neu kodieren** (`md380=true`): `DmrGainMode = reencode` mit AGC und `DmrReencodeGain` für DMR → DMR/YSF
 - **MD380 pro Stream getrennt**: Kodierer-Zustand pro Stream gesichert, MD380-Aufrufe nacheinander; seit 0.2.7 startet ein neuer Stream mit dem Zustand direkt nach `md380_init()` statt mit dem des vorherigen Streams; seit 0.2.9 bei jeder MD380-Nutzung, auch als primärer DMR-Codec mit nur einem Gerät
 - **Ausgangsverstärkung im Mischbetrieb** (0.2.3): Der D-Star-Kanal des DV3003 nutzt `OutputGainDStar` statt `OutputGainDMR`; M17 mit 1600 bit/s schickt die zweite Hälfte jedes Pakets nicht mehr zweimal durch die AGC; seit 0.2.11 geht ein Modul, das nicht in der Modulliste steht, an keinen DMR-Kanal
