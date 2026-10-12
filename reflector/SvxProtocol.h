@@ -3,6 +3,11 @@
 // SvxProtocol -- SvxReflector server accepting incoming SvxLink node connections
 // Implements SvxReflector protocol V2 with HMAC-SHA1 auth and OPUS audio
 //
+// Like SvxReflector: a node has one selected TG (MsgSelectTG replaces it) and
+// a set of monitored TGs (MsgTgMonitor) it hears talker start/stop of. A TG has
+// one talker at a time; nodes on the TG get the talker's OPUS packets as they
+// came, mapped TGs also go to and come from their urfd module.
+//
 // Copyright (C) 2026
 // Licensed under the GNU General Public License v3 or later
 
@@ -12,14 +17,15 @@
 #include "DVHeaderPacket.h"
 #include "DVFramePacket.h"
 #include "TGModuleMap.h"
+#include "SvxAudio.h"
 
-#include <opus/opus.h>
 #include <vector>
 #include <unordered_map>
 #include <set>
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <memory>
 
 // Reuse message type defines from SvxReflectorProtocol.h
 #include "SvxReflectorProtocol.h"
@@ -65,7 +71,7 @@ public:
 	struct SConnectedPeer {
 		std::string callsign;
 		std::string ip;
-		std::set<uint32_t> subscribedTGs;
+		std::set<uint32_t> subscribedTGs;   // the selected TG
 		bool udpDiscovered;
 		SSvxNodeInfo nodeInfo;
 	};
@@ -88,19 +94,19 @@ protected:
 		std::string callsign;
 		EAuthState authState = EAuthState::expect_proto_ver;
 		uint8_t challenge[20] = {};
+		bool sendFailed = false;  // a TCP send failed, the Task loop drops the peer
 
 		// UDP
 		CIp udpEndpoint;
 		bool udpDiscovered = false;
 		uint16_t udpSeqSend = 0;
-		uint16_t udpSeqRecv = 0;
 
-		// TG subscriptions
-		std::set<uint32_t> subscribedTGs;
+		// TG selection
+		uint32_t selectedTG = 0;
+		std::set<uint32_t> monitoredTGs;
 
-		// OPUS codec (per-peer, stateful)
-		OpusEncoder *opusEncoder = nullptr;
-		OpusDecoder *opusDecoder = nullptr;
+		// OPUS decoder with sequence tracking (stateful, per peer)
+		std::unique_ptr<CSvxOpusRx> rx;
 
 		// keepalive timers
 		CTimer tcpLastRecvTimer;
@@ -113,22 +119,23 @@ protected:
 		// node info from SvxLink JSON
 		SSvxNodeInfo nodeInfo;
 
-		// incoming stream state (audio from this peer)
+		// this peer as the talker of a TG
 		struct SInStream {
-			uint32_t tg = 0;
-			char module = ' ';
+			uint32_t tg = 0;          // 0: not talking
+			char module = ' ';        // the TG's module, ' ' if the TG is not mapped
 			uint16_t streamId = 0;
-			bool open = false;
-			int16_t lastPcm[160] = {};
+			bool open = false;        // urfd stream opened (or tried, see rejected)
+			bool rejected = false;    // module busy, no urfd stream for this talker
+			CTimer audioTimer;        // since the last audio packet
 		} inStream;
 	};
 
 	// TCP server
 	bool TcpListen(void);
 	void TcpAccept(void);
-	bool TcpSendFrame(int fd, const uint8_t *data, uint32_t len);
+	bool TcpSendFrame(SSvxPeer &peer, const std::vector<uint8_t> &msg);
 	void TcpReceiveFromPeer(uint32_t clientId);
-	void TcpBroadcast(const uint8_t *data, uint32_t len, uint32_t exceptClientId = 0);
+	void TcpBroadcast(const std::vector<uint8_t> &msg, uint32_t exceptClientId = 0);
 	void DisconnectPeer(uint32_t clientId);
 
 	// TCP message handlers
@@ -136,28 +143,28 @@ protected:
 	void OnPeerAuthResponse(uint32_t clientId, const std::vector<uint8_t> &payload);
 	void OnPeerNodeInfo(uint32_t clientId, const std::vector<uint8_t> &payload);
 	void OnPeerSelectTG(uint32_t clientId, const std::vector<uint8_t> &payload);
+	void OnPeerTgMonitor(uint32_t clientId, const std::vector<uint8_t> &payload);
+
+	// talker start/stop to the nodes that have the TG selected or monitored
+	void NotifyTalker(uint16_t type, uint32_t tg, const std::string &callsign);
 
 	// UDP handling
 	void OnUdpPacket(const CBuffer &buffer, const CIp &ip);
 	void OnPeerUdpAudio(uint32_t clientId, const CBuffer &buffer);
 	void OnPeerUdpFlush(uint32_t clientId);
 	void ClosePeerInStream(uint32_t clientId);
+	bool EnsurePeerInStream(SSvxPeer &peer);
+	void PushPeerFrame(SSvxPeer &peer, const int16_t *pcm, bool last);
 
 	// outbound audio to peers
-	void SendAudioToPeer(SSvxPeer &peer, const int16_t *pcm, uint32_t tg);
-	void SendFlushToPeer(SSvxPeer &peer);
+	void SendUdpToPeer(SSvxPeer &peer, uint16_t type, const uint8_t *payload = nullptr, size_t len = 0);
 	void BuildUdpHeader(CBuffer &buf, uint16_t type, uint16_t clientId, uint16_t &seq);
+
+	// CClient entry of a peer for the module of its selected TG
+	void UpdatePeerClient(SSvxPeer &peer, uint32_t oldTG);
 
 	// stream helpers
 	void OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &, const CIp &);
-
-	// serialization helpers (big-endian)
-	void PackUint16(std::vector<uint8_t> &buf, uint16_t val);
-	void PackUint32(std::vector<uint8_t> &buf, uint32_t val);
-	void PackString(std::vector<uint8_t> &buf, const std::string &str);
-	uint16_t UnpackUint16(const std::vector<uint8_t> &buf, size_t &pos);
-	uint32_t UnpackUint32(const std::vector<uint8_t> &buf, size_t &pos);
-	std::string UnpackString(const std::vector<uint8_t> &buf, size_t &pos);
 
 	// TG mapping
 	char TGToModule(uint32_t tg) const;
@@ -177,12 +184,17 @@ protected:
 	std::unordered_map<uint32_t, SSvxPeer> m_Peers;
 	std::unordered_map<int, uint32_t> m_FdToClientId;  // tcpFd -> clientId
 
+	// the talker of each TG: a peer's clientId, or SVXS_URFD_TALKER for urfd audio
+	std::unordered_map<uint32_t, uint32_t> m_TgTalker;
+
 	// m_Peers belongs to the protocol thread, the admin socket gets this copy
 	void UpdatePeerSnapshot(void);
 	mutable std::mutex m_SnapshotMutex;
 	std::vector<SConnectedPeer> m_PeerSnapshot;
 	CTimer m_SnapshotTimer;
+	CTimer m_AliveTimer;
 	std::atomic<uint32_t> m_NextClientId;
+	uint8_t m_StreamCounter;
 
 	// per-user passwords (callsign -> password), protected by m_PasswordMutex
 	mutable std::mutex m_PasswordMutex;
@@ -203,6 +215,13 @@ protected:
 	};
 	std::unordered_map<uint32_t, SDynTG> m_DynTGs;
 
-	// outgoing stream state per module
-	std::unordered_map<char, uint32_t> m_OutStreamTG;
+	// outgoing stream state per module: TG, talker, one encoder for all nodes on the TG
+	struct SOutStream {
+		uint32_t tg = 0;
+		std::string talker;
+		CTimer lastFrame;
+	};
+	void EndOutStream(char module);
+	std::unordered_map<char, SOutStream> m_OutStreams;
+	std::unordered_map<char, OpusEncoder *> m_OutEncoders;
 };

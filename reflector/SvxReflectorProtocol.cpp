@@ -14,36 +14,15 @@
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <thread>
 
 #include <openssl/hmac.h>
-#include <regex>
 #include <sstream>
 #include <map>
 
 #include "SvxReflectorProtocol.h"
 #include "SvxReflectorClient.h"
 #include "Global.h"
-
-// Extract valid amateur radio callsign from SvxLink callsign
-// e.g. "DL4JC-APP" -> "DL4JC", "DG1RPN-HS" -> "DG1RPN", "F1ABC" -> "F1ABC"
-// Pattern: 1-2 letters + 1+ digits + 1-4 letters
-static std::string ExtractCallsign(const std::string &svxCallsign)
-{
-	static const std::regex csRegex("^([A-Z]{1,2}[0-9]+[A-Z]{1,4})");
-	std::smatch match;
-	if (std::regex_search(svxCallsign, match, csRegex))
-		return match[1].str();
-	// Fallback: strip everything from first dash
-	auto dash = svxCallsign.find('-');
-	if (dash != std::string::npos && dash >= 3)
-		return svxCallsign.substr(0, dash);
-	return svxCallsign;
-}
-
-// MSG_NOSIGNAL is not available on macOS; use SO_NOSIGPIPE instead
-#ifndef MSG_NOSIGNAL
-#define MSG_NOSIGNAL 0
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor / destructor
@@ -55,67 +34,17 @@ CSvxReflectorProtocol::CSvxReflectorProtocol()
 	, m_ClientId(0)
 	, m_UdpSeq(0)
 	, m_OpusEncoder(nullptr)
-	, m_OpusDecoder(nullptr)
 	, m_RxGainNum(256)   // 0 dB default
 	, m_TxGainNum(256)   // 0 dB default
+	, m_SelectedTG(0)
+	, m_StreamCounter(0)
 {
-	m_InStream.tg = 0;
-	m_InStream.module = ' ';
-	m_InStream.streamId = 0;
-	m_InStream.open = false;
 }
 
 CSvxReflectorProtocol::~CSvxReflectorProtocol()
 {
 	TcpDisconnect();
 	if (m_OpusEncoder) opus_encoder_destroy(m_OpusEncoder);
-	if (m_OpusDecoder) opus_decoder_destroy(m_OpusDecoder);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
-// serialization helpers (big-endian)
-
-void CSvxReflectorProtocol::PackUint16(std::vector<uint8_t> &buf, uint16_t val)
-{
-	buf.push_back((val >> 8) & 0xFF);
-	buf.push_back(val & 0xFF);
-}
-
-void CSvxReflectorProtocol::PackUint32(std::vector<uint8_t> &buf, uint32_t val)
-{
-	buf.push_back((val >> 24) & 0xFF);
-	buf.push_back((val >> 16) & 0xFF);
-	buf.push_back((val >> 8) & 0xFF);
-	buf.push_back(val & 0xFF);
-}
-
-void CSvxReflectorProtocol::PackString(std::vector<uint8_t> &buf, const std::string &str)
-{
-	PackUint16(buf, (uint16_t)str.size());
-	buf.insert(buf.end(), str.begin(), str.end());
-}
-
-uint16_t CSvxReflectorProtocol::UnpackUint16(const std::vector<uint8_t> &buf, size_t &pos)
-{
-	uint16_t val = ((uint16_t)buf[pos] << 8) | buf[pos + 1];
-	pos += 2;
-	return val;
-}
-
-uint32_t CSvxReflectorProtocol::UnpackUint32(const std::vector<uint8_t> &buf, size_t &pos)
-{
-	uint32_t val = ((uint32_t)buf[pos] << 24) | ((uint32_t)buf[pos+1] << 16)
-	             | ((uint32_t)buf[pos+2] << 8) | buf[pos+3];
-	pos += 4;
-	return val;
-}
-
-std::string CSvxReflectorProtocol::UnpackString(const std::vector<uint8_t> &buf, size_t &pos)
-{
-	uint16_t len = UnpackUint16(buf, pos);
-	std::string str((const char *)&buf[pos], len);
-	pos += len;
-	return str;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -170,55 +99,99 @@ void CSvxReflectorProtocol::LoadTGMap(void)
 			} catch (...) {}
 		}
 	}
+	if (m_TGToModule.size() > 1)
+		std::cout << "SvxReflector: one TG is selected at a time, TG" << HomeTG()
+		          << " by default, the others are monitored and selected on activity" << std::endl;
 }
 
 void CSvxReflectorProtocol::ReloadStaticTGMap(void)
 {
-	std::lock_guard<std::mutex> lock(m_TGMutex);
-
-	// Collect dynamic entries to preserve
-	std::unordered_map<uint32_t, SDynTG> savedDynTGs = m_DynTGs;
-	std::unordered_map<uint32_t, char> savedDynMappings;
-	for (auto &[tg, dynInfo] : m_DynTGs)
 	{
-		auto it = m_TGToModule.find(tg);
-		if (it != m_TGToModule.end())
-			savedDynMappings[tg] = it->second;
-	}
+		std::lock_guard<std::mutex> lock(m_TGMutex);
 
-	// Reload static from config
-	m_TGToModule.clear();
-	m_ModuleToTG.clear();
-	const auto &jdata = g_Configure.GetData();
-	for (auto it = jdata.begin(); it != jdata.end(); ++it)
-	{
-		const std::string &key = it.key();
-		if (key.substr(0, 5) != "svxTG") continue;
-		try {
-			uint32_t tg = std::stoul(key.substr(5));
-			char mod = it.value().get<std::string>()[0];
+		// Collect dynamic entries to preserve
+		std::unordered_map<uint32_t, SDynTG> savedDynTGs = m_DynTGs;
+		std::unordered_map<uint32_t, char> savedDynMappings;
+		for (auto &[tg, dynInfo] : m_DynTGs)
+		{
+			auto it = m_TGToModule.find(tg);
+			if (it != m_TGToModule.end())
+				savedDynMappings[tg] = it->second;
+		}
+
+		// Reload static from config
+		m_TGToModule.clear();
+		m_ModuleToTG.clear();
+		const auto &jdata = g_Configure.GetData();
+		for (auto it = jdata.begin(); it != jdata.end(); ++it)
+		{
+			const std::string &key = it.key();
+			if (key.substr(0, 5) != "svxTG") continue;
+			try {
+				uint32_t tg = std::stoul(key.substr(5));
+				char mod = it.value().get<std::string>()[0];
+				m_TGToModule[tg] = mod;
+				m_ModuleToTG[mod] = tg;
+			} catch (...) {}
+		}
+
+		// Re-add dynamic entries (skip if TG now exists as static)
+		m_DynTGs.clear();
+		for (auto &[tg, dynInfo] : savedDynTGs)
+		{
+			if (m_TGToModule.find(tg) != m_TGToModule.end())
+				continue;  // now static
+			auto mapIt = savedDynMappings.find(tg);
+			if (mapIt == savedDynMappings.end())
+				continue;
+			char mod = mapIt->second;
 			m_TGToModule[tg] = mod;
-			m_ModuleToTG[mod] = tg;
-		} catch (...) {}
-	}
+			if (m_ModuleToTG.find(mod) == m_ModuleToTG.end())
+				m_ModuleToTG[mod] = tg;
+			m_DynTGs[tg] = dynInfo;
+		}
 
-	// Re-add dynamic entries (skip if TG now exists as static)
-	m_DynTGs.clear();
-	for (auto &[tg, dynInfo] : savedDynTGs)
+		std::cout << "SvxReflector: TG mappings reloaded (" << m_TGToModule.size() << " total)" << std::endl;
+	}
+	m_TGsChanged = true;
+}
+
+// the TG selected by default: the lowest static one, else the lowest dynamic one
+uint32_t CSvxReflectorProtocol::HomeTG(void) const
+{
+	// LoadTGMap calls this before the mutex matters, everyone else holds no lock
+	uint32_t home = 0, homeDyn = 0;
+	for (const auto &[tg, mod] : m_TGToModule)
 	{
-		if (m_TGToModule.find(tg) != m_TGToModule.end())
-			continue;  // now static
-		auto mapIt = savedDynMappings.find(tg);
-		if (mapIt == savedDynMappings.end())
-			continue;
-		char mod = mapIt->second;
-		m_TGToModule[tg] = mod;
-		if (m_ModuleToTG.find(mod) == m_ModuleToTG.end())
-			m_ModuleToTG[mod] = tg;
-		m_DynTGs[tg] = dynInfo;
+		if (m_DynTGs.count(tg))
+		{
+			if (homeDyn == 0 || tg < homeDyn) homeDyn = tg;
+		}
+		else if (home == 0 || tg < home)
+			home = tg;
 	}
+	return home ? home : homeDyn;
+}
 
-	std::cout << "SvxReflector: TG mappings reloaded (" << m_TGToModule.size() << " total)" << std::endl;
+// SVX clients of modules that lost their last TG; never called with m_TGMutex held,
+// the client list is always locked first
+void CSvxReflectorProtocol::RemoveOrphanClients(const std::set<char> &modules)
+{
+	if (modules.empty())
+		return;
+	CClients *clients = g_Reflector.GetClients();
+	for (char mod : modules)
+	{
+		for (auto cit = clients->begin(); cit != clients->end(); ++cit)
+		{
+			if ((*cit)->GetProtocol() == EProtocol::svxreflector && (*cit)->GetReflectorModule() == mod)
+			{
+				clients->RemoveClient(*cit);
+				break;
+			}
+		}
+	}
+	g_Reflector.ReleaseClients();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -252,7 +225,8 @@ bool CSvxReflectorProtocol::TcpConnect(void)
 	uint16_t udpPort = (uint16_t)g_Configure.GetUnsigned(g_Keys.svx.port);
 	m_ServerIp = CIp(AF_INET, udpPort, ipstr);
 
-	// non-blocking connect with timeout
+	// non-blocking connect with timeout; the socket stays non-blocking, reads
+	// collect whatever arrived and sends wait for room (SvxTcpSendFrame)
 	fcntl(m_TcpFd, F_SETFL, O_NONBLOCK);
 	int ret = connect(m_TcpFd, res->ai_addr, res->ai_addrlen);
 
@@ -286,12 +260,7 @@ bool CSvxReflectorProtocol::TcpConnect(void)
 		return false;
 	}
 
-	// back to blocking with short timeouts for reads
-	int flags = fcntl(m_TcpFd, F_GETFL);
-	fcntl(m_TcpFd, F_SETFL, flags & ~O_NONBLOCK);
-	struct timeval tv = { 0, 5000 }; // 5ms read timeout — keep short for UDP audio
-	setsockopt(m_TcpFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
+	m_TcpRecvBuf.clear();
 	std::cout << "SvxReflector: TCP connected to " << m_Host << ":" << portStr << std::endl;
 	return true;
 }
@@ -303,83 +272,74 @@ void CSvxReflectorProtocol::TcpDisconnect(void)
 		close(m_TcpFd);
 		m_TcpFd = -1;
 	}
+	m_TcpRecvBuf.clear();
 	m_State = EState::disconnected;
-	m_InStream.open = false;
 	m_ClientId = 0;
+	m_SelectedTG = 0;
 }
 
-bool CSvxReflectorProtocol::TcpSendFrame(const uint8_t *data, uint32_t len)
+void CSvxReflectorProtocol::Disconnect(void)
 {
-	if (m_TcpFd < 0) return false;
+	CloseInStream();
+	m_OutStreamTG.clear();
+	TcpDisconnect();
+	m_ReconnectTimer.start();
+}
 
-	// 4-byte big-endian length header
-	uint8_t hdr[4];
-	hdr[0] = (len >> 24) & 0xFF;
-	hdr[1] = (len >> 16) & 0xFF;
-	hdr[2] = (len >> 8) & 0xFF;
-	hdr[3] = len & 0xFF;
-
-	if (send(m_TcpFd, hdr, 4, MSG_NOSIGNAL) != 4)
+bool CSvxReflectorProtocol::TcpSendFrame(const std::vector<uint8_t> &msg)
+{
+	if (m_TcpFd < 0)
+		return false;
+	if (!SvxTcpSendFrame(m_TcpFd, msg.data(), (uint32_t)msg.size()))
 	{
 		std::cerr << "SvxReflector: TCP send failed: " << strerror(errno) << std::endl;
-		TcpDisconnect();
-		m_ReconnectTimer.start();
+		Disconnect();
 		return false;
 	}
-	if (send(m_TcpFd, data, len, MSG_NOSIGNAL) != (ssize_t)len)
-	{
-		std::cerr << "SvxReflector: TCP send failed: " << strerror(errno) << std::endl;
-		TcpDisconnect();
-		m_ReconnectTimer.start();
-		return false;
-	}
-
 	m_TcpHeartbeatTimer.start();
 	return true;
 }
 
-bool CSvxReflectorProtocol::TcpReceiveFrame(std::vector<uint8_t> &frame)
+bool CSvxReflectorProtocol::TcpReceive(void)
 {
-	if (m_TcpFd < 0) return false;
-
-	// Non-blocking check: return immediately if no TCP data waiting
-	struct pollfd pfd = { m_TcpFd, POLLIN, 0 };
-	if (poll(&pfd, 1, 0) <= 0)
-		return false;
-
-	uint8_t hdr[4];
-	ssize_t n = recv(m_TcpFd, hdr, 4, MSG_WAITALL);
-	if (n == 0)
+	// collect what has arrived, a message may come in several pieces
+	while (m_TcpFd >= 0)
 	{
-		std::cerr << "SvxReflector: TCP connection closed by server" << std::endl;
-		TcpDisconnect();
-		return false;
-	}
-	if (n != 4)
-	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		uint8_t tmp[4096];
+		ssize_t n = recv(m_TcpFd, tmp, sizeof(tmp), 0);
+		if (n > 0)
+		{
+			m_TcpRecvBuf.insert(m_TcpRecvBuf.end(), tmp, tmp + n);
+			m_TcpLastReceiveTimer.start();
+			continue;
+		}
+		if (n == 0)
+		{
+			std::cerr << "SvxReflector: TCP connection closed by server" << std::endl;
+			Disconnect();
 			return false;
+		}
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			break;
 		std::cerr << "SvxReflector: TCP recv error: " << strerror(errno) << std::endl;
-		TcpDisconnect();
+		Disconnect();
 		return false;
 	}
 
-	uint32_t len = ((uint32_t)hdr[0] << 24) | ((uint32_t)hdr[1] << 16)
-	             | ((uint32_t)hdr[2] << 8) | hdr[3];
-
-	if (len > 32768) return false; // safety limit
-
-	frame.resize(len);
-	n = recv(m_TcpFd, frame.data(), len, MSG_WAITALL);
-	if (n != (ssize_t)len)
+	std::vector<uint8_t> frame;
+	int r;
+	while (m_TcpFd >= 0 && (r = SvxTcpTakeFrame(m_TcpRecvBuf, frame)) != 0)
 	{
-		std::cerr << "SvxReflector: TCP recv incomplete payload" << std::endl;
-		TcpDisconnect();
-		return false;
+		if (r < 0)
+		{
+			std::cerr << "SvxReflector: oversized TCP frame from server" << std::endl;
+			Disconnect();
+			return false;
+		}
+		if (frame.size() >= 2)
+			OnTcpMessage(((uint16_t)frame[0] << 8) | frame[1], frame);
 	}
-
-	m_TcpLastReceiveTimer.start();
-	return true;
+	return m_TcpFd >= 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -404,12 +364,12 @@ void CSvxReflectorProtocol::OnAuthChallenge(const std::vector<uint8_t> &payload)
 	// Build MsgAuthResponse: type(2) + callsign(string) + digest(vector<uint8_t>)
 	// Field order matches ASYNC_MSG_MEMBERS(m_callsign, m_digest)
 	std::vector<uint8_t> resp;
-	PackUint16(resp, SVX_TCP_MSG_AUTH_RESPONSE);
-	PackString(resp, m_Callsign);          // callsign FIRST (length-prefixed string)
-	PackUint16(resp, 20);                  // vector<uint8_t> length prefix
+	SvxPack16(resp, SVX_TCP_MSG_AUTH_RESPONSE);
+	SvxPackString(resp, m_Callsign);          // callsign FIRST (length-prefixed string)
+	SvxPack16(resp, 20);                      // vector<uint8_t> length prefix
 	resp.insert(resp.end(), digest, digest + 20); // 20 bytes HMAC digest
 
-	TcpSendFrame(resp.data(), (uint32_t)resp.size());
+	TcpSendFrame(resp);
 	std::cout << "SvxReflector: auth response sent for " << m_Callsign << std::endl;
 }
 
@@ -421,40 +381,39 @@ void CSvxReflectorProtocol::OnAuthOk(void)
 
 void CSvxReflectorProtocol::OnServerInfo(const std::vector<uint8_t> &payload)
 {
-	if (payload.size() < 4) return;
+	// payload: type(2) + reserved(2) + client_id(2) + nodes + codecs
+	if (payload.size() < 6) return;
 
-	size_t pos = 2; // skip type
-	m_ClientId = UnpackUint32(payload, pos);
+	size_t pos = 4;
+	m_ClientId = SvxUnpack16(payload, pos);
 	std::cout << "SvxReflector: received ServerInfo, client_id=" << m_ClientId << std::endl;
 
 	// Send MsgNodeInfo (JSON metadata)
 	std::string json = "{\"sw\":\"urfd\",\"callsign\":\"" + m_Callsign + "\"}";
 	std::vector<uint8_t> msg;
-	PackUint16(msg, SVX_TCP_MSG_NODE_INFO);
-	PackString(msg, json);
-	TcpSendFrame(msg.data(), (uint32_t)msg.size());
+	SvxPack16(msg, SVX_TCP_MSG_NODE_INFO);
+	SvxPackString(msg, json);
+	if (!TcpSendFrame(msg))
+		return;
 
-	// Select all configured TGs — if none, stay connected without subscribing
-	// (dynamic TGs can be added later via admin API)
-	if (m_TGToModule.empty())
+	// one TG selected, all mapped ones monitored; without TGs stay connected and
+	// wait for dynamic ones from the admin API
+	m_SelectedTG = 0;
+	SendTgMonitor();
+	uint32_t home;
 	{
-		std::cout << "SvxReflector: no TGs configured, waiting for dynamic TG assignment" << std::endl;
+		std::lock_guard<std::mutex> lock(m_TGMutex);
+		home = HomeTG();
 	}
+	if (home)
+		SelectTG(home);
 	else
-	{
-		for (const auto &tg : m_TGToModule)
-		{
-			std::vector<uint8_t> sel;
-			PackUint16(sel, SVX_TCP_MSG_SELECT_TG);
-			PackUint32(sel, tg.first);
-			TcpSendFrame(sel.data(), (uint32_t)sel.size());
-			std::cout << "SvxReflector: selected TG" << tg.first << std::endl;
-		}
-	}
+		std::cout << "SvxReflector: no TGs configured, waiting for dynamic TG assignment" << std::endl;
 
 	// Send initial UDP heartbeat immediately so server learns our UDP address
 	{
 		m_UdpSeq = 0;
+		m_Rx.ResetSeq();
 		CBuffer hb;
 		BuildUdpHeader(hb, SVX_UDP_MSG_HEARTBEAT);
 		Send(hb, m_ServerIp);
@@ -468,6 +427,71 @@ void CSvxReflectorProtocol::OnServerInfo(const std::vector<uint8_t> &payload)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
+// TG selection
+
+void CSvxReflectorProtocol::SelectTG(uint32_t tg)
+{
+	if (tg == m_SelectedTG)
+		return;
+	// audio of the old TG ends here
+	if (m_InStream.open)
+		CloseInStream();
+	std::vector<uint8_t> sel;
+	SvxPack16(sel, SVX_TCP_MSG_SELECT_TG);
+	SvxPack32(sel, tg);
+	if (!TcpSendFrame(sel))
+		return;
+	m_SelectedTG = tg;
+	m_TGActivityTimer.start();
+	if (tg)
+		std::cout << "SvxReflector: selected TG" << tg << " (Module " << TGToModule(tg) << ")" << std::endl;
+	else
+		std::cout << "SvxReflector: no TG selected" << std::endl;
+}
+
+void CSvxReflectorProtocol::SendTgMonitor(void)
+{
+	std::set<uint32_t> tgs;
+	{
+		std::lock_guard<std::mutex> lock(m_TGMutex);
+		for (const auto &[tg, mod] : m_TGToModule)
+			tgs.insert(tg);
+	}
+	// MsgTgMonitor: std::set<uint32_t>, packed as count + elements
+	std::vector<uint8_t> msg;
+	SvxPack16(msg, SVX_TCP_MSG_TG_MONITOR);
+	SvxPack16(msg, (uint16_t)tgs.size());
+	for (uint32_t tg : tgs)
+		SvxPack32(msg, tg);
+	if (TcpSendFrame(msg) && tgs.size() > 1)
+		std::cout << "SvxReflector: monitoring " << tgs.size() << " TGs" << std::endl;
+}
+
+// after mapping changes and in idle times: keep the selection on a mapped TG,
+// and go back to the home TG when the selected one has been quiet for a while
+void CSvxReflectorProtocol::UpdateSelection(void)
+{
+	uint32_t home;
+	bool selectedMapped;
+	{
+		std::lock_guard<std::mutex> lock(m_TGMutex);
+		home = HomeTG();
+		selectedMapped = m_TGToModule.count(m_SelectedTG) > 0;
+	}
+	if (m_TGsChanged.exchange(false))
+	{
+		SendTgMonitor();
+		if (!selectedMapped || m_SelectedTG == 0)
+		{
+			SelectTG(home);
+			return;
+		}
+	}
+	if (m_SelectedTG != home && IsIdle() && m_TGActivityTimer.time() >= SVX_TG_RETURN)
+		SelectTG(home);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
 // TCP message dispatcher
 
 void CSvxReflectorProtocol::OnTcpMessage(uint16_t type, const std::vector<uint8_t> &payload)
@@ -475,7 +499,7 @@ void CSvxReflectorProtocol::OnTcpMessage(uint16_t type, const std::vector<uint8_
 	switch (type)
 	{
 		case SVX_TCP_MSG_HEARTBEAT:
-			break; // timer already reset by TcpReceiveFrame
+			break; // timer already reset by TcpReceive
 		case SVX_TCP_MSG_AUTH_CHALLENGE:
 			OnAuthChallenge(payload);
 			break;
@@ -494,9 +518,9 @@ void CSvxReflectorProtocol::OnTcpMessage(uint16_t type, const std::vector<uint8_
 		case SVX_TCP_MSG_ERROR:
 		{
 			size_t pos = 2;
-			std::string errmsg = (payload.size() > 2) ? UnpackString(payload, pos) : "unknown";
+			std::string errmsg = (payload.size() > 2) ? SvxUnpackString(payload, pos) : "unknown";
 			std::cerr << "SvxReflector: error from server: " << errmsg << std::endl;
-			TcpDisconnect();
+			Disconnect();
 			m_ReconnectBackoff = 300; // 5min on server error
 			break;
 		}
@@ -551,38 +575,33 @@ bool CSvxReflectorProtocol::Initialize(const char *type, const EProtocol ptype,
 	// Save config defaults for runtime reset
 	SaveBlockDefaults();
 
-	// Parse gain settings (dB, range -40 to +40, default -12 RX / +12 TX)
-	// Defaults compensate for ~12 dB level difference between FM and digital voice codecs
+	// gain in dB, -40 to +40
 	if (g_Configure.Contains(g_Keys.svx.rxgain))
 	{
 		int db = std::stoi(g_Configure.GetString(g_Keys.svx.rxgain));
-		if (db < -40) db = -40; else if (db > 40) db = 40;
-		m_RxGainNum = (int32_t)roundf(256.0f * powf(10.0f, (float)db / 20.0f));
+		m_RxGainNum = SvxGainFromDb(db);
 		std::cout << "SvxReflector: RxGain = " << db << " dB" << std::endl;
 	}
 	if (g_Configure.Contains(g_Keys.svx.txgain))
 	{
 		int db = std::stoi(g_Configure.GetString(g_Keys.svx.txgain));
-		if (db < -40) db = -40; else if (db > 40) db = 40;
-		m_TxGainNum = (int32_t)roundf(256.0f * powf(10.0f, (float)db / 20.0f));
+		m_TxGainNum = SvxGainFromDb(db);
 		std::cout << "SvxReflector: TxGain = " << db << " dB" << std::endl;
 	}
 
 	LoadTGMap();
 
-	// OPUS encoder at 16kHz (SvxReflector expects 16kHz OPUS)
-	// OPUS decoder at 8kHz (libopus resamples 16kHz->8kHz internally, clean anti-aliased)
-	int err;
-	m_OpusEncoder = opus_encoder_create(16000, 1, OPUS_APPLICATION_AUDIO, &err);
-	if (err != OPUS_OK)
+	// OPUS: encoder at urfd's 8 kHz (the reflector side decodes it at 16 kHz),
+	// decoder at 8 kHz (libopus resamples the 16 kHz stream, anti-aliased)
+	m_OpusEncoder = SvxCreateEncoder();
+	if (!m_OpusEncoder)
 	{
-		std::cerr << "SvxReflector: opus_encoder_create failed: " << opus_strerror(err) << std::endl;
+		std::cerr << "SvxReflector: opus_encoder_create failed" << std::endl;
 		return false;
 	}
-	m_OpusDecoder = opus_decoder_create(8000, 1, &err);
-	if (err != OPUS_OK)
+	if (!m_Rx.Init())
 	{
-		std::cerr << "SvxReflector: opus_decoder_create failed: " << opus_strerror(err) << std::endl;
+		std::cerr << "SvxReflector: opus_decoder_create failed" << std::endl;
 		return false;
 	}
 
@@ -606,8 +625,7 @@ void CSvxReflectorProtocol::Task(void)
 	if (m_ReconnectRequested.exchange(false))
 	{
 		std::cout << "SvxReflector: reconnect requested" << std::endl;
-		TcpDisconnect();
-		m_ReconnectTimer.start();
+		Disconnect();
 	}
 
 	// Handle TCP connection state machine
@@ -620,15 +638,15 @@ void CSvxReflectorProtocol::Task(void)
 				m_ReconnectTimer.start();
 				if (TcpConnect())
 				{
-					// Send ProtoVer(2,0)
-					std::vector<uint8_t> ver;
-					PackUint16(ver, SVX_TCP_MSG_PROTO_VER);
-					PackUint16(ver, 2); // major
-					PackUint16(ver, 0); // minor
-					TcpSendFrame(ver.data(), (uint32_t)ver.size());
 					m_State = EState::authenticating;
 					m_TcpHeartbeatTimer.start();
 					m_TcpLastReceiveTimer.start();
+					// Send ProtoVer(2,0)
+					std::vector<uint8_t> ver;
+					SvxPack16(ver, SVX_TCP_MSG_PROTO_VER);
+					SvxPack16(ver, 2); // major
+					SvxPack16(ver, 0); // minor
+					TcpSendFrame(ver);
 				}
 				else
 				{
@@ -638,243 +656,175 @@ void CSvxReflectorProtocol::Task(void)
 						m_ReconnectBackoff = std::min(m_ReconnectBackoff * 2, 60);
 				}
 			}
+			else
+			{
+				// nothing to do but wait, don't spin
+				std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			}
 			break;
 
 		case EState::authenticating:
 		case EState::connected:
 		{
-			if (m_State == EState::connected)
+			// Drain all pending UDP packets; before the login wait on nothing
 			{
-				// Drain all pending UDP audio packets (non-blocking)
 				CBuffer buffer;
 				CIp ip;
-				if (!Receive4(buffer, ip, 20))
-				{
-					// No UDP data within 20ms — skip to TCP/timers
-				}
-				else
+				if (Receive4(buffer, ip, 20))
 				{
 					do {
-						// only the reflector's own audio, from its address
+						// only the reflector's own packets, from its address
 						CIp from(ip);
 						from.SetPort(m_ServerIp.GetPort());
-						if (from != m_ServerIp)
-							continue;
-						m_UdpLastReceiveTimer.start();
-						if (buffer.size() >= 2)
+						if (m_State == EState::connected && from == m_ServerIp)
 						{
-							uint16_t type = ((uint16_t)buffer.data()[0] << 8) | buffer.data()[1];
-							if (type == SVX_UDP_MSG_AUDIO)
-								OnUdpAudio(buffer);
-							else if (type == SVX_UDP_MSG_FLUSH_SAMPLES)
-								OnUdpFlush();
-							else if (type == SVX_UDP_MSG_HEARTBEAT)
-							{} // heartbeat OK
-							else if (type == SVX_UDP_MSG_ALL_FLUSHED)
-							{} // acknowledge flush
+							m_UdpLastReceiveTimer.start();
+							OnUdpPacket(buffer);
 						}
 					} while (Receive4(buffer, ip, 0));
 				}
 			}
 
-			// Receive TCP frames (non-blocking via poll)
-			std::vector<uint8_t> frame;
-			while (TcpReceiveFrame(frame))
-			{
-				if (frame.size() >= 2)
-				{
-					uint16_t type = ((uint16_t)frame[0] << 8) | frame[1];
-					OnTcpMessage(type, frame);
-				}
-			}
+			// Receive TCP frames
+			if (!TcpReceive())
+				break;
 
 			// Check TCP timeout
 			if (m_TcpLastReceiveTimer.time() > SVX_TCP_KEEPALIVE_TIMEOUT)
 			{
 				std::cerr << "SvxReflector: TCP heartbeat timeout" << std::endl;
-				TcpDisconnect();
-				m_ReconnectTimer.start();
+				Disconnect();
 				break;
 			}
 
-			// Send TCP heartbeat (TcpSendFrame auto-disconnects on failure)
+			// Send TCP heartbeat (TcpSendFrame disconnects on failure)
 			if (m_TcpHeartbeatTimer.time() >= SVX_TCP_KEEPALIVE_PERIOD)
 			{
 				std::vector<uint8_t> hb;
-				PackUint16(hb, SVX_TCP_MSG_HEARTBEAT);
-				if (!TcpSendFrame(hb.data(), (uint32_t)hb.size()))
-					break;  // already disconnected
+				SvxPack16(hb, SVX_TCP_MSG_HEARTBEAT);
+				if (!TcpSendFrame(hb))
+					break;
 			}
 
-			if (m_State == EState::connected)
+			if (m_State != EState::connected)
+				break;
+
+			// Send UDP heartbeat
+			if (m_UdpHeartbeatTimer.time() >= SVX_UDP_KEEPALIVE_PERIOD)
 			{
+				CBuffer hb;
+				BuildUdpHeader(hb, SVX_UDP_MSG_HEARTBEAT);
+				Send(hb, m_ServerIp);
+				m_UdpHeartbeatTimer.start();
+			}
 
-				// Send UDP heartbeat
-				if (m_UdpHeartbeatTimer.time() >= SVX_UDP_KEEPALIVE_PERIOD)
+			// Check UDP timeout
+			if (m_UdpLastReceiveTimer.time() > SVX_UDP_KEEPALIVE_TIMEOUT)
+			{
+				std::cerr << "SvxReflector: UDP heartbeat timeout" << std::endl;
+				Disconnect();
+				break;
+			}
+
+			// a talker whose flush got lost ends after a short silence
+			if (m_InStream.open && m_InStream.audioTimer.time() >= SVX_TALKER_TIMEOUT)
+				CloseInStream();
+			// and urfd audio that stopped without its last packet
+			for (auto it = m_OutStreamTG.begin(); it != m_OutStreamTG.end(); )
+			{
+				if (m_OutActivity[it->first].time() < SVX_TALKER_TIMEOUT)
 				{
-					CBuffer hb;
-					BuildUdpHeader(hb, SVX_UDP_MSG_HEARTBEAT);
-					Send(hb, m_ServerIp);
-					m_UdpHeartbeatTimer.start();
+					++it;
+					continue;
 				}
-
-				// Check UDP timeout
-				if (m_UdpLastReceiveTimer.time() > SVX_UDP_KEEPALIVE_TIMEOUT)
+				if (it->second == m_SelectedTG)
 				{
-					std::cerr << "SvxReflector: UDP heartbeat timeout" << std::endl;
-					TcpDisconnect();
-					m_ReconnectTimer.start();
+					CBuffer flushBuf;
+					BuildUdpHeader(flushBuf, SVX_UDP_MSG_FLUSH_SAMPLES);
+					Send(flushBuf, m_ServerIp);
 				}
+				it = m_OutStreamTG.erase(it);
+			}
 
-				// Process pending dynamic TG select/deselect commands
-				bool hadDeselects = false;
-				{
-					std::lock_guard<std::mutex> lock(m_PendingMutex);
-					for (uint32_t tg : m_PendingSelectTG)
-					{
-						std::vector<uint8_t> sel;
-						PackUint16(sel, SVX_TCP_MSG_SELECT_TG);
-						PackUint32(sel, tg);
-						TcpSendFrame(sel.data(), (uint32_t)sel.size());
-						std::cout << "SvxReflector: dynamically selected TG" << tg << std::endl;
-					}
-					m_PendingSelectTG.clear();
-					hadDeselects = !m_PendingDeselectTG.empty();
-					for (uint32_t tg : m_PendingDeselectTG)
-						std::cout << "SvxReflector: deselected TG" << tg << std::endl;
-					m_PendingDeselectTG.clear();
-				}
-
-				// If TGs were deselected, reset subscriptions on SVX server
-				if (hadDeselects)
-				{
-					// Unsubscribe all (required — no DESELECT_TG in protocol)
-					std::vector<uint8_t> sel;
-					PackUint16(sel, SVX_TCP_MSG_SELECT_TG);
-					PackUint32(sel, 0);
-					TcpSendFrame(sel.data(), (uint32_t)sel.size());
-
-					// Re-subscribe remaining TGs (if any)
-					std::lock_guard<std::mutex> lock(m_TGMutex);
-					for (const auto &tg : m_TGToModule)
-					{
-						std::vector<uint8_t> resel;
-						PackUint16(resel, SVX_TCP_MSG_SELECT_TG);
-						PackUint32(resel, tg.first);
-						TcpSendFrame(resel.data(), (uint32_t)resel.size());
-						std::cout << "SvxReflector: re-selected TG" << tg.first << std::endl;
-					}
-					if (m_TGToModule.empty())
-						std::cout << "SvxReflector: all TGs deselected, server may disconnect" << std::endl;
-				}
-
-				// Purge expired dynamic TGs
-				bool hadExpiries = false;
+			// Purge expired dynamic TGs
+			{
+				std::set<char> orphans;
 				{
 					std::lock_guard<std::mutex> lock(m_TGMutex);
 					auto now = std::chrono::steady_clock::now();
 					for (auto it = m_DynTGs.begin(); it != m_DynTGs.end(); )
 					{
-						if (now >= it->second.expires)
+						if (now < it->second.expires)
 						{
-							uint32_t tg = it->first;
-							auto tgIt = m_TGToModule.find(tg);
-							if (tgIt != m_TGToModule.end())
-							{
-								char mod = tgIt->second;
-								// Only clear primary mapping if this TG was the primary
-								auto modIt = m_ModuleToTG.find(mod);
-								if (modIt != m_ModuleToTG.end() && modIt->second == tg)
-									m_ModuleToTG.erase(modIt);
-								m_TGToModule.erase(tgIt);
-								std::cout << "SvxReflector: dynamic TG" << tg << " expired (Module " << mod << ")" << std::endl;
-
-								// Remove orphaned SVX client for this module if no TGs remain
-								bool hasTGsLeft = false;
-								for (const auto &t : m_TGToModule)
-									if (t.second == mod) { hasTGsLeft = true; break; }
-								if (!hasTGsLeft)
-								{
-									CClients *clients = g_Reflector.GetClients();
-									for (auto cit = clients->begin(); cit != clients->end(); ++cit)
-									{
-										if ((*cit)->GetProtocol() == EProtocol::svxreflector && (*cit)->GetReflectorModule() == mod)
-										{
-											clients->RemoveClient(*cit);
-											break;
-										}
-									}
-									g_Reflector.ReleaseClients();
-								}
-							}
-							it = m_DynTGs.erase(it);
-							hadExpiries = true;
-						}
-						else
 							++it;
-					}
-				}
-
-				// If TGs expired, reset subscriptions on SVX server
-				if (hadExpiries)
-				{
-					// Unsubscribe all
-					std::vector<uint8_t> sel;
-					PackUint16(sel, SVX_TCP_MSG_SELECT_TG);
-					PackUint32(sel, 0);
-					TcpSendFrame(sel.data(), (uint32_t)sel.size());
-
-					// Re-subscribe remaining TGs (if any)
-					std::lock_guard<std::mutex> lock(m_TGMutex);
-					for (const auto &tg : m_TGToModule)
-					{
-						std::vector<uint8_t> resel;
-						PackUint16(resel, SVX_TCP_MSG_SELECT_TG);
-						PackUint32(resel, tg.first);
-						TcpSendFrame(resel.data(), (uint32_t)resel.size());
-						std::cout << "SvxReflector: re-selected TG" << tg.first << " after expiry" << std::endl;
-					}
-					if (m_TGToModule.empty())
-						std::cout << "SvxReflector: all TGs expired, server may disconnect" << std::endl;
-				}
-
-				// Handle end of streaming timeout
-				CheckStreamsTimeout();
-
-				// Refresh SVX clients for active modules, remove orphaned ones
-				{
-					CClients *clients = g_Reflector.GetClients();
-					std::lock_guard<std::mutex> lock(m_TGMutex);
-					for (auto cit = clients->begin(); cit != clients->end(); )
-					{
-						if ((*cit)->GetProtocol() == EProtocol::svxreflector)
+							continue;
+						}
+						uint32_t tg = it->first;
+						auto tgIt = m_TGToModule.find(tg);
+						if (tgIt != m_TGToModule.end())
 						{
-							char mod = (*cit)->GetReflectorModule();
-							bool hasTG = false;
+							char mod = tgIt->second;
+							// Only clear primary mapping if this TG was the primary
+							auto modIt = m_ModuleToTG.find(mod);
+							if (modIt != m_ModuleToTG.end() && modIt->second == tg)
+								m_ModuleToTG.erase(modIt);
+							m_TGToModule.erase(tgIt);
+							std::cout << "SvxReflector: dynamic TG" << tg << " expired (Module " << mod << ")" << std::endl;
+							bool hasTGsLeft = false;
 							for (const auto &t : m_TGToModule)
-								if (t.second == mod) { hasTG = true; break; }
-							if (hasTG)
-							{
-								(*cit)->Alive();
-								++cit;
-							}
-							else if (!(*cit)->IsAlive())
-							{
-								clients->RemoveClient(*cit);
-								break; // iterator invalidated
-							}
-							else
-								++cit;
+								if (t.second == mod) { hasTGsLeft = true; break; }
+							if (!hasTGsLeft)
+								orphans.insert(mod);
+						}
+						it = m_DynTGs.erase(it);
+						m_TGsChanged = true;
+					}
+				}
+				RemoveOrphanClients(orphans);
+			}
+
+			// monitor list, selection and the way back to the home TG
+			UpdateSelection();
+			if (m_State != EState::connected)
+				break;
+
+			// Handle end of streaming timeout
+			CheckStreamsTimeout();
+
+			// Refresh SVX clients for active modules, remove orphaned ones
+			{
+				std::set<char> mapped;
+				{
+					std::lock_guard<std::mutex> lock(m_TGMutex);
+					for (const auto &t : m_TGToModule)
+						mapped.insert(t.second);
+				}
+				CClients *clients = g_Reflector.GetClients();
+				for (auto cit = clients->begin(); cit != clients->end(); )
+				{
+					if ((*cit)->GetProtocol() == EProtocol::svxreflector)
+					{
+						if (mapped.count((*cit)->GetReflectorModule()))
+						{
+							(*cit)->Alive();
+							++cit;
+						}
+						else if (!(*cit)->IsAlive())
+						{
+							clients->RemoveClient(*cit);
+							break; // iterator invalidated
 						}
 						else
 							++cit;
 					}
-					g_Reflector.ReleaseClients();
+					else
+						++cit;
 				}
-
-				// Handle outbound queue
-				HandleQueue();
+				g_Reflector.ReleaseClients();
 			}
+
+			// Handle outbound queue
+			HandleQueue();
 			break;
 		}
 
@@ -895,29 +845,29 @@ void CSvxReflectorProtocol::CloseInStream(void)
 {
 	if (m_InStream.open)
 	{
+		// what the decoder still holds, then a silent last frame: the squelch
+		// tail would give D-Star artifacts (crackle, tones) through AMBE
+		SvxPcmFrame rest;
+		if (m_Rx.Flush(rest))
+			PushInFrame(rest.data(), false);
+		int16_t silence[160] = {};
+		PushInFrame(silence, true);
+
 		auto it = m_Streams.find(m_InStream.streamId);
 		if (it != m_Streams.end() && it->second)
 		{
-			// Flush OPUS decoder to reset state (like svxlink's flushEncodedSamples)
-			if (m_OpusDecoder)
-			{
-				int16_t dummy[160];
-				[[maybe_unused]] int ret = opus_decode(m_OpusDecoder, NULL, 0, dummy, 160, 0);
-			}
-			// Close with silence — lastPcm often contains squelch tail / noise
-			// that causes D-Star artifacts (crackle, tones) when transcoded to AMBE
-			int16_t silence[160] = {};
-			auto lastFrame = std::unique_ptr<CDvFramePacket>(
-				new CDvFramePacket(silence, m_InStream.streamId, true, ECodecType::svx));
-			lastFrame->SetPacketModule(m_InStream.module);
-			it->second->Push(std::move(lastFrame));
 			g_Reflector.CloseStream(it->second);
 			m_Streams.erase(it);
 		}
-
-		m_InStream.open = false;
-		m_InStream.streamId = 0;
 	}
+	else
+	{
+		SvxPcmFrame rest;
+		m_Rx.Flush(rest);
+	}
+	m_InStream.open = false;
+	m_InStream.rejected = false;
+	m_InStream.streamId = 0;
 	m_InStream.tg = 0;
 	m_InStream.module = ' ';
 	m_InStream.talkerCallsign.clear();
@@ -928,10 +878,24 @@ void CSvxReflectorProtocol::OnTalkerStart(const std::vector<uint8_t> &payload)
 	// payload: type(2) + tg(4) + callsign(string)
 	if (payload.size() < 6) return;
 	size_t pos = 2;
-	uint32_t tg = UnpackUint32(payload, pos);
+	uint32_t tg = SvxUnpack32(payload, pos);
 	char module = TGToModule(tg);
 	if (module == ' ')
 		return;
+	std::string talkerCs = SvxExtractCallsign(SvxUnpackString(payload, pos));  // "DL4JC-APP" -> "DL4JC"
+
+	// a talker on a monitored TG: select it if this side is idle, else it is busy
+	if (tg != m_SelectedTG)
+	{
+		if (!IsIdle() || m_TGActivityTimer.time() < SVX_TG_HOLD)
+		{
+			std::cout << "SvxReflector: talker " << talkerCs << " on monitored TG" << tg << ", TG" << m_SelectedTG << " is busy" << std::endl;
+			return;
+		}
+		SelectTG(tg);
+		if (m_SelectedTG != tg)
+			return;
+	}
 
 	// Refresh dynamic TG TTL on activity
 	{
@@ -945,60 +909,69 @@ void CSvxReflectorProtocol::OnTalkerStart(const std::vector<uint8_t> &payload)
 		}
 	}
 
-	// Extract amateur radio callsign from SvxLink callsign (e.g. "DL4JC-APP" -> "DL4JC")
-	std::string talkerCs;
-	if (pos < payload.size())
-	{
-		std::string raw = UnpackString(payload, pos);
-		talkerCs = ExtractCallsign(raw);
-	}
-
+	// the same talker again keeps the stream, its audio may still be in flight;
+	// someone else gets a stream of their own, under their callsign
+	if (m_InStream.open && (m_InStream.tg != tg || m_InStream.talkerCallsign != talkerCs))
+		CloseInStream();
 	m_InStream.tg = tg;
+	m_InStream.module = module;
 	m_InStream.talkerCallsign = talkerCs;
-
-	if (m_InStream.open && m_InStream.module == module)
-	{
-		// Reuse existing open stream on same module
-		// TalkerStart/Stop are informational — the UDP audio stream is continuous
-		// Closing here would cut off audio that's still in-flight via UDP
-	}
-	else
-	{
-		// New module or no open stream - will open on first audio frame
-		if (m_InStream.open)
-			CloseInStream();
-		m_InStream.module = module;
-		m_InStream.open = false;
-		static uint8_t counter = 0;
-		m_InStream.streamId = 0x5C00 | (counter++ & 0xFF);
-	}
 
 	std::cout << "SvxReflector: talker start on TG" << tg << " -> Module " << module << " by " << talkerCs << std::endl;
 }
 
 void CSvxReflectorProtocol::OnTalkerStop(const std::vector<uint8_t> &payload)
 {
-	// TalkerStop is informational only — the UDP audio stream continues.
-	// The stream is closed by OnUdpFlush when audio actually stops.
-	uint32_t tg = 0;
-	if (payload.size() >= 6)
+	// informational: the stream ends with the UDP flush, or a short silence when
+	// the flush got lost
+	size_t pos = 2;
+	uint32_t tg = SvxUnpack32(payload, pos);
+	std::cout << "SvxReflector: talker stop on TG" << tg << std::endl;
+}
+
+void CSvxReflectorProtocol::OnUdpPacket(const CBuffer &buffer)
+{
+	// V2 header: type(2) + client_id(2) + seq(2)
+	if (buffer.size() < 6)
+		return;
+	uint16_t type = ((uint16_t)buffer.data()[0] << 8) | buffer.data()[1];
+	uint16_t seq = ((uint16_t)buffer.data()[4] << 8) | buffer.data()[5];
+
+	// every message of the connection counts, a late audio packet is dropped
+	if (!m_Rx.CheckSeq(seq))
+		return;
+
+	switch (type)
 	{
-		size_t pos = 2;
-		tg = UnpackUint32(payload, pos);
+		case SVX_UDP_MSG_AUDIO:
+			OnUdpAudio(buffer);
+			break;
+		case SVX_UDP_MSG_FLUSH_SAMPLES:
+			CloseInStream();
+			// tell the reflector all samples are out
+			{
+				CBuffer ack;
+				BuildUdpHeader(ack, SVX_UDP_MSG_ALL_FLUSHED);
+				Send(ack, m_ServerIp);
+			}
+			break;
+		default:
+			break;   // heartbeat, all flushed
 	}
-	std::cout << "SvxReflector: talker stop on TG" << tg << " (stream stays open)" << std::endl;
 }
 
 void CSvxReflectorProtocol::OnUdpAudio(const CBuffer &buffer)
 {
-	// Ignore audio if no active talker
-	if (m_InStream.module == ' ' || m_InStream.tg == 0)
+	// audio belongs to the selected TG
+	if (m_SelectedTG == 0)
+		return;
+	char module = TGToModule(m_SelectedTG);
+	if (module == ' ')
 		return;
 
 	// V2 UDP audio: type(2) + client_id(2) + seq(2) + opus_len(2) + opus_data
 	if (buffer.size() < 9)
 		return;
-
 	uint16_t opusLen = ((uint16_t)buffer.data()[6] << 8) | buffer.data()[7];
 	if ((size_t)(8 + opusLen) > buffer.size())
 	{
@@ -1006,67 +979,79 @@ void CSvxReflectorProtocol::OnUdpAudio(const CBuffer &buffer)
 		return;
 	}
 
-	// Decode OPUS to 8kHz PCM (libopus resamples from 16kHz internally)
-	int16_t pcm[160];
-	int samples = opus_decode(m_OpusDecoder, buffer.data() + 8, opusLen, pcm, 160, 0);
-	if (samples <= 0)
+	// audio without a talker start (it raced the TCP message, or got lost)
+	if (m_InStream.tg != m_SelectedTG)
 	{
-		std::cerr << "SvxReflector: opus_decode failed: " << opus_strerror(samples) << std::endl;
+		if (m_InStream.open)
+			CloseInStream();
+		m_InStream.tg = m_SelectedTG;
+		m_InStream.module = module;
+	}
+
+	std::vector<SvxPcmFrame> frames;
+	if (!m_Rx.Decode(buffer.data() + 8, opusLen, frames))
+	{
+		std::cerr << "SvxReflector: opus_decode failed" << std::endl;
 		return;
 	}
-	// Zero-pad if fewer than 160 samples
-	for (int i = samples; i < 160; i++)
-		pcm[i] = 0;
+	m_InStream.audioTimer.start();
+	m_TGActivityTimer.start();
 
-	// Apply RX gain
-	if (m_RxGainNum != 256)
+	for (auto &f : frames)
 	{
-		for (int i = 0; i < 160; i++)
-			pcm[i] = (int16_t)((pcm[i] * m_RxGainNum) >> 8);
-	}
-
-	// On first audio frame, open a stream with a header packet
-	if (!m_InStream.open)
-	{
-		// Use talker callsign if available, otherwise reflector callsign
-		std::string userCs = m_InStream.talkerCallsign.empty() ? m_Callsign : m_InStream.talkerCallsign;
-		CCallsign my;
-		my.SetCallsign(userCs, true); // true = lookup DMR ID
-		if (my.GetDmrid() == 0)
-			std::cout << "SvxReflector: no DMR ID found for " << userCs << " - DMR output depends on MMDVMClient FallbackDmrId" << std::endl;
-		CCallsign rpt1(g_Reflector.GetCallsign());
-		rpt1.SetCSModule(m_InStream.module);
-		CCallsign rpt2 = m_ReflectorCallsign;
-		rpt2.SetCSModule(m_InStream.module);
-		auto header = std::unique_ptr<CDvHeaderPacket>(
-			new CDvHeaderPacket(my, CCallsign("CQCQCQ"), rpt1, rpt2, m_InStream.streamId, true));
-		OnDvHeaderPacketIn(header, m_ServerIp);
-		m_InStream.open = true;
-		auto stream = g_Reflector.GetStream(m_InStream.module);
-		if (stream)
-			stream->SetSourceTG(m_InStream.tg);
-		std::cout << "SvxReflector: stream opened for " << userCs << " (DMR ID " << my.GetDmrid() << ") on module " << m_InStream.module << std::endl;
-	}
-
-	// Cache last PCM for clean last-frame on close
-	memcpy(m_InStream.lastPcm, pcm, sizeof(m_InStream.lastPcm));
-
-	// Create frame and push directly to stream
-	auto frame = std::unique_ptr<CDvFramePacket>(
-		new CDvFramePacket(pcm, m_InStream.streamId, false, ECodecType::svx));
-	frame->SetPacketModule(m_InStream.module);
-
-	// Look up stream by ID only (skip IP check)
-	auto it = m_Streams.find(m_InStream.streamId);
-	if (it != m_Streams.end() && it->second)
-	{
-		it->second->Push(std::move(frame));
+		SvxApplyGain(f.data(), 160, m_RxGainNum);
+		PushInFrame(f.data(), false);
 	}
 }
 
-void CSvxReflectorProtocol::OnUdpFlush(void)
+// opens the stream on the first frame of a talker, and again when urfd closed it
+// meanwhile (stream timeout); false if the module is busy with someone else
+bool CSvxReflectorProtocol::EnsureInStream(void)
 {
-	CloseInStream();
+	if (m_InStream.open && (m_InStream.rejected || m_Streams.count(m_InStream.streamId)))
+		return !m_InStream.rejected;
+
+	m_InStream.streamId = 0x5C00 | m_StreamCounter++;
+
+	// Use talker callsign if available, otherwise reflector callsign
+	std::string userCs = m_InStream.talkerCallsign.empty() ? m_Callsign : m_InStream.talkerCallsign;
+	CCallsign my;
+	my.SetCallsign(userCs, true); // true = lookup DMR ID
+	if (my.GetDmrid() == 0)
+		std::cout << "SvxReflector: no DMR ID found for " << userCs << " - DMR output depends on MMDVMClient FallbackDmrId" << std::endl;
+	CCallsign rpt1(g_Reflector.GetCallsign());
+	rpt1.SetCSModule(m_InStream.module);
+	CCallsign rpt2 = m_ReflectorCallsign;
+	rpt2.SetCSModule(m_InStream.module);
+	auto header = std::unique_ptr<CDvHeaderPacket>(
+		new CDvHeaderPacket(my, CCallsign("CQCQCQ"), rpt1, rpt2, m_InStream.streamId, true));
+	OnDvHeaderPacketIn(header, m_ServerIp);
+	m_InStream.open = true;
+
+	// module busy: the talker's audio is dropped until it ends, not retried per packet
+	if (!m_Streams.count(m_InStream.streamId))
+	{
+		m_InStream.rejected = true;
+		return false;
+	}
+	auto stream = g_Reflector.GetStream(m_InStream.module);
+	if (stream)
+		stream->SetSourceTG(m_InStream.tg);
+	std::cout << "SvxReflector: stream opened for " << userCs << " (DMR ID " << my.GetDmrid() << ") on module " << m_InStream.module << std::endl;
+	return true;
+}
+
+void CSvxReflectorProtocol::PushInFrame(const int16_t *pcm, bool last)
+{
+	if (!last && !EnsureInStream())
+		return;
+	auto it = m_Streams.find(m_InStream.streamId);
+	if (it == m_Streams.end() || !it->second)
+		return;
+	auto frame = std::unique_ptr<CDvFramePacket>(
+		new CDvFramePacket(pcm, m_InStream.streamId, last, ECodecType::svx));
+	frame->SetPacketModule(m_InStream.module);
+	it->second->Push(std::move(frame));
 }
 
 void CSvxReflectorProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, const CIp &Ip)
@@ -1087,7 +1072,7 @@ void CSvxReflectorProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> 
 	CClients *clients = g_Reflector.GetClients();
 	char module = Header->GetRpt2Module();
 	CCallsign cs;
-	cs.SetCallsign(ExtractCallsign(m_Callsign), false); // "DL4JC-HS" -> "DL4JC"
+	cs.SetCallsign(SvxExtractCallsign(m_Callsign), false); // "DL4JC-HS" -> "DL4JC"
 	cs.SetCSModule(module);
 	std::shared_ptr<CClient> client = clients->FindClient(cs, module, Ip, EProtocol::svxreflector);
 	if (client == nullptr)
@@ -1111,7 +1096,7 @@ void CSvxReflectorProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> 
 		}
 		else
 		{
-			std::cerr << "SvxReflector: OpenStream failed for module " << module << std::endl;
+			std::cerr << "SvxReflector: OpenStream failed for module " << module << " (busy)" << std::endl;
 		}
 	}
 	else
@@ -1153,10 +1138,30 @@ void CSvxReflectorProtocol::HandleQueue(void)
 
 			// Look up TG for this module
 			uint32_t tg = ModuleToTG(module);
-			if (tg != 0)
+			if (tg == 0)
+				continue;
+
+			// only one TG at a time: take it over unless it carries a talker
+			if (tg != m_SelectedTG)
 			{
-				m_OutStreamTG[module] = tg;
+				bool otherOut = false;
+				for (const auto &[m, t] : m_OutStreamTG)
+					if (m != module && t != tg) otherOut = true;
+				if (m_InStream.open || otherOut)
+				{
+					std::cout << "SvxReflector: module " << module << " not sent to TG" << tg << ", TG" << m_SelectedTG << " is busy" << std::endl;
+					m_OutStreamTG.erase(module);
+					continue;
+				}
+				SelectTG(tg);
+				if (m_SelectedTG != tg)
+					continue;
 			}
+			m_OutStreamTG[module] = tg;
+			m_OutActivity[module].start();
+			// a fresh encoder per transmission: the state left from the last one
+			// starts the next with a low bitrate and a level 6 to 9 dB too high
+			opus_encoder_ctl(m_OpusEncoder, OPUS_RESET_STATE);
 		}
 		else if (packet->IsDvFrame())
 		{
@@ -1170,30 +1175,26 @@ void CSvxReflectorProtocol::HandleQueue(void)
 			if (packet->IsLastPacket())
 			{
 				// Send UDP flush to signal end of transmission
-				CBuffer flushBuf;
-				BuildUdpHeader(flushBuf, SVX_UDP_MSG_FLUSH_SAMPLES);
-				Send(flushBuf, m_ServerIp);
-
-				// Cleanup
+				if (tg == m_SelectedTG)
+				{
+					CBuffer flushBuf;
+					BuildUdpHeader(flushBuf, SVX_UDP_MSG_FLUSH_SAMPLES);
+					Send(flushBuf, m_ServerIp);
+				}
 				m_OutStreamTG.erase(it);
 			}
-			else
+			else if (tg == m_SelectedTG)
 			{
 				// Get PCM data and encode/send
 				const int16_t *pcm = (const int16_t *)frame.GetCodecData(ECodecType::usrp);
 				if (pcm)
 				{
-					if (m_TxGainNum != 256)
-					{
-						int16_t gained[160];
-						for (int i = 0; i < 160; i++)
-							gained[i] = (int16_t)((pcm[i] * m_TxGainNum) >> 8);
-						EncodeAndSendAudio(gained, tg);
-					}
-					else
-					{
-						EncodeAndSendAudio(pcm, tg);
-					}
+					int16_t out[160];
+					memcpy(out, pcm, sizeof(out));
+					SvxApplyGain(out, 160, m_TxGainNum);
+					EncodeAndSendAudio(out);
+					m_TGActivityTimer.start();
+					m_OutActivity[module].start();
 				}
 			}
 		}
@@ -1203,30 +1204,21 @@ void CSvxReflectorProtocol::HandleQueue(void)
 void CSvxReflectorProtocol::BuildUdpHeader(CBuffer &buf, uint16_t type)
 {
 	// V2 UDP header: type(2) + client_id(2) + seq(2)
-	uint16_t cid = (uint16_t)(m_ClientId & 0xFFFF);
 	uint8_t hdr[6];
 	hdr[0] = (type >> 8) & 0xFF;
 	hdr[1] = type & 0xFF;
-	hdr[2] = (cid >> 8) & 0xFF;
-	hdr[3] = cid & 0xFF;
+	hdr[2] = (m_ClientId >> 8) & 0xFF;
+	hdr[3] = m_ClientId & 0xFF;
 	hdr[4] = (m_UdpSeq >> 8) & 0xFF;
 	hdr[5] = m_UdpSeq & 0xFF;
 	m_UdpSeq++;
 	buf.Set(hdr, 6);
 }
 
-void CSvxReflectorProtocol::EncodeAndSendAudio(const int16_t *pcm, uint32_t tg)
+void CSvxReflectorProtocol::EncodeAndSendAudio(const int16_t *pcm)
 {
-	// OPUS encode at 16kHz (upsample 8kHz PCM -> 16kHz for SvxReflector)
-	int16_t pcm16k[320];
-	for (int i = 0; i < 160; i++)
-	{
-		pcm16k[i * 2] = pcm[i];
-		pcm16k[i * 2 + 1] = (i < 159) ? (int16_t)(((int32_t)pcm[i] + pcm[i+1]) / 2) : pcm[i];
-	}
-
 	uint8_t opusBuf[512];
-	int opusLen = opus_encode(m_OpusEncoder, pcm16k, 320, opusBuf, sizeof(opusBuf));
+	int opusLen = opus_encode(m_OpusEncoder, pcm, 160, opusBuf, sizeof(opusBuf));
 	if (opusLen <= 0)
 	{
 		std::cerr << "SvxReflector: opus_encode failed: " << opus_strerror(opusLen) << std::endl;
@@ -1291,17 +1283,14 @@ bool CSvxReflectorProtocol::AddDynamicTG(uint32_t tg, char module, int ttlSecond
 		}
 	}
 
-	// Queue SELECT_TG for the Task thread to send
-	{
-		std::lock_guard<std::mutex> lock(m_PendingMutex);
-		m_PendingSelectTG.push_back(tg);
-	}
-
+	// the Task thread monitors it from now on
+	m_TGsChanged = true;
 	return true;
 }
 
 bool CSvxReflectorProtocol::RemoveDynamicTG(uint32_t tg)
 {
+	std::set<char> orphans;
 	{
 		std::lock_guard<std::mutex> lock(m_TGMutex);
 
@@ -1312,46 +1301,28 @@ bool CSvxReflectorProtocol::RemoveDynamicTG(uint32_t tg)
 			return false;
 		}
 
-		char removedMod = ' ';
 		auto tgIt = m_TGToModule.find(tg);
 		if (tgIt != m_TGToModule.end())
 		{
-			removedMod = tgIt->second;
+			char removedMod = tgIt->second;
 			auto modIt = m_ModuleToTG.find(removedMod);
 			if (modIt != m_ModuleToTG.end() && modIt->second == tg)
 				m_ModuleToTG.erase(modIt);
 			m_TGToModule.erase(tgIt);
 			std::cout << "SvxReflector: removed dynamic TG" << tg << " from Module " << removedMod << std::endl;
-		}
-		m_DynTGs.erase(dynIt);
 
-		// Remove orphaned SVX client if no TGs remain for this module
-		if (removedMod != ' ')
-		{
 			bool hasTGsLeft = false;
 			for (const auto &t : m_TGToModule)
 				if (t.second == removedMod) { hasTGsLeft = true; break; }
 			if (!hasTGsLeft)
-			{
-				CClients *clients = g_Reflector.GetClients();
-				for (auto cit = clients->begin(); cit != clients->end(); ++cit)
-				{
-					if ((*cit)->GetProtocol() == EProtocol::svxreflector && (*cit)->GetReflectorModule() == removedMod)
-					{
-						clients->RemoveClient(*cit);
-						break;
-					}
-				}
-				g_Reflector.ReleaseClients();
-			}
+				orphans.insert(removedMod);
 		}
+		m_DynTGs.erase(dynIt);
 	}
 
-	{
-		std::lock_guard<std::mutex> lock(m_PendingMutex);
-		m_PendingDeselectTG.push_back(tg);
-	}
-
+	// client list after the TG lock, the Task thread takes them in this order too
+	RemoveOrphanClients(orphans);
+	m_TGsChanged = true;
 	return true;
 }
 

@@ -3,6 +3,11 @@
 // SvxReflectorProtocol -- Connects to an SvxLink SvxReflector via TCP/UDP
 // Implements SvxReflector protocol V2 with HMAC-SHA1 auth and OPUS audio
 //
+// A node has one selected TG on an SvxReflector, it gets audio of that TG only
+// and its audio goes there. The other mapped TGs are monitored: a talker on one
+// of them while this side is idle selects that TG, like SvxLink nodes do. After
+// a while without traffic the first mapped TG (the home TG) is selected again.
+//
 // Copyright (C) 2026
 // Licensed under the GNU General Public License v3 or later
 
@@ -11,17 +16,20 @@
 #include "Protocol.h"
 #include "DVHeaderPacket.h"
 #include "DVFramePacket.h"
+#include "SvxAudio.h"
 
-#include <opus/opus.h>
 #include <vector>
 #include <unordered_map>
+#include <set>
 #include <string>
 #include <mutex>
+#include <atomic>
 #include "TGModuleMap.h"
 
 // TCP message types
 #define SVX_TCP_MSG_HEARTBEAT            1
 #define SVX_TCP_MSG_PROTO_VER            5
+#define SVX_TCP_MSG_PROTO_VER_DOWNGRADE  6
 #define SVX_TCP_MSG_AUTH_CHALLENGE        10
 #define SVX_TCP_MSG_AUTH_RESPONSE         11
 #define SVX_TCP_MSG_AUTH_OK              12
@@ -33,6 +41,7 @@
 #define SVX_TCP_MSG_TALKER_START         104
 #define SVX_TCP_MSG_TALKER_STOP          105
 #define SVX_TCP_MSG_SELECT_TG            106
+#define SVX_TCP_MSG_TG_MONITOR           107
 #define SVX_TCP_MSG_NODE_INFO            111
 
 // UDP message types
@@ -70,8 +79,9 @@ protected:
 	// TCP connection
 	bool TcpConnect(void);
 	void TcpDisconnect(void);
-	bool TcpSendFrame(const uint8_t *data, uint32_t len);
-	bool TcpReceiveFrame(std::vector<uint8_t> &frame);
+	void Disconnect(void);                 // closes the incoming stream too
+	bool TcpSendFrame(const std::vector<uint8_t> &msg);
+	bool TcpReceive(void);                 // false if the connection was lost
 
 	// TCP message handlers
 	void OnTcpMessage(uint16_t type, const std::vector<uint8_t> &payload);
@@ -81,24 +91,26 @@ protected:
 	void OnTalkerStart(const std::vector<uint8_t> &payload);
 	void OnTalkerStop(const std::vector<uint8_t> &payload);
 
-	// UDP audio
-	void OnUdpAudio(const CBuffer &buffer);
-	void OnUdpFlush(void);
-	void CloseInStream(void);
-	void EncodeAndSendAudio(const int16_t *pcm, uint32_t tg);
-	void BuildUdpHeader(CBuffer &buf, uint16_t type);
+	// TG selection
+	void SelectTG(uint32_t tg);
+	void SendTgMonitor(void);
+	uint32_t HomeTG(void) const;
+	bool IsIdle(void) const { return !m_InStream.open && m_OutStreamTG.empty(); }
+	void UpdateSelection(void);
 
-	// serialization helpers (big-endian)
-	void PackUint16(std::vector<uint8_t> &buf, uint16_t val);
-	void PackUint32(std::vector<uint8_t> &buf, uint32_t val);
-	void PackString(std::vector<uint8_t> &buf, const std::string &str);
-	uint16_t UnpackUint16(const std::vector<uint8_t> &buf, size_t &pos);
-	uint32_t UnpackUint32(const std::vector<uint8_t> &buf, size_t &pos);
-	std::string UnpackString(const std::vector<uint8_t> &buf, size_t &pos);
+	// UDP audio
+	void OnUdpPacket(const CBuffer &buffer);
+	void OnUdpAudio(const CBuffer &buffer);
+	void PushInFrame(const int16_t *pcm, bool last);
+	bool EnsureInStream(void);
+	void CloseInStream(void);
+	void EncodeAndSendAudio(const int16_t *pcm);
+	void BuildUdpHeader(CBuffer &buf, uint16_t type);
 
 	// TG mapping
 	char TGToModule(uint32_t tg) const;
 	void LoadTGMap(void);
+	void RemoveOrphanClients(const std::set<char> &modules);
 
 	// stream helpers
 	void OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &, const CIp &);
@@ -110,6 +122,7 @@ protected:
 	// TCP
 	int m_TcpFd;
 	CIp m_ServerIp;
+	std::vector<uint8_t> m_TcpRecvBuf;
 
 	// timers
 	CTimer m_TcpHeartbeatTimer;
@@ -120,7 +133,7 @@ protected:
 	int m_ReconnectBackoff;
 
 	// auth
-	uint32_t m_ClientId;
+	uint16_t m_ClientId;
 	uint16_t m_UdpSeq;
 	std::string m_Password;
 	std::string m_Callsign;
@@ -128,7 +141,7 @@ protected:
 
 	// OPUS
 	OpusEncoder *m_OpusEncoder;
-	OpusDecoder *m_OpusDecoder;
+	CSvxOpusRx m_Rx;
 
 	// gain (linear numerator, 256 = 0dB)
 	int32_t m_RxGainNum;
@@ -145,25 +158,30 @@ protected:
 	};
 	std::unordered_map<uint32_t, SDynTG> m_DynTGs;  // dynamic TG expiry info
 
-	// Pending SELECT_TG commands (set from admin thread, consumed in Task thread)
-	mutable std::mutex m_PendingMutex;
-	std::vector<uint32_t> m_PendingSelectTG;
-	std::vector<uint32_t> m_PendingDeselectTG;
+	// the mapped TGs changed (admin thread, reload): monitor list and selection follow
+	std::atomic<bool> m_TGsChanged{false};
 
 	// Reconnect flag (set by admin API, checked in Task loop)
 	std::atomic<bool> m_ReconnectRequested{false};
 
+	// the TG selected on the reflector, and when it last carried audio either way
+	uint32_t m_SelectedTG;
+	CTimer m_TGActivityTimer;
+
 	// incoming stream state
 	struct SIncomingStream {
-		uint32_t tg;
-		char module;
-		uint16_t streamId;
-		bool open;
+		uint32_t tg = 0;
+		char module = ' ';
+		uint16_t streamId = 0;
+		bool open = false;
+		bool rejected = false;      // the module was busy, this talker's audio is dropped
 		std::string talkerCallsign;
-		int16_t lastPcm[160] = {};
+		CTimer audioTimer;          // since the last audio packet
 	};
 	SIncomingStream m_InStream;
+	uint8_t m_StreamCounter;
 
-	// outgoing stream state per module
+	// outgoing stream state per module, and when it last sent a frame
 	std::unordered_map<char, uint32_t> m_OutStreamTG;
+	std::unordered_map<char, CTimer> m_OutActivity;
 };

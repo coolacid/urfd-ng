@@ -133,6 +133,9 @@ enum class EProtocol { any, none, dextra, dplus, dcs, g3, xlxpeer, urf, dmrplus,
 #define SVX_UDP_KEEPALIVE_PERIOD       15                                  // in seconds
 #define SVX_UDP_KEEPALIVE_TIMEOUT      60                                  // in seconds
 #define SVX_RECONNECT_PERIOD           5                                   // in seconds
+#define SVX_TALKER_TIMEOUT             2                                   // in seconds without audio before a talker ends
+#define SVX_TG_HOLD                    3                                   // in seconds after traffic before another TG may be selected
+#define SVX_TG_RETURN                  30                                  // in seconds without traffic before the home TG is selected again
 
 // SVX Server
 #define SVXS_TCP_KEEPALIVE_PERIOD      10                                  // in seconds
@@ -141,6 +144,7 @@ enum class EProtocol { any, none, dextra, dplus, dcs, g3, xlxpeer, urf, dmrplus,
 #define SVXS_UDP_KEEPALIVE_TIMEOUT     60                                  // in seconds
 #define SVXS_AUTH_TIMEOUT              30                                  // in seconds from connecting to logged in
 #define SVXS_MAX_PENDING               8                                   // connections not logged in yet
+#define SVXS_URFD_TALKER               0                                   // talker id of urfd audio on a TG (peer ids start at 1)
 
 // G3 Terminal
 #define G3_PRESENCE_PORT                12346                               // UDP port

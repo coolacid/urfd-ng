@@ -13,34 +13,19 @@
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <fstream>
 #include <sstream>
-#include <random>
-#include <regex>
+#include <map>
 
 #include <cmath>
 #include <openssl/hmac.h>
+#include <openssl/rand.h>
+#include <openssl/crypto.h>
 #include <nlohmann/json.hpp>
 
 #include "SvxProtocol.h"
 #include "SvxClient.h"
 #include "Global.h"
-
-// Extract valid amateur radio callsign from SvxLink callsign
-static std::string ExtractCallsign(const std::string &svxCallsign)
-{
-	static const std::regex csRegex("^([A-Z]{1,2}[0-9]+[A-Z]{1,4})");
-	std::smatch match;
-	if (std::regex_search(svxCallsign, match, csRegex))
-		return match[1].str();
-	auto dash = svxCallsign.find('-');
-	if (dash != std::string::npos && dash >= 3)
-		return svxCallsign.substr(0, dash);
-	return svxCallsign;
-}
-
-#ifndef MSG_NOSIGNAL
-#define MSG_NOSIGNAL 0
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor / destructor
@@ -48,6 +33,7 @@ static std::string ExtractCallsign(const std::string &svxCallsign)
 CSvxProtocol::CSvxProtocol()
 	: m_TcpListenFd(-1)
 	, m_NextClientId(1)
+	, m_StreamCounter(0)
 	, m_RxGainNum(256)   // 0 dB default
 	, m_TxGainNum(256)   // 0 dB default
 {
@@ -56,55 +42,8 @@ CSvxProtocol::CSvxProtocol()
 CSvxProtocol::~CSvxProtocol()
 {
 	Close();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
-// serialization helpers (big-endian)
-
-void CSvxProtocol::PackUint16(std::vector<uint8_t> &buf, uint16_t val)
-{
-	buf.push_back((val >> 8) & 0xFF);
-	buf.push_back(val & 0xFF);
-}
-
-void CSvxProtocol::PackUint32(std::vector<uint8_t> &buf, uint32_t val)
-{
-	buf.push_back((val >> 24) & 0xFF);
-	buf.push_back((val >> 16) & 0xFF);
-	buf.push_back((val >> 8) & 0xFF);
-	buf.push_back(val & 0xFF);
-}
-
-void CSvxProtocol::PackString(std::vector<uint8_t> &buf, const std::string &str)
-{
-	PackUint16(buf, (uint16_t)str.size());
-	buf.insert(buf.end(), str.begin(), str.end());
-}
-
-uint16_t CSvxProtocol::UnpackUint16(const std::vector<uint8_t> &buf, size_t &pos)
-{
-	if (pos + 2 > buf.size()) { pos = buf.size(); return 0; }
-	uint16_t val = ((uint16_t)buf[pos] << 8) | buf[pos + 1];
-	pos += 2;
-	return val;
-}
-
-uint32_t CSvxProtocol::UnpackUint32(const std::vector<uint8_t> &buf, size_t &pos)
-{
-	if (pos + 4 > buf.size()) { pos = buf.size(); return 0; }
-	uint32_t val = ((uint32_t)buf[pos] << 24) | ((uint32_t)buf[pos+1] << 16)
-	             | ((uint32_t)buf[pos+2] << 8) | buf[pos+3];
-	pos += 4;
-	return val;
-}
-
-std::string CSvxProtocol::UnpackString(const std::vector<uint8_t> &buf, size_t &pos)
-{
-	uint16_t len = UnpackUint16(buf, pos);
-	if (pos + len > buf.size()) { pos = buf.size(); return ""; }
-	std::string str((const char *)&buf[pos], len);
-	pos += len;
-	return str;
+	for (auto &[mod, enc] : m_OutEncoders)
+		opus_encoder_destroy(enc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -287,49 +226,60 @@ void CSvxProtocol::TcpAccept(void)
 	// Set non-blocking
 	fcntl(fd, F_SETFL, O_NONBLOCK);
 
-	// Assign client ID
+	// Assign client ID; it goes into the 16 bit UDP header, 0 stands for urfd as talker
 	uint32_t clientId = m_NextClientId++;
+	if ((clientId & 0xFFFF) == 0)
+		clientId = m_NextClientId++;
 
 	SSvxPeer peer;
 	peer.tcpFd = fd;
 	peer.tcpAddr = CIp(AF_INET, 0, ipstr);
 	peer.connectTimer.start();
-	peer.clientId = clientId;
+	peer.clientId = clientId & 0xFFFF;
 	peer.authState = SSvxPeer::EAuthState::expect_proto_ver;
 	peer.tcpLastRecvTimer.start();
 	peer.tcpHeartbeatTimer.start();
 
-	m_Peers[clientId] = std::move(peer);
-	m_FdToClientId[fd] = clientId;
+	m_FdToClientId[fd] = peer.clientId;
+	m_Peers[peer.clientId] = std::move(peer);
 
-	std::cout << "SVXServer: new TCP connection from " << ipstr << " (clientId=" << clientId << ")" << std::endl;
+	std::cout << "SVXServer: new TCP connection from " << ipstr << " (clientId=" << (clientId & 0xFFFF) << ")" << std::endl;
 }
 
-bool CSvxProtocol::TcpSendFrame(int fd, const uint8_t *data, uint32_t len)
+bool CSvxProtocol::TcpSendFrame(SSvxPeer &peer, const std::vector<uint8_t> &msg)
 {
-	if (fd < 0) return false;
-
-	uint8_t hdr[4];
-	hdr[0] = (len >> 24) & 0xFF;
-	hdr[1] = (len >> 16) & 0xFF;
-	hdr[2] = (len >> 8) & 0xFF;
-	hdr[3] = len & 0xFF;
-
-	if (send(fd, hdr, 4, MSG_NOSIGNAL) != 4)
+	if (peer.sendFailed)
 		return false;
-	if (send(fd, data, len, MSG_NOSIGNAL) != (ssize_t)len)
+	if (!SvxTcpSendFrame(peer.tcpFd, msg.data(), (uint32_t)msg.size()))
+	{
+		// dropped by the Task loop, not here: callers iterate over m_Peers
+		peer.sendFailed = true;
 		return false;
-
+	}
 	return true;
 }
 
-void CSvxProtocol::TcpBroadcast(const uint8_t *data, uint32_t len, uint32_t exceptClientId)
+void CSvxProtocol::TcpBroadcast(const std::vector<uint8_t> &msg, uint32_t exceptClientId)
 {
 	for (auto &[id, peer] : m_Peers)
 	{
 		if (id == exceptClientId) continue;
 		if (peer.authState != SSvxPeer::EAuthState::connected) continue;
-		TcpSendFrame(peer.tcpFd, data, len);
+		TcpSendFrame(peer, msg);
+	}
+}
+
+void CSvxProtocol::NotifyTalker(uint16_t type, uint32_t tg, const std::string &callsign)
+{
+	std::vector<uint8_t> msg;
+	SvxPack16(msg, type);
+	SvxPack32(msg, tg);
+	SvxPackString(msg, callsign);
+	for (auto &[id, peer] : m_Peers)
+	{
+		if (peer.authState != SSvxPeer::EAuthState::connected) continue;
+		if (peer.selectedTG != tg && peer.monitoredTGs.count(tg) == 0) continue;
+		TcpSendFrame(peer, msg);
 	}
 }
 
@@ -362,23 +312,16 @@ void CSvxProtocol::TcpReceiveFromPeer(uint32_t clientId)
 	peer.tcpLastRecvTimer.start();
 
 	// Process complete frames
-	while (peer.tcpRecvBuf.size() >= 4)
+	std::vector<uint8_t> payload;
+	int r;
+	while ((r = SvxTcpTakeFrame(peer.tcpRecvBuf, payload)) != 0)
 	{
-		uint32_t frameLen = ((uint32_t)peer.tcpRecvBuf[0] << 24) | ((uint32_t)peer.tcpRecvBuf[1] << 16)
-		                  | ((uint32_t)peer.tcpRecvBuf[2] << 8) | peer.tcpRecvBuf[3];
-
-		if (frameLen > 32768)
+		if (r < 0)
 		{
 			std::cerr << "SVXServer: oversized frame from clientId=" << clientId << std::endl;
 			DisconnectPeer(clientId);
 			return;
 		}
-
-		if (peer.tcpRecvBuf.size() < 4 + frameLen)
-			break; // incomplete frame
-
-		std::vector<uint8_t> payload(peer.tcpRecvBuf.begin() + 4, peer.tcpRecvBuf.begin() + 4 + frameLen);
-		peer.tcpRecvBuf.erase(peer.tcpRecvBuf.begin(), peer.tcpRecvBuf.begin() + 4 + frameLen);
 
 		if (payload.size() < 2) continue;
 		uint16_t type = ((uint16_t)payload[0] << 8) | payload[1];
@@ -404,6 +347,9 @@ void CSvxProtocol::TcpReceiveFromPeer(uint32_t clientId)
 			case SVX_TCP_MSG_SELECT_TG:
 				OnPeerSelectTG(clientId, payload);
 				break;
+			case SVX_TCP_MSG_TG_MONITOR:
+				OnPeerTgMonitor(clientId, payload);
+				break;
 			default:
 				break;
 			}
@@ -420,38 +366,24 @@ void CSvxProtocol::DisconnectPeer(uint32_t clientId)
 {
 	auto it = m_Peers.find(clientId);
 	if (it == m_Peers.end()) return;
-	SSvxPeer &peer = it->second;
 
-	// Close any open incoming stream
+	// its talk ends first: urfd stream, relay flush, talker stop
 	ClosePeerInStream(clientId);
+	SSvxPeer &peer = it->second;
 
 	// Broadcast NODE_LEFT if was connected
 	if (peer.authState == SSvxPeer::EAuthState::connected && !peer.callsign.empty())
 	{
 		std::vector<uint8_t> msg;
-		PackUint16(msg, SVX_TCP_MSG_NODE_LEFT);
-		PackString(msg, peer.callsign);
-		TcpBroadcast(msg.data(), (uint32_t)msg.size(), clientId);
+		SvxPack16(msg, SVX_TCP_MSG_NODE_LEFT);
+		SvxPackString(msg, peer.callsign);
+		TcpBroadcast(msg, clientId);
 
-		// Remove CClient entries for this peer's subscribed modules
-		CClients *clients = g_Reflector.GetClients();
-		for (uint32_t tg : peer.subscribedTGs)
-		{
-			char mod = TGToModule(tg);
-			if (mod == ' ') continue;
-			CCallsign cs;
-			cs.SetCallsign(ExtractCallsign(peer.callsign), false);
-			cs.SetCSModule(mod);
-			auto client = clients->FindClient(cs, mod, peer.udpDiscovered ? peer.udpEndpoint : CIp(), EProtocol::svx);
-			if (client)
-				clients->RemoveClient(client);
-		}
-		g_Reflector.ReleaseClients();
+		// drop its CClient entry
+		uint32_t oldTG = peer.selectedTG;
+		peer.selectedTG = 0;
+		UpdatePeerClient(peer, oldTG);
 	}
-
-	// Cleanup OPUS
-	if (peer.opusEncoder) opus_encoder_destroy(peer.opusEncoder);
-	if (peer.opusDecoder) opus_decoder_destroy(peer.opusDecoder);
 
 	// Cleanup TCP
 	if (peer.tcpFd >= 0)
@@ -476,35 +408,49 @@ void CSvxProtocol::OnPeerProtoVer(uint32_t clientId, const std::vector<uint8_t> 
 	// payload: type(2) + major(2) + minor(2)
 	if (payload.size() < 6) { DisconnectPeer(clientId); return; }
 	size_t pos = 2;
-	uint16_t major = UnpackUint16(payload, pos);
-	uint16_t minor = UnpackUint16(payload, pos);
+	uint16_t major = SvxUnpack16(payload, pos);
+	uint16_t minor = SvxUnpack16(payload, pos);
 
 	if (major < 2)
 	{
 		std::cerr << "SVXServer: client proto version " << major << "." << minor << " too old, need >= 2.0" << std::endl;
 		std::vector<uint8_t> err;
-		PackUint16(err, SVX_TCP_MSG_ERROR);
-		PackString(err, "unsupported protocol version");
-		TcpSendFrame(peer.tcpFd, err.data(), (uint32_t)err.size());
+		SvxPack16(err, SVX_TCP_MSG_ERROR);
+		SvxPackString(err, "unsupported protocol version");
+		TcpSendFrame(peer, err);
 		DisconnectPeer(clientId);
+		return;
+	}
+	if (major > 2)
+	{
+		// protocol 3 needs TLS with certificates, which this server doesn't do;
+		// like SvxReflector, ask for a downgrade (current SvxLink nodes refuse it and log why)
+		std::cerr << "SVXServer: clientId=" << clientId << " uses protocol " << major << "." << minor
+		          << ", only 2.0 is supported, asking for a downgrade" << std::endl;
+		std::vector<uint8_t> msg;
+		SvxPack16(msg, SVX_TCP_MSG_PROTO_VER_DOWNGRADE);
+		SvxPack16(msg, 2);
+		SvxPack16(msg, 0);
+		TcpSendFrame(peer, msg);
 		return;
 	}
 
 	std::cout << "SVXServer: clientId=" << clientId << " proto version " << major << "." << minor << std::endl;
 
-	// Generate random 20-byte challenge
-	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::uniform_int_distribution<uint8_t> dist(0, 255);
-	for (int i = 0; i < 20; i++)
-		peer.challenge[i] = dist(gen);
+	// random 20-byte challenge
+	if (RAND_bytes(peer.challenge, sizeof(peer.challenge)) != 1)
+	{
+		std::cerr << "SVXServer: no random bytes for the challenge" << std::endl;
+		DisconnectPeer(clientId);
+		return;
+	}
 
 	// Send MsgAuthChallenge: type(2) + vector_length(2) + nonce(20)
 	std::vector<uint8_t> msg;
-	PackUint16(msg, SVX_TCP_MSG_AUTH_CHALLENGE);
-	PackUint16(msg, 20); // vector<uint8_t> length prefix
+	SvxPack16(msg, SVX_TCP_MSG_AUTH_CHALLENGE);
+	SvxPack16(msg, 20); // vector<uint8_t> length prefix
 	msg.insert(msg.end(), peer.challenge, peer.challenge + 20);
-	TcpSendFrame(peer.tcpFd, msg.data(), (uint32_t)msg.size());
+	TcpSendFrame(peer, msg);
 
 	peer.authState = SSvxPeer::EAuthState::expect_auth_response;
 }
@@ -519,9 +465,9 @@ void CSvxProtocol::OnPeerAuthResponse(uint32_t clientId, const std::vector<uint8
 	if (payload.size() < 6) { DisconnectPeer(clientId); return; }
 
 	size_t pos = 2;
-	std::string callsign = UnpackString(payload, pos);
+	std::string callsign = SvxUnpackString(payload, pos);
 	if (pos + 22 > payload.size()) { DisconnectPeer(clientId); return; }
-	uint16_t digestLen = UnpackUint16(payload, pos);
+	uint16_t digestLen = SvxUnpack16(payload, pos);
 	if (digestLen != 20 || pos + 20 > payload.size()) { DisconnectPeer(clientId); return; }
 	const uint8_t *clientDigest = &payload[pos];
 
@@ -533,7 +479,7 @@ void CSvxProtocol::OnPeerAuthResponse(uint32_t clientId, const std::vector<uint8
 		auto pwIt = m_Passwords.find(callsign);
 		if (pwIt == m_Passwords.end())
 		{
-			std::string baseCs = ExtractCallsign(callsign);
+			std::string baseCs = SvxExtractCallsign(callsign);
 			pwIt = m_Passwords.find(baseCs);
 		}
 		if (pwIt != m_Passwords.end())
@@ -543,9 +489,9 @@ void CSvxProtocol::OnPeerAuthResponse(uint32_t clientId, const std::vector<uint8
 	{
 		std::cerr << "SVXServer: unknown callsign '" << callsign << "'" << std::endl;
 		std::vector<uint8_t> err;
-		PackUint16(err, SVX_TCP_MSG_ERROR);
-		PackString(err, "unknown callsign");
-		TcpSendFrame(peer.tcpFd, err.data(), (uint32_t)err.size());
+		SvxPack16(err, SVX_TCP_MSG_ERROR);
+		SvxPackString(err, "unknown callsign");
+		TcpSendFrame(peer, err);
 		DisconnectPeer(clientId);
 		return;
 	}
@@ -558,35 +504,36 @@ void CSvxProtocol::OnPeerAuthResponse(uint32_t clientId, const std::vector<uint8
 	     peer.challenge, 20,
 	     expectedDigest, &hmacLen);
 
-	if (memcmp(clientDigest, expectedDigest, 20) != 0)
+	if (CRYPTO_memcmp(clientDigest, expectedDigest, 20) != 0)
 	{
 		std::cerr << "SVXServer: auth failed for '" << callsign << "'" << std::endl;
 		std::vector<uint8_t> err;
-		PackUint16(err, SVX_TCP_MSG_ERROR);
-		PackString(err, "authentication failed");
-		TcpSendFrame(peer.tcpFd, err.data(), (uint32_t)err.size());
+		SvxPack16(err, SVX_TCP_MSG_ERROR);
+		SvxPackString(err, "authentication failed");
+		TcpSendFrame(peer, err);
 		DisconnectPeer(clientId);
 		return;
 	}
 
 	// Check GateKeeper
 	CCallsign cs;
-	cs.SetCallsign(ExtractCallsign(callsign), false);
-	// Get peer IP from socket
-	struct sockaddr_in sa{};
-	socklen_t saLen = sizeof(sa);
-	getpeername(peer.tcpFd, (struct sockaddr *)&sa, &saLen);
-	char ipstr[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &sa.sin_addr, ipstr, sizeof(ipstr));
-	CIp peerIp(AF_INET, 0, ipstr);
-
-	if (!g_GateKeeper.MayLink(cs, peerIp, EProtocol::svx))
+	cs.SetCallsign(SvxExtractCallsign(callsign), false);
+	if (!g_GateKeeper.MayLink(cs, peer.tcpAddr, EProtocol::svx))
 	{
 		std::cerr << "SVXServer: access denied for '" << callsign << "' by GateKeeper" << std::endl;
 		std::vector<uint8_t> err;
-		PackUint16(err, SVX_TCP_MSG_ERROR);
-		PackString(err, "access denied");
-		TcpSendFrame(peer.tcpFd, err.data(), (uint32_t)err.size());
+		SvxPack16(err, SVX_TCP_MSG_ERROR);
+		SvxPackString(err, "access denied");
+		TcpSendFrame(peer, err);
+		DisconnectPeer(clientId);
+		return;
+	}
+
+	// OPUS decoder for this peer
+	peer.rx = std::make_unique<CSvxOpusRx>();
+	if (!peer.rx->Init())
+	{
+		std::cerr << "SVXServer: opus_decoder_create failed for " << callsign << std::endl;
 		DisconnectPeer(clientId);
 		return;
 	}
@@ -595,60 +542,37 @@ void CSvxProtocol::OnPeerAuthResponse(uint32_t clientId, const std::vector<uint8
 	peer.callsign = callsign;
 	peer.authState = SSvxPeer::EAuthState::connected;
 
-	// Create OPUS encoder/decoder for this peer
-	int opusErr;
-	peer.opusEncoder = opus_encoder_create(16000, 1, OPUS_APPLICATION_AUDIO, &opusErr);
-	if (opusErr != OPUS_OK || !peer.opusEncoder)
-	{
-		std::cerr << "SVXServer: opus_encoder_create failed for " << callsign << ": " << opus_strerror(opusErr) << std::endl;
-		DisconnectPeer(clientId);
-		return;
-	}
-	peer.opusDecoder = opus_decoder_create(8000, 1, &opusErr);
-	if (opusErr != OPUS_OK || !peer.opusDecoder)
-	{
-		std::cerr << "SVXServer: opus_decoder_create failed for " << callsign << ": " << opus_strerror(opusErr) << std::endl;
-		opus_encoder_destroy(peer.opusEncoder);
-		peer.opusEncoder = nullptr;
-		DisconnectPeer(clientId);
-		return;
-	}
-
 	// Send MsgAuthOk
 	{
 		std::vector<uint8_t> msg;
-		PackUint16(msg, SVX_TCP_MSG_AUTH_OK);
-		TcpSendFrame(peer.tcpFd, msg.data(), (uint32_t)msg.size());
+		SvxPack16(msg, SVX_TCP_MSG_AUTH_OK);
+		TcpSendFrame(peer, msg);
 	}
 
-	// Send MsgServerInfo: type(2) + client_id(4) + codecs(vector<string>) + nodes(vector<string>) + reserved(2)
+	// MsgServerInfo: type(2) + reserved(2) + client_id(2) + nodes(vector<string>) + codecs(vector<string>)
 	{
 		std::vector<uint8_t> msg;
-		PackUint16(msg, SVX_TCP_MSG_SERVER_INFO);
-		PackUint32(msg, clientId);
+		SvxPack16(msg, SVX_TCP_MSG_SERVER_INFO);
+		SvxPack16(msg, 0);
+		SvxPack16(msg, (uint16_t)clientId);
 
-		// nodes: vector<string> (must come BEFORE codecs — SvxLink field order)
 		auto nodes = GetConnectedNodeList();
-		PackUint16(msg, (uint16_t)nodes.size());
-		for (const auto &n : nodes) PackString(msg, n);
+		SvxPack16(msg, (uint16_t)nodes.size());
+		for (const auto &n : nodes) SvxPackString(msg, n);
 
-		// codecs: vector<string>
 		std::vector<std::string> codecs = {"OPUS"};
-		PackUint16(msg, (uint16_t)codecs.size());
-		for (const auto &c : codecs) PackString(msg, c);
+		SvxPack16(msg, (uint16_t)codecs.size());
+		for (const auto &c : codecs) SvxPackString(msg, c);
 
-		// reserved
-		PackUint16(msg, 0);
-
-		TcpSendFrame(peer.tcpFd, msg.data(), (uint32_t)msg.size());
+		TcpSendFrame(peer, msg);
 	}
 
 	// Broadcast NODE_JOINED to all other peers
 	{
 		std::vector<uint8_t> msg;
-		PackUint16(msg, SVX_TCP_MSG_NODE_JOINED);
-		PackString(msg, callsign);
-		TcpBroadcast(msg.data(), (uint32_t)msg.size(), clientId);
+		SvxPack16(msg, SVX_TCP_MSG_NODE_JOINED);
+		SvxPackString(msg, callsign);
+		TcpBroadcast(msg, clientId);
 	}
 
 	std::cout << "SVXServer: '" << callsign << "' authenticated (clientId=" << clientId << ")" << std::endl;
@@ -663,7 +587,7 @@ void CSvxProtocol::OnPeerNodeInfo(uint32_t clientId, const std::vector<uint8_t> 
 	// payload: type(2) + json(string)
 	if (payload.size() < 4) return;
 	size_t pos = 2;
-	std::string json = UnpackString(payload, pos);
+	std::string json = SvxUnpackString(payload, pos);
 	std::cout << "SVXServer: node info from " << peer.callsign << ": " << json << std::endl;
 
 	// Parse JSON and store node info
@@ -682,6 +606,7 @@ void CSvxProtocol::OnPeerNodeInfo(uint32_t clientId, const std::vector<uint8_t> 
 			peer.nodeInfo.location = j["location"].get<std::string>();
 		if (j.contains("logics") && j["logics"].is_array())
 		{
+			peer.nodeInfo.logics.clear();
 			for (const auto &l : j["logics"])
 				if (l.is_string()) peer.nodeInfo.logics.push_back(l.get<std::string>());
 		}
@@ -693,6 +618,36 @@ void CSvxProtocol::OnPeerNodeInfo(uint32_t clientId, const std::vector<uint8_t> 
 	}
 }
 
+// keeps the CClient of a peer on the module of its selected TG; called without
+// m_TGMutex held (the client list is locked first)
+void CSvxProtocol::UpdatePeerClient(SSvxPeer &peer, uint32_t oldTG)
+{
+	char oldMod = oldTG ? TGToModule(oldTG) : ' ';
+	char newMod = peer.selectedTG ? TGToModule(peer.selectedTG) : ' ';
+	if (oldMod == newMod)
+		return;
+
+	CIp ip = peer.udpDiscovered ? peer.udpEndpoint : CIp();
+	CCallsign cs;
+	cs.SetCallsign(SvxExtractCallsign(peer.callsign), false);
+
+	CClients *clients = g_Reflector.GetClients();
+	if (oldMod != ' ')
+	{
+		cs.SetCSModule(oldMod);
+		auto client = clients->FindClient(cs, oldMod, ip, EProtocol::svx);
+		if (client)
+			clients->RemoveClient(client);
+	}
+	if (newMod != ' ')
+	{
+		cs.SetCSModule(newMod);
+		if (!clients->FindClient(cs, newMod, ip, EProtocol::svx))
+			clients->AddClient(std::make_shared<CSvxClient>(cs, ip, newMod));
+	}
+	g_Reflector.ReleaseClients();
+}
+
 void CSvxProtocol::OnPeerSelectTG(uint32_t clientId, const std::vector<uint8_t> &payload)
 {
 	auto it = m_Peers.find(clientId);
@@ -702,53 +657,43 @@ void CSvxProtocol::OnPeerSelectTG(uint32_t clientId, const std::vector<uint8_t> 
 	// payload: type(2) + tg(4)
 	if (payload.size() < 6) return;
 	size_t pos = 2;
-	uint32_t tg = UnpackUint32(payload, pos);
+	uint32_t tg = SvxUnpack32(payload, pos);
+	if (tg == peer.selectedTG)
+		return;
+
+	// like SvxReflector: talking on the old TG ends there, one TG is selected at a time
+	ClosePeerInStream(clientId);
+	uint32_t oldTG = peer.selectedTG;
+	peer.selectedTG = tg;
+	UpdatePeerClient(peer, oldTG);
 
 	if (tg == 0)
+		std::cout << "SVXServer: " << peer.callsign << " selected no TG" << std::endl;
+	else
 	{
-		// Unsubscribe all TGs
-		CClients *clients = g_Reflector.GetClients();
-		for (uint32_t oldTg : peer.subscribedTGs)
-		{
-			char mod = TGToModule(oldTg);
-			if (mod == ' ') continue;
-			CCallsign cs;
-			cs.SetCallsign(ExtractCallsign(peer.callsign), false);
-			cs.SetCSModule(mod);
-			auto client = clients->FindClient(cs, mod, peer.udpDiscovered ? peer.udpEndpoint : CIp(), EProtocol::svx);
-			if (client)
-				clients->RemoveClient(client);
-		}
-		g_Reflector.ReleaseClients();
-		peer.subscribedTGs.clear();
-		std::cout << "SVXServer: " << peer.callsign << " unsubscribed all TGs" << std::endl;
+		char module = TGToModule(tg);
+		if (module == ' ')
+			std::cout << "SVXServer: " << peer.callsign << " selected TG" << tg << " (not mapped to a module, nodes only)" << std::endl;
+		else
+			std::cout << "SVXServer: " << peer.callsign << " selected TG" << tg << " -> Module " << module << std::endl;
+	}
+}
+
+void CSvxProtocol::OnPeerTgMonitor(uint32_t clientId, const std::vector<uint8_t> &payload)
+{
+	auto it = m_Peers.find(clientId);
+	if (it == m_Peers.end()) return;
+	SSvxPeer &peer = it->second;
+
+	// payload: type(2) + set<uint32_t> (count(2) + elements)
+	size_t pos = 2;
+	uint16_t count = SvxUnpack16(payload, pos);
+	if (pos + 4 * (size_t)count > payload.size())
 		return;
-	}
-
-	char module = TGToModule(tg);
-	if (module == ' ')
-	{
-		std::cout << "SVXServer: " << peer.callsign << " requested unknown TG" << tg << std::endl;
-		return;
-	}
-
-	peer.subscribedTGs.insert(tg);
-
-	// Create/update CClient for this module
-	CClients *clients = g_Reflector.GetClients();
-	CCallsign cs;
-	cs.SetCallsign(ExtractCallsign(peer.callsign), false);
-	cs.SetCSModule(module);
-	CIp ip = peer.udpDiscovered ? peer.udpEndpoint : CIp();
-	auto client = clients->FindClient(cs, module, ip, EProtocol::svx);
-	if (!client)
-	{
-		clients->AddClient(std::make_shared<CSvxClient>(cs, ip, module));
-		std::cout << "SVXServer: created client for " << peer.callsign << " on module " << module << std::endl;
-	}
-	g_Reflector.ReleaseClients();
-
-	std::cout << "SVXServer: " << peer.callsign << " subscribed TG" << tg << " -> Module " << module << std::endl;
+	peer.monitoredTGs.clear();
+	for (uint16_t i = 0; i < count; i++)
+		peer.monitoredTGs.insert(SvxUnpack32(payload, pos));
+	std::cout << "SVXServer: " << peer.callsign << " monitors " << count << " TG(s)" << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -760,6 +705,7 @@ void CSvxProtocol::OnUdpPacket(const CBuffer &buffer, const CIp &ip)
 
 	uint16_t type = ((uint16_t)buffer.data()[0] << 8) | buffer.data()[1];
 	uint16_t peerClientId = ((uint16_t)buffer.data()[2] << 8) | buffer.data()[3];
+	uint16_t seq = ((uint16_t)buffer.data()[4] << 8) | buffer.data()[5];
 
 	// Find peer by clientId
 	auto it = m_Peers.find((uint32_t)peerClientId);
@@ -783,39 +729,28 @@ void CSvxProtocol::OnUdpPacket(const CBuffer &buffer, const CIp &ip)
 	// UDP endpoint discovery
 	if (!peer.udpDiscovered)
 	{
+		// the CClient moves from the address-less entry to the real one
+		uint32_t tg = peer.selectedTG;
+		peer.selectedTG = 0;
+		UpdatePeerClient(peer, tg);
 		peer.udpEndpoint = ip;
 		peer.udpDiscovered = true;
+		peer.selectedTG = tg;
+		UpdatePeerClient(peer, 0);
 		std::cout << "SVXServer: discovered UDP endpoint for " << peer.callsign << std::endl;
-
-		// Update CClient IP for already-subscribed modules
-		CClients *clients = g_Reflector.GetClients();
-		for (uint32_t tg : peer.subscribedTGs)
-		{
-			char mod = TGToModule(tg);
-			if (mod == ' ') continue;
-			CCallsign cs;
-			cs.SetCallsign(ExtractCallsign(peer.callsign), false);
-			cs.SetCSModule(mod);
-			// Remove old (no-IP) client and re-add with correct IP
-			auto client = clients->FindClient(cs, mod, CIp(), EProtocol::svx);
-			if (client)
-				clients->RemoveClient(client);
-			clients->AddClient(std::make_shared<CSvxClient>(cs, ip, mod));
-		}
-		g_Reflector.ReleaseClients();
 	}
 
 	peer.udpLastRecvTimer.start();
+
+	// every message counts for the sequence, a late audio packet is dropped
+	if (!peer.rx->CheckSeq(seq))
+		return;
 
 	switch (type)
 	{
 	case SVX_UDP_MSG_HEARTBEAT:
 		// Send heartbeat reply with client's own ID so it recognizes the packet
-		{
-			CBuffer hb;
-			BuildUdpHeader(hb, SVX_UDP_MSG_HEARTBEAT, (uint16_t)peer.clientId, peer.udpSeqSend);
-			Send(hb, peer.udpEndpoint);
-		}
+		SendUdpToPeer(peer, SVX_UDP_MSG_HEARTBEAT);
 		break;
 	case SVX_UDP_MSG_AUDIO:
 		OnPeerUdpAudio(peer.clientId, buffer);
@@ -843,97 +778,74 @@ void CSvxProtocol::BuildUdpHeader(CBuffer &buf, uint16_t type, uint16_t clientId
 	buf.Set(hdr, 6);
 }
 
+// a UDP message to a peer, with its own client id and sequence number
+void CSvxProtocol::SendUdpToPeer(SSvxPeer &peer, uint16_t type, const uint8_t *payload, size_t len)
+{
+	if (!peer.udpDiscovered)
+		return;
+	CBuffer buf;
+	BuildUdpHeader(buf, type, (uint16_t)peer.clientId, peer.udpSeqSend);
+	if (payload && len)
+		buf.Append(payload, (int)len);
+	Send(buf, peer.udpEndpoint);
+}
+
 void CSvxProtocol::OnPeerUdpAudio(uint32_t clientId, const CBuffer &buffer)
 {
 	auto it = m_Peers.find(clientId);
 	if (it == m_Peers.end()) return;
 	SSvxPeer &peer = it->second;
 
-	// Find which TG this peer is talking on (use first subscribed TG with a module)
-	uint32_t tg = 0;
-	char module = ' ';
-	for (uint32_t subscribedTg : peer.subscribedTGs)
-	{
-		char mod = TGToModule(subscribedTg);
-		if (mod != ' ')
-		{
-			tg = subscribedTg;
-			module = mod;
-			break;
-		}
-	}
-	if (module == ' ') return;
+	// audio goes to the selected TG
+	uint32_t tg = peer.selectedTG;
+	if (tg == 0) return;
 
 	// V2 UDP audio: type(2) + client_id(2) + seq(2) + opus_len(2) + opus_data
 	if (buffer.size() < 9) return;
 	uint16_t opusLen = ((uint16_t)buffer.data()[6] << 8) | buffer.data()[7];
 	if ((size_t)(8 + opusLen) > buffer.size()) return;
 
-	if (!peer.opusDecoder) return;
+	// one talker per TG, as on SvxReflector; urfd audio to the TG counts as one
+	auto talker = m_TgTalker.find(tg);
+	if (talker != m_TgTalker.end() && talker->second != clientId)
+		return;
 
-	// Decode OPUS to 8kHz PCM
-	int16_t pcm[160];
-	int samples = opus_decode(peer.opusDecoder, buffer.data() + 8, opusLen, pcm, 160, 0);
-	if (samples <= 0) return;
-	for (int i = samples; i < 160; i++) pcm[i] = 0;
-
-	// Apply RX gain
-	if (m_RxGainNum != 256)
+	if (talker == m_TgTalker.end())
 	{
-		for (int i = 0; i < 160; i++)
-			pcm[i] = (int16_t)((pcm[i] * m_RxGainNum) >> 8);
-	}
-
-	// Refresh dynamic TG TTL
-	RefreshActivityByModule(module);
-
-	// Open stream on first audio frame
-	if (!peer.inStream.open || peer.inStream.module != module)
-	{
-		if (peer.inStream.open)
-			ClosePeerInStream(clientId);
-
-		static uint8_t counter = 0;
-		peer.inStream.streamId = 0x5D00 | (counter++ & 0xFF);
+		m_TgTalker[tg] = clientId;
+		peer.inStream = SSvxPeer::SInStream();
 		peer.inStream.tg = tg;
-		peer.inStream.module = module;
+		peer.inStream.module = TGToModule(tg);
+		NotifyTalker(SVX_TCP_MSG_TALKER_START, tg, peer.callsign);
+		std::cout << "SVXServer: talker " << peer.callsign << " on TG" << tg;
+		if (peer.inStream.module != ' ')
+			std::cout << " Module " << peer.inStream.module;
+		std::cout << std::endl;
+	}
+	peer.inStream.audioTimer.start();
 
-		std::string userCs = ExtractCallsign(peer.callsign);
-		CCallsign my;
-		my.SetCallsign(userCs, true);
-		CCallsign rpt1(g_Reflector.GetCallsign());
-		rpt1.SetCSModule(module);
-		CCallsign rpt2 = m_ReflectorCallsign;
-		rpt2.SetCSModule(module);
-		auto header = std::unique_ptr<CDvHeaderPacket>(
-			new CDvHeaderPacket(my, CCallsign("CQCQCQ"), rpt1, rpt2, peer.inStream.streamId, true));
-
-		CIp headerIp = peer.udpDiscovered ? peer.udpEndpoint : CIp();
-		OnDvHeaderPacketIn(header, headerIp);
-		peer.inStream.open = true;
-
-		auto stream = g_Reflector.GetStream(module);
-		if (stream) stream->SetSourceTG(tg);
-
-		// Notify subscribed peers about talker start
-		std::vector<uint8_t> msg;
-		PackUint16(msg, SVX_TCP_MSG_TALKER_START);
-		PackUint32(msg, tg);
-		PackString(msg, peer.callsign);
-		TcpBroadcast(msg.data(), (uint32_t)msg.size(), clientId);
-
-		std::cout << "SVXServer: stream opened for " << peer.callsign << " on TG" << tg << " Module " << module << std::endl;
+	// the other nodes on the TG get the packet as it came
+	for (auto &[id, other] : m_Peers)
+	{
+		if (id == clientId) continue;
+		if (other.authState != SSvxPeer::EAuthState::connected) continue;
+		if (other.selectedTG != tg) continue;
+		SendUdpToPeer(other, SVX_UDP_MSG_AUDIO, buffer.data() + 6, 2 + opusLen);
 	}
 
-	memcpy(peer.inStream.lastPcm, pcm, sizeof(peer.inStream.lastPcm));
+	// and its module gets it decoded
+	if (peer.inStream.module == ' ')
+		return;
+	RefreshActivityByModule(peer.inStream.module);
 
-	auto frame = std::unique_ptr<CDvFramePacket>(
-		new CDvFramePacket(pcm, peer.inStream.streamId, false, ECodecType::svx));
-	frame->SetPacketModule(module);
-
-	auto sit = m_Streams.find(peer.inStream.streamId);
-	if (sit != m_Streams.end() && sit->second)
-		sit->second->Push(std::move(frame));
+	std::vector<SvxPcmFrame> frames;
+	if (!peer.rx->Decode(buffer.data() + 8, opusLen, frames))
+		return;
+	for (auto &f : frames)
+	{
+		SvxApplyGain(f.data(), 160, m_RxGainNum);
+		PushPeerFrame(peer, f.data(), false);
+	}
 }
 
 void CSvxProtocol::OnPeerUdpFlush(uint32_t clientId)
@@ -942,13 +854,56 @@ void CSvxProtocol::OnPeerUdpFlush(uint32_t clientId)
 
 	// Send ALL_FLUSHED back to the peer
 	auto it = m_Peers.find(clientId);
-	if (it != m_Peers.end() && it->second.udpDiscovered)
+	if (it != m_Peers.end())
+		SendUdpToPeer(it->second, SVX_UDP_MSG_ALL_FLUSHED);
+}
+
+// opens the urfd stream on the first frame of the talker, and again when urfd closed
+// it meanwhile (stream timeout); false if the module is busy with someone else
+bool CSvxProtocol::EnsurePeerInStream(SSvxPeer &peer)
+{
+	auto &in = peer.inStream;
+	if (in.open && (in.rejected || m_Streams.count(in.streamId)))
+		return !in.rejected;
+
+	in.streamId = 0x5D00 | m_StreamCounter++;
+
+	CCallsign my;
+	my.SetCallsign(SvxExtractCallsign(peer.callsign), true);
+	CCallsign rpt1(g_Reflector.GetCallsign());
+	rpt1.SetCSModule(in.module);
+	CCallsign rpt2 = m_ReflectorCallsign;
+	rpt2.SetCSModule(in.module);
+	auto header = std::unique_ptr<CDvHeaderPacket>(
+		new CDvHeaderPacket(my, CCallsign("CQCQCQ"), rpt1, rpt2, in.streamId, true));
+	OnDvHeaderPacketIn(header, peer.udpDiscovered ? peer.udpEndpoint : CIp());
+	in.open = true;
+
+	// module busy: no urfd stream for this talker, its audio still reaches the nodes
+	if (!m_Streams.count(in.streamId))
 	{
-		SSvxPeer &peer = it->second;
-		CBuffer buf;
-		BuildUdpHeader(buf, SVX_UDP_MSG_ALL_FLUSHED, (uint16_t)peer.clientId, peer.udpSeqSend);
-		Send(buf, peer.udpEndpoint);
+		in.rejected = true;
+		std::cout << "SVXServer: module " << in.module << " busy, " << peer.callsign << " reaches only the nodes" << std::endl;
+		return false;
 	}
+	auto stream = g_Reflector.GetStream(in.module);
+	if (stream)
+		stream->SetSourceTG(in.tg);
+	std::cout << "SVXServer: stream opened for " << peer.callsign << " on TG" << in.tg << " Module " << in.module << std::endl;
+	return true;
+}
+
+void CSvxProtocol::PushPeerFrame(SSvxPeer &peer, const int16_t *pcm, bool last)
+{
+	if (!last && !EnsurePeerInStream(peer))
+		return;
+	auto sit = m_Streams.find(peer.inStream.streamId);
+	if (sit == m_Streams.end() || !sit->second)
+		return;
+	auto frame = std::unique_ptr<CDvFramePacket>(
+		new CDvFramePacket(pcm, peer.inStream.streamId, last, ECodecType::svx));
+	frame->SetPacketModule(peer.inStream.module);
+	sit->second->Push(std::move(frame));
 }
 
 void CSvxProtocol::ClosePeerInStream(uint32_t clientId)
@@ -956,40 +911,44 @@ void CSvxProtocol::ClosePeerInStream(uint32_t clientId)
 	auto it = m_Peers.find(clientId);
 	if (it == m_Peers.end()) return;
 	SSvxPeer &peer = it->second;
+	auto &in = peer.inStream;
+	if (in.tg == 0) return;
 
-	if (!peer.inStream.open) return;
-
-	auto sit = m_Streams.find(peer.inStream.streamId);
-	if (sit != m_Streams.end() && sit->second)
+	// urfd: what the decoder still holds, then a silent last frame
+	if (in.open)
 	{
-		// Flush OPUS decoder
-		if (peer.opusDecoder)
-		{
-			int16_t dummy[160];
-			[[maybe_unused]] int ret = opus_decode(peer.opusDecoder, nullptr, 0, dummy, 160, 0);
-		}
-
-		// Close with silence
+		SvxPcmFrame rest;
+		if (peer.rx->Flush(rest))
+			PushPeerFrame(peer, rest.data(), false);
 		int16_t silence[160] = {};
-		auto lastFrame = std::unique_ptr<CDvFramePacket>(
-			new CDvFramePacket(silence, peer.inStream.streamId, true, ECodecType::svx));
-		lastFrame->SetPacketModule(peer.inStream.module);
-		sit->second->Push(std::move(lastFrame));
-		g_Reflector.CloseStream(sit->second);
-		m_Streams.erase(sit);
+		PushPeerFrame(peer, silence, true);
+		auto sit = m_Streams.find(in.streamId);
+		if (sit != m_Streams.end() && sit->second)
+		{
+			g_Reflector.CloseStream(sit->second);
+			m_Streams.erase(sit);
+		}
+	}
+	else if (peer.rx)
+	{
+		SvxPcmFrame rest;
+		peer.rx->Flush(rest);
 	}
 
-	// Notify peers about talker stop
-	std::vector<uint8_t> msg;
-	PackUint16(msg, SVX_TCP_MSG_TALKER_STOP);
-	PackUint32(msg, peer.inStream.tg);
-	PackString(msg, peer.callsign);
-	TcpBroadcast(msg.data(), (uint32_t)msg.size(), clientId);
+	// the nodes on the TG: end of audio, talker stop
+	for (auto &[id, other] : m_Peers)
+	{
+		if (id == clientId) continue;
+		if (other.authState != SSvxPeer::EAuthState::connected) continue;
+		if (other.selectedTG != in.tg) continue;
+		SendUdpToPeer(other, SVX_UDP_MSG_FLUSH_SAMPLES);
+	}
+	NotifyTalker(SVX_TCP_MSG_TALKER_STOP, in.tg, peer.callsign);
 
-	peer.inStream.open = false;
-	peer.inStream.streamId = 0;
-	peer.inStream.tg = 0;
-	peer.inStream.module = ' ';
+	auto talker = m_TgTalker.find(in.tg);
+	if (talker != m_TgTalker.end() && talker->second == clientId)
+		m_TgTalker.erase(talker);
+	in = SSvxPeer::SInStream();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -1011,7 +970,7 @@ void CSvxProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, 
 
 	CClients *clients = g_Reflector.GetClients();
 	CCallsign cs;
-	cs.SetCallsign(ExtractCallsign(my.GetCS()), false);
+	cs.SetCallsign(SvxExtractCallsign(my.GetCS()), false);
 	cs.SetCSModule(module);
 	std::shared_ptr<CClient> client = clients->FindClient(cs, module, Ip, EProtocol::svx);
 	if (!client)
@@ -1047,7 +1006,7 @@ void CSvxProtocol::HandleQueue(void)
 
 		if (packet->IsDvHeader())
 		{
-			// Don't echo back to SVX peers
+			// a node's own talk reaches the other nodes directly (OnPeerUdpAudio)
 			{
 				auto stream = g_Reflector.GetStream(module);
 				if (stream)
@@ -1055,143 +1014,103 @@ void CSvxProtocol::HandleQueue(void)
 					auto owner = stream->GetOwnerClient();
 					if (owner && owner->GetProtocol() == EProtocol::svx)
 					{
-						m_OutStreamTG.erase(module);
+						EndOutStream(module);
 						continue;
 					}
 				}
 			}
 
+			// a stream of this module that never got its last packet ends now
+			EndOutStream(module);
+
 			uint32_t tg = ModuleToTG(module);
-			if (tg != 0)
+			if (tg == 0)
+				continue;
+
+			// a node talking on the TG has it, as the first talker on SvxReflector
+			auto talker = m_TgTalker.find(tg);
+			if (talker != m_TgTalker.end() && talker->second != SVXS_URFD_TALKER)
 			{
-				m_OutStreamTG[module] = tg;
-
-				// Get talker callsign from stream (base callsign without module)
-				std::string talkerCs;
-				auto stream = g_Reflector.GetStream(module);
-				if (stream)
-				{
-					auto owner = stream->GetOwnerClient();
-					if (owner)
-						talkerCs = owner->GetCallsign().GetBase();
-				}
-
-				// Send TALKER_START to subscribed peers
-				std::vector<uint8_t> msg;
-				PackUint16(msg, SVX_TCP_MSG_TALKER_START);
-				PackUint32(msg, tg);
-				PackString(msg, talkerCs);
-
-				for (auto &[id, peer] : m_Peers)
-				{
-					if (peer.authState != SSvxPeer::EAuthState::connected) continue;
-					if (peer.subscribedTGs.count(tg) == 0) continue;
-					TcpSendFrame(peer.tcpFd, msg.data(), (uint32_t)msg.size());
-				}
+				std::cout << "SVXServer: module " << module << " not sent to TG" << tg << ", a node is talking" << std::endl;
+				EndOutStream(module);
+				continue;
 			}
+			m_TgTalker[tg] = SVXS_URFD_TALKER;
+
+			// the talker is the caller, not the hotspot or node it came through
+			const CDvHeaderPacket &header = (const CDvHeaderPacket &)*packet;
+			SOutStream out;
+			out.tg = tg;
+			out.talker = header.GetMyCallsign().GetBase();
+			m_OutStreams[module] = out;
+
+			// a fresh encoder state per transmission
+			auto &enc = m_OutEncoders[module];
+			if (!enc)
+				enc = SvxCreateEncoder();
+			else
+				opus_encoder_ctl(enc, OPUS_RESET_STATE);
+
+			NotifyTalker(SVX_TCP_MSG_TALKER_START, tg, out.talker);
 		}
 		else if (packet->IsDvFrame())
 		{
-			auto tgIt = m_OutStreamTG.find(module);
-			if (tgIt == m_OutStreamTG.end()) continue;
-			uint32_t tg = tgIt->second;
-
-			const CDvFramePacket &frame = (const CDvFramePacket &)*packet;
+			auto outIt = m_OutStreams.find(module);
+			if (outIt == m_OutStreams.end()) continue;
+			const uint32_t tg = outIt->second.tg;
 
 			if (packet->IsLastPacket())
 			{
-				// Send flush + TALKER_STOP to subscribed peers
-				for (auto &[id, peer] : m_Peers)
-				{
-					if (peer.authState != SSvxPeer::EAuthState::connected) continue;
-					if (peer.subscribedTGs.count(tg) == 0) continue;
-					if (!peer.udpDiscovered) continue;
-					SendFlushToPeer(peer);
-				}
-
-				// Get talker callsign for stop notification
-				std::string stopCs;
-				{
-					auto stream2 = g_Reflector.GetStream(module);
-					if (stream2)
-					{
-						auto owner2 = stream2->GetOwnerClient();
-						if (owner2)
-							stopCs = owner2->GetCallsign().GetBase();
-					}
-				}
-				std::vector<uint8_t> msg;
-				PackUint16(msg, SVX_TCP_MSG_TALKER_STOP);
-				PackUint32(msg, tg);
-				PackString(msg, stopCs);
-				for (auto &[id, peer] : m_Peers)
-				{
-					if (peer.authState != SSvxPeer::EAuthState::connected) continue;
-					if (peer.subscribedTGs.count(tg) == 0) continue;
-					TcpSendFrame(peer.tcpFd, msg.data(), (uint32_t)msg.size());
-				}
-
-				m_OutStreamTG.erase(tgIt);
+				EndOutStream(module);
+				continue;
 			}
-			else
+			outIt->second.lastFrame.start();
+
+			const CDvFramePacket &frame = (const CDvFramePacket &)*packet;
+			const int16_t *pcm = (const int16_t *)frame.GetCodecData(ECodecType::usrp);
+			auto enc = m_OutEncoders[module];
+			if (!pcm || !enc) continue;
+
+			int16_t out[160];
+			memcpy(out, pcm, sizeof(out));
+			SvxApplyGain(out, 160, m_TxGainNum);
+
+			// encoded once, the same packet for every node on the TG
+			uint8_t payload[2 + 512];
+			int opusLen = opus_encode(enc, out, 160, payload + 2, 512);
+			if (opusLen <= 0) continue;
+			payload[0] = (opusLen >> 8) & 0xFF;
+			payload[1] = opusLen & 0xFF;
+
+			for (auto &[id, peer] : m_Peers)
 			{
-				const int16_t *pcm = (const int16_t *)frame.GetCodecData(ECodecType::usrp);
-				if (!pcm) continue;
-
-				int16_t gained[160];
-				const int16_t *sendPcm = pcm;
-				if (m_TxGainNum != 256)
-				{
-					for (int i = 0; i < 160; i++)
-						gained[i] = (int16_t)((pcm[i] * m_TxGainNum) >> 8);
-					sendPcm = gained;
-				}
-
-				for (auto &[id, peer] : m_Peers)
-				{
-					if (peer.authState != SSvxPeer::EAuthState::connected) continue;
-					if (peer.subscribedTGs.count(tg) == 0) continue;
-					if (!peer.udpDiscovered) continue;
-					SendAudioToPeer(peer, sendPcm, tg);
-				}
+				if (peer.authState != SSvxPeer::EAuthState::connected) continue;
+				if (peer.selectedTG != tg) continue;
+				SendUdpToPeer(peer, SVX_UDP_MSG_AUDIO, payload, 2 + opusLen);
 			}
 		}
 	}
 }
 
-void CSvxProtocol::SendAudioToPeer(SSvxPeer &peer, const int16_t *pcm, uint32_t tg)
+// end of urfd audio to a TG: flush + talker stop to the nodes, the TG is free again
+void CSvxProtocol::EndOutStream(char module)
 {
-	if (!peer.opusEncoder) return;
-
-	// Upsample 8kHz -> 16kHz
-	int16_t pcm16k[320];
-	for (int i = 0; i < 160; i++)
+	auto outIt = m_OutStreams.find(module);
+	if (outIt == m_OutStreams.end())
+		return;
+	const uint32_t tg = outIt->second.tg;
+	for (auto &[id, peer] : m_Peers)
 	{
-		pcm16k[i * 2] = pcm[i];
-		pcm16k[i * 2 + 1] = (i < 159) ? (int16_t)(((int32_t)pcm[i] + pcm[i+1]) / 2) : pcm[i];
+		if (peer.authState != SSvxPeer::EAuthState::connected) continue;
+		if (peer.selectedTG != tg) continue;
+		SendUdpToPeer(peer, SVX_UDP_MSG_FLUSH_SAMPLES);
 	}
+	NotifyTalker(SVX_TCP_MSG_TALKER_STOP, tg, outIt->second.talker);
 
-	uint8_t opusBuf[512];
-	int opusLen = opus_encode(peer.opusEncoder, pcm16k, 320, opusBuf, sizeof(opusBuf));
-	if (opusLen <= 0) return;
-
-	CBuffer buf;
-	// Send with the peer's client_id so the client recognizes the packet
-	BuildUdpHeader(buf, SVX_UDP_MSG_AUDIO, (uint16_t)peer.clientId, peer.udpSeqSend);
-	uint8_t lenHdr[2];
-	lenHdr[0] = (opusLen >> 8) & 0xFF;
-	lenHdr[1] = opusLen & 0xFF;
-	buf.Append(lenHdr, 2);
-	buf.Append(opusBuf, opusLen);
-
-	Send(buf, peer.udpEndpoint);
-}
-
-void CSvxProtocol::SendFlushToPeer(SSvxPeer &peer)
-{
-	CBuffer buf;
-	BuildUdpHeader(buf, SVX_UDP_MSG_FLUSH_SAMPLES, (uint16_t)peer.clientId, peer.udpSeqSend);
-	Send(buf, peer.udpEndpoint);
+	auto talker = m_TgTalker.find(tg);
+	if (talker != m_TgTalker.end() && talker->second == SVXS_URFD_TALKER)
+		m_TgTalker.erase(talker);
+	m_OutStreams.erase(outIt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -1248,13 +1167,12 @@ bool CSvxProtocol::Initialize(const char *type, const EProtocol ptype,
 	}
 	SaveBlockDefaults();
 
-	// Parse gain settings
+	// gain in dB, -40 to +40
 	if (g_Configure.Contains(g_Keys.svxs.rxgain))
 	{
 		try {
 			int db = std::stoi(g_Configure.GetString(g_Keys.svxs.rxgain));
-			if (db < -40) db = -40; else if (db > 40) db = 40;
-			m_RxGainNum = (int32_t)roundf(256.0f * powf(10.0f, (float)db / 20.0f));
+			m_RxGainNum = SvxGainFromDb(db);
 			std::cout << "SVXServer: RxGain = " << db << " dB" << std::endl;
 		} catch (const std::exception &e) {
 			std::cerr << "SVXServer: invalid RxGain value: " << e.what() << std::endl;
@@ -1264,8 +1182,7 @@ bool CSvxProtocol::Initialize(const char *type, const EProtocol ptype,
 	{
 		try {
 			int db = std::stoi(g_Configure.GetString(g_Keys.svxs.txgain));
-			if (db < -40) db = -40; else if (db > 40) db = 40;
-			m_TxGainNum = (int32_t)roundf(256.0f * powf(10.0f, (float)db / 20.0f));
+			m_TxGainNum = SvxGainFromDb(db);
 			std::cout << "SVXServer: TxGain = " << db << " dB" << std::endl;
 		} catch (const std::exception &e) {
 			std::cerr << "SVXServer: invalid TxGain value: " << e.what() << std::endl;
@@ -1338,12 +1255,16 @@ void CSvxProtocol::Task(void)
 		}
 	}
 
-	// 3. Receive UDP packets
+	// 3. Receive all waiting UDP packets (each node sends 50 a second while talking)
 	{
 		CBuffer buffer;
 		CIp ip;
 		if (Receive4(buffer, ip, 20))
-			OnUdpPacket(buffer, ip);
+		{
+			do {
+				OnUdpPacket(buffer, ip);
+			} while (Receive4(buffer, ip, 0));
+		}
 	}
 
 	// 4. Keepalives: send TCP heartbeats, check timeouts
@@ -1351,14 +1272,20 @@ void CSvxProtocol::Task(void)
 		std::vector<uint32_t> deadPeers;
 		for (auto &[id, peer] : m_Peers)
 		{
+			if (peer.sendFailed)
+			{
+				std::cerr << "SVXServer: TCP send to " << peer.callsign << " failed" << std::endl;
+				deadPeers.push_back(id);
+				continue;
+			}
 			if (peer.authState == SSvxPeer::EAuthState::connected)
 			{
 				// TCP heartbeat send
 				if (peer.tcpHeartbeatTimer.time() >= SVXS_TCP_KEEPALIVE_PERIOD)
 				{
 					std::vector<uint8_t> hb;
-					PackUint16(hb, SVX_TCP_MSG_HEARTBEAT);
-					TcpSendFrame(peer.tcpFd, hb.data(), (uint32_t)hb.size());
+					SvxPack16(hb, SVX_TCP_MSG_HEARTBEAT);
+					TcpSendFrame(peer, hb);
 					peer.tcpHeartbeatTimer.start();
 				}
 
@@ -1392,20 +1319,66 @@ void CSvxProtocol::Task(void)
 			DisconnectPeer(id);
 	}
 
-	// 5. Handle outbound audio queue
+	// 5. a talker whose flush got lost ends after a short silence
+	{
+		std::vector<uint32_t> silent;
+		for (auto &[id, peer] : m_Peers)
+			if (peer.inStream.tg && peer.inStream.audioTimer.time() >= SVX_TALKER_TIMEOUT)
+				silent.push_back(id);
+		for (uint32_t id : silent)
+			ClosePeerInStream(id);
+
+		// and urfd audio that stopped without its last packet
+		std::vector<char> ended;
+		for (auto &[mod, out] : m_OutStreams)
+			if (out.lastFrame.time() >= SVX_TALKER_TIMEOUT)
+				ended.push_back(mod);
+		for (char mod : ended)
+			EndOutStream(mod);
+	}
+
+	// 6. Handle outbound audio queue
 	HandleQueue();
 
-	// 6. Check stream timeouts
+	// 7. Check stream timeouts
 	CheckStreamsTimeout();
 
-	// 7. Peer list for the admin socket
+	// 8. Peer list for the admin socket
 	if (m_SnapshotTimer.time() >= 1)
 	{
 		UpdatePeerSnapshot();
 		m_SnapshotTimer.start();
 	}
 
-	// 8. Expire dynamic TGs
+	// 9. the CClients of connected nodes stay alive
+	if (m_AliveTimer.time() >= 5)
+	{
+		std::vector<std::pair<CCallsign, CIp>> alive;
+		for (auto &[id, peer] : m_Peers)
+		{
+			if (peer.authState != SSvxPeer::EAuthState::connected || peer.selectedTG == 0)
+				continue;
+			char mod = TGToModule(peer.selectedTG);
+			if (mod == ' ')
+				continue;
+			CCallsign cs;
+			cs.SetCallsign(SvxExtractCallsign(peer.callsign), false);
+			cs.SetCSModule(mod);
+			alive.emplace_back(cs, peer.udpDiscovered ? peer.udpEndpoint : CIp());
+		}
+		CClients *clients = g_Reflector.GetClients();
+		for (auto &[cs, ip] : alive)
+		{
+			auto client = clients->FindClient(cs, cs.GetCSModule(), ip, EProtocol::svx);
+			if (client)
+				client->Alive();
+		}
+		g_Reflector.ReleaseClients();
+		m_AliveTimer.start();
+	}
+
+	// 10. Expire dynamic TGs
+	std::set<char> orphans;
 	{
 		auto now = std::chrono::steady_clock::now();
 		std::lock_guard<std::mutex> lock(m_TGMutex);
@@ -1423,6 +1396,11 @@ void CSvxProtocol::Task(void)
 					if (modIt != m_ModuleToTG.end() && modIt->second == tg)
 						m_ModuleToTG.erase(modIt);
 					m_TGToModule.erase(tgIt);
+					bool hasTGsLeft = false;
+					for (const auto &t : m_TGToModule)
+						if (t.second == mod) { hasTGsLeft = true; break; }
+					if (!hasTGsLeft)
+						orphans.insert(mod);
 				}
 				std::cout << "SVXServer: dynamic TG" << tg << " expired (Module " << mod << ")" << std::endl;
 				dynIt = m_DynTGs.erase(dynIt);
@@ -1432,6 +1410,24 @@ void CSvxProtocol::Task(void)
 				++dynIt;
 			}
 		}
+	}
+	if (!orphans.empty())
+	{
+		CClients *clients = g_Reflector.GetClients();
+		for (char mod : orphans)
+		{
+			for (auto cit = clients->begin(); cit != clients->end(); )
+			{
+				if ((*cit)->GetProtocol() == EProtocol::svx && (*cit)->GetReflectorModule() == mod)
+				{
+					clients->RemoveClient(*cit);
+					cit = clients->begin();
+				}
+				else
+					++cit;
+			}
+		}
+		g_Reflector.ReleaseClients();
 	}
 }
 
@@ -1481,43 +1477,47 @@ bool CSvxProtocol::AddDynamicTG(uint32_t tg, char module, int ttlSeconds)
 
 bool CSvxProtocol::RemoveDynamicTG(uint32_t tg)
 {
-	std::lock_guard<std::mutex> lock(m_TGMutex);
-
-	auto dynIt = m_DynTGs.find(tg);
-	if (dynIt == m_DynTGs.end())
-		return false;
-
-	char removedMod = ' ';
-	auto tgIt = m_TGToModule.find(tg);
-	if (tgIt != m_TGToModule.end())
+	char orphan = ' ';
 	{
-		removedMod = tgIt->second;
-		auto modIt = m_ModuleToTG.find(removedMod);
-		if (modIt != m_ModuleToTG.end() && modIt->second == tg)
-			m_ModuleToTG.erase(modIt);
-		m_TGToModule.erase(tgIt);
-	}
-	m_DynTGs.erase(dynIt);
+		std::lock_guard<std::mutex> lock(m_TGMutex);
 
-	// Remove orphaned SVX clients if no TGs remain for this module
-	if (removedMod != ' ')
-	{
-		bool hasTGsLeft = false;
-		for (const auto &t : m_TGToModule)
-			if (t.second == removedMod) { hasTGsLeft = true; break; }
-		if (!hasTGsLeft)
+		auto dynIt = m_DynTGs.find(tg);
+		if (dynIt == m_DynTGs.end())
+			return false;
+
+		auto tgIt = m_TGToModule.find(tg);
+		if (tgIt != m_TGToModule.end())
 		{
-			CClients *clients = g_Reflector.GetClients();
-			for (auto cit = clients->begin(); cit != clients->end(); ++cit)
-			{
-				if ((*cit)->GetProtocol() == EProtocol::svx && (*cit)->GetReflectorModule() == removedMod)
-				{
-					clients->RemoveClient(*cit);
-					break;
-				}
-			}
-			g_Reflector.ReleaseClients();
+			char removedMod = tgIt->second;
+			auto modIt = m_ModuleToTG.find(removedMod);
+			if (modIt != m_ModuleToTG.end() && modIt->second == tg)
+				m_ModuleToTG.erase(modIt);
+			m_TGToModule.erase(tgIt);
+
+			bool hasTGsLeft = false;
+			for (const auto &t : m_TGToModule)
+				if (t.second == removedMod) { hasTGsLeft = true; break; }
+			if (!hasTGsLeft)
+				orphan = removedMod;
 		}
+		m_DynTGs.erase(dynIt);
+	}
+
+	// Remove orphaned SVX clients, the client list after the TG lock
+	if (orphan != ' ')
+	{
+		CClients *clients = g_Reflector.GetClients();
+		for (auto cit = clients->begin(); cit != clients->end(); )
+		{
+			if ((*cit)->GetProtocol() == EProtocol::svx && (*cit)->GetReflectorModule() == orphan)
+			{
+				clients->RemoveClient(*cit);
+				cit = clients->begin();
+			}
+			else
+				++cit;
+		}
+		g_Reflector.ReleaseClients();
 	}
 
 	return true;
@@ -1726,7 +1726,8 @@ void CSvxProtocol::UpdatePeerSnapshot(void)
 		SConnectedPeer cp;
 		cp.callsign = peer.callsign;
 		cp.ip = peer.udpDiscovered ? peer.udpEndpoint.GetAddress() : "";
-		cp.subscribedTGs = peer.subscribedTGs;
+		if (peer.selectedTG)
+			cp.subscribedTGs.insert(peer.selectedTG);
 		cp.udpDiscovered = peer.udpDiscovered;
 		cp.nodeInfo = peer.nodeInfo;
 		result.push_back(std::move(cp));
