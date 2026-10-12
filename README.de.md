@@ -126,7 +126,9 @@ Password = changeme                 # Authentication password
 
 **BlockProtocols** (alle Client-Protokolle): Unterstützt bei MMDVMClient, SvxReflector, DCSClient, DExtraClient, DPlusClient und YSFClient. Audio aus den aufgeführten Quell-Protokollen wird nicht über diese Anbindung weitergeleitet. Jedes Client-Protokoll verhindert außerdem immer, dass Audio zu ihm selbst zurückläuft (DCSClient schickt z.B. nie Audio, das von DCSClient kam, wieder hinaus). Verfügbare Protokollnamen: `MMDVM`, `MMDVMClient`, `SvxReflector`, `DExtra`, `DExtraClient`, `DPlus`, `DPlusClient`, `DCS`, `DCSClient`, `DMRPlus`, `YSF`, `YSFClient`, `M17`, `NXDN`, `P25`, `USRP`, `URF`, `XLXPeer`, `G3`. Durch Komma getrennt.
 
-**RxGain / TxGain**: Feste Verstärkung für SVX-Audio, unabhängig von der USRP-Verstärkung (die in tcd.ini eingestellt wird). RxGain wirkt nach dem OPUS-Dekodieren vor dem Transcoder, TxGain nach dem Transcoder vor dem OPUS-Kodieren. Die AGC in tcd läuft auf SVX-Audio weiterhin nach RxGain. Standard ist für beide 0 dB.
+**Eine TG zur Zeit**: Ein Knoten am SvxReflector hat genau eine ausgewählte TG; er bekommt nur deren Audio, und sein Audio geht dorthin. urfd wählt die erste feste TG (die niedrigste Nummer, die Heimat-TG) und überwacht alle zugeordneten TGs (`MsgTgMonitor`, wie `MONITOR_TGS` bei SvxLink). Ein Sprecher auf einer überwachten TG wählt diese TG, wenn urfd seit 3 s keinen Verkehr hatte; Audio eines urfd-Moduls, dessen TG nicht gewählt ist, wählt sie, außer auf der gewählten spricht gerade jemand, dann geht der Durchgang dieses Moduls nicht hinaus. Nach 30 s ohne Verkehr kehrt urfd zur Heimat-TG zurück. Mit nur einer zugeordneten TG ändert sich nichts.
+
+**RxGain / TxGain**: Feste Verstärkung für SVX-Audio, unabhängig von der USRP-Verstärkung (die in tcd.ini eingestellt wird). RxGain wirkt nach dem OPUS-Dekodieren vor dem Transcoder, TxGain nach dem Transcoder vor dem OPUS-Kodieren; Werte über Vollaussteuerung werden begrenzt. Die AGC in tcd läuft auf SVX-Audio weiterhin nach RxGain. Standard ist für beide 0 dB.
 
 ### SVXServer
 Nimmt eingehende Verbindungen von SvxLink-Knoten an. Arbeitet als SvxReflector-Server (Protokoll V2, HMAC-SHA1-Authentifizierung, OPUS-Audio). Benötigt transcodierte Module. Nutzer melden sich mit Rufzeichen und Passwort an. Die TG-Zuordnung funktioniert wie beim SvxReflector-Client, Clients wählen TGs per `MsgSelectTG`. Nutzer und TGs lassen sich zur Laufzeit über die Admin-Oberfläche verwalten.
@@ -150,7 +152,9 @@ Port = 5300                         # TCP and UDP port (same)
 
 **Nutzerverwaltung**: Nutzer lassen sich zur Laufzeit über die Admin-Oberfläche hinzufügen und entfernen oder fest in `urfd.ini` eintragen. Jeder Nutzer meldet sich mit Rufzeichen und Passwort per HMAC-SHA1 an.
 
-**TG-Zuordnung**: Wie beim SvxReflector-Client, die Module müssen transcodiert sein. Mehrere TGs pro Modul sind möglich. Dynamische TGs lassen sich über die Admin-Oberfläche mit einstellbarer Laufzeit (TTL) hinzufügen.
+**TG-Zuordnung**: Die Module müssen transcodiert sein. Mehrere TGs pro Modul sind möglich. Dynamische TGs lassen sich über die Admin-Oberfläche mit einstellbarer Laufzeit (TTL) hinzufügen.
+
+**TG-Auswahl wie beim SvxReflector**: Ein Knoten hat genau eine ausgewählte TG, `MsgSelectTG` ersetzt sie; `MsgTgMonitor` legt fest, von welchen TGs er Sprecherbeginn und -ende bekommt. Eine TG hat jeweils einen Sprecher. Die anderen Knoten auf der TG bekommen dessen OPUS-Pakete unverändert (ohne Transcoding), auch auf TGs ohne Modul; zugeordnete TGs gehen außerdem zu ihrem urfd-Modul und kommen von dort. Die Knoten müssen Protokoll 2.0 sprechen: Aktuelle SvxLink-Versionen nutzen Protokoll 3 (TLS mit Zertifikaten), das urfd nicht unterstützt; sie werden um einen Downgrade gebeten und loggen, dass sie das nicht können.
 
 **Admin-Befehle**:
 ```json
@@ -318,7 +322,7 @@ Dynamische TGs von MMDVM und SVX laufen nach 15 Minuten ohne Aktivität ab. Der 
 
 **Hinweis zu BrandMeister**: BM führt einen eigenen Timer für das TG-Abonnement. Läuft das BM-Abonnement ab, läuft ohne weitere Aktivität auch die lokale Zuordnung in urfd ab. Mit dem Admin-Befehl **kerchunk** lässt sich das Abonnement bei BM ohne Funkgerät verlängern.
 
-**Hinweis zu SVX**: Sind alle dynamischen SVX-TGs abgelaufen, schickt urfd `SELECT_TG(0)` an den SVX-Server, meldet sich damit sauber ab und bekommt keinen Verkehr für abgelaufene TGs mehr.
+**Hinweis zu SVX**: Läuft eine dynamische SVX-TG ab, nimmt urfd sie aus den überwachten TGs; war sie gewählt, wird wieder die Heimat-TG gewählt (oder keine, wenn keine TG übrig ist).
 
 ### Admin-Oberfläche
 Verwaltung zur Laufzeit über einen JSON-basierten TCP-Socket, bedienbar über das Web-Panel im Dashboard. Läuft in einem eigenen Thread und blockiert die Audioverarbeitung nicht. Jede Client-Verbindung läuft in einem eigenen Thread mit 5 Sekunden Leerlauf-Timeout, langsame oder hängende Clients können den Admin-Socket also nicht blockieren.
@@ -340,7 +344,7 @@ $Admin['Port']     = 10101;
 ```
 
 **Funktionen:**
-- **Dynamische TG-Verwaltung**: Talkgroups zur Laufzeit mit einstellbarer Laufzeit hinzufügen und entfernen. Mit BM-API-Schlüssel per REST-API als statisch eingetragen (kein Kerchunk nötig), ohne per Kerchunk bei BM aktiviert. Bei SVX wird SELECT_TG über TCP geschickt.
+- **Dynamische TG-Verwaltung**: Talkgroups zur Laufzeit mit einstellbarer Laufzeit hinzufügen und entfernen. Mit BM-API-Schlüssel per REST-API als statisch eingetragen (kein Kerchunk nötig), ohne per Kerchunk bei BM aktiviert. Bei SVX werden die überwachten TGs angepasst.
 - **Protokoll-Sperren zur Laufzeit**: Beliebige Protokoll-Paare in beide Richtungen sperren und freigeben. Wird nicht gespeichert und gilt nach einem Neustart nicht mehr. Die Schaltfläche "Reset to Config Default" stellt die Einstellungen aus der INI wieder her.
 - **Mehrere TGs pro Modul**: Sekundäre TGs (nur RX) dynamisch zu Modulen hinzufügen, die schon eine primäre TG haben.
 - **Kerchunk auf Knopfdruck**: Einen Kerchunk für eine bestimmte TG an BrandMeister schicken, ohne Funkgerät. Nur MMDVM. Mit BM-API-Schlüssel nicht nötig.
@@ -815,8 +819,8 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 ### Protokoll-Anbindungen
 - **MMDVMClient**: Vollständiger MMDVM-Client für BrandMeister-/DMR+-Master: mehrere TGs pro Modul (primär TX/RX, sekundär nur RX), Timeslots, Ersatz-DMR-ID, Erzeugung des Options-Strings
 - **BrandMeister-API**: Optionale Anbindung an die REST API v2: Abgleich beim Start behält dynamische TGs (entfernt nur TGs, die weder in der Konfiguration noch in der Laufzeit-Zuordnung stehen), TGs per API statt per Kerchunk hinzufügen und entfernen, eingestellt über `BrandMeisterApiKey`
-- **SvxReflector**: TCP/UDP-Client für SvxLink-FM-Server: OPUS-Codec, Audio in beide Richtungen, einstellbare RX/TX-Verstärkung, SELECT_TG-Protokoll, Trennung bei TCP-Sendefehler mit sofortiger Neuverbindung
-- **SVXServer**: SvxReflector-V2-Server: nimmt SvxLink-Knoten mit HMAC-SHA1-Anmeldung an, OPUS-Audio, Modulwahl über TGs, Anmeldung pro Nutzer, Nutzer-/TG-Verwaltung zur Laufzeit über die Admin-API
+- **SvxReflector**: TCP/UDP-Client für SvxLink-FM-Server: OPUS-Codec, Audio in beide Richtungen, einstellbare RX/TX-Verstärkung, eine gewählte TG, die übrigen überwacht und bei Aktivität gewählt, Trennung bei TCP-Sendefehler mit sofortiger Neuverbindung
+- **SVXServer**: SvxReflector-V2-Server: nimmt SvxLink-Knoten mit HMAC-SHA1-Anmeldung an, OPUS-Audio, TG-Auswahl und -Überwachung wie beim SvxReflector, Weiterleitung zwischen Knoten, Modulwahl über TGs, Anmeldung pro Nutzer, Nutzer-/TG-Verwaltung zur Laufzeit über die Admin-API
 - **DCS-Kopplung**: Native DCS-Kopplung von Reflektor zu Reflektor, mit PeerCallsign und Protokollfeld in der Interlink-Datei
 - **D-Star-Client-Protokolle**: DCSClient, DExtraClient, DPlusClient: Verbindung mit fremden D-Star-Reflektoren als Client-Knoten mit Modul-zu-Modul-Zuordnung, dynamisch über die Admin-API, Protokoll-Sperren, im Dashboard sichtbar
 - **YSF-Client-Protokoll**: YSFClient: Verbindung mit fremden YSF-Reflektoren mit optionaler DG-ID, dynamische Zuordnung über die Admin-API, Reflektor-Rufzeichen im YSF-Feld "Radio"
@@ -855,6 +859,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Mischbetrieb, MD380, AGC und Verstärkung**: siehe [tcd/README.md](tcd/README.md)
 
 ### Infrastruktur
+- **SvxLink (4.8.0)**: Der SvxReflector-Client wählt eine TG und überwacht die übrigen zugeordneten, wie ein SvxLink-Knoten (bisher wählte er jede zugeordnete TG, der Reflektor behielt nur die letzte, und Audio jedes Moduls landete dort); der SVX-Server führt pro Knoten eine gewählte TG, leitet Audio zwischen seinen Knoten weiter, schickt Sprecherbeginn und -ende nur an Knoten auf oder mit Überwachung der TG und bittet Knoten mit Protokoll 3 um einen Downgrade. Beide: OPUS-Pakete von 10 bis 60 ms, verlorene Pakete werden überbrückt, verspätete verworfen, ein verlorenes Flush kostet nicht mehr den nächsten Durchgang, die Verstärkung begrenzt statt überzulaufen, 8-kHz-Sprach-Encoder statt Hochrechnen, frischer Encoder pro Durchgang, TCP-Nachrichten in Stücken, keine Verklemmung zwischen Admin-Socket und Protokoll-Thread
 - **Statusdatei und Admin-Socket (4.7.4)**: Die XML/JSON-Statusdatei wird daneben geschrieben und umbenannt, das Dashboard liest sie also nie leer oder halb geschrieben; Rufzeichen und Texte aus `urfd.ini` darin sind XML-maskiert; der Admin-Socket nimmt einen Befehl an, der auf mehrere TCP-Segmente verteilt ankommt; ein zweites SIGHUP während eines Konfigurations-Reloads beendet urfd nicht mehr
 - **Hotspots im XLX-Modus (4.7.1, 4.7.2)**: Ein Modul, das per Private Call 4001-4026 verbunden wurde, wie es der XLX-Master-Modus von Pi-Star/WPSD (DMRGateway) tut, wird auf dem Slot bedient, auf dem verbunden wurde, und auf TG9, wie bei xlxd; das XLX-Netz von DMRGateway nimmt nichts anderes an. Ein Group Call an 4001-4026 behält seine TG (4.7.1 antwortete auch darauf auf TG9). Der Terminator eines Link-Rufs erzeugt keinen Orphaned Frame mehr
 - **DMR Talker Alias (4.7.0)**: Rufe an Hotspots am MMDVM-Server tragen einen Talker Alias, Rufzeichen und Vorname aus der DMR-ID-Datenbank wie bei BrandMeister, oder den Alias, den die DMR-Quelle schickt (BrandMeister, das Funkgerät), sobald er vollständig angekommen ist

@@ -126,7 +126,9 @@ Password = changeme                 # Authentication password
 
 **BlockProtocols** (all client protocols): Supported on MMDVMClient, SvxReflector, DCSClient, DExtraClient, DPlusClient, and YSFClient. Prevents audio from the listed source protocols from being routed through this connector. Each client protocol also always blocks self-routing (e.g. DCSClient never routes DCSClient-originated audio back out). Available protocol names: `MMDVM`, `MMDVMClient`, `SvxReflector`, `DExtra`, `DExtraClient`, `DPlus`, `DPlusClient`, `DCS`, `DCSClient`, `DMRPlus`, `YSF`, `YSFClient`, `M17`, `NXDN`, `P25`, `USRP`, `URF`, `XLXPeer`, `G3`. Comma-separated.
 
-**RxGain / TxGain**: Static gain applied to SVX audio independently from USRP gain (which is configured in tcd.ini). RxGain is applied after OPUS decode before the transcoder, TxGain after the transcoder before OPUS encode. AGC in tcd still runs on SVX audio after RxGain. Default is 0 dB for both.
+**One TG at a time**: An SvxReflector node has one selected TG; it gets the audio of that TG only, and its audio goes there. urfd selects the first static TG (the lowest number, the home TG) and monitors all mapped TGs (`MsgTgMonitor`, like SvxLink's `MONITOR_TGS`). A talker on a monitored TG selects that TG when urfd has had no traffic for 3 s; audio from a urfd module whose TG isn't selected selects it unless a talker is on the selected one, then that module's transmission is not sent. After 30 s without traffic urfd goes back to the home TG. With one TG mapped nothing changes.
+
+**RxGain / TxGain**: Static gain applied to SVX audio independently from USRP gain (which is configured in tcd.ini). RxGain is applied after OPUS decode before the transcoder, TxGain after the transcoder before OPUS encode; samples past full scale are clipped. AGC in tcd still runs on SVX audio after RxGain. Default is 0 dB for both.
 
 ### SVXServer
 Accept incoming connections from SvxLink nodes. Acts as a SvxReflector server (protocol V2, HMAC-SHA1 auth, OPUS audio). Requires transcoded modules. Users authenticate with callsign + password. TG mapping works like SvxReflector client — clients select TGs via `MsgSelectTG`. Users and TGs can be managed at runtime via the Admin interface.
@@ -150,7 +152,9 @@ Port = 5300                         # TCP and UDP port (same)
 
 **User management**: Users can be added/removed at runtime via the Admin interface or configured statically in `urfd.ini`. Each user authenticates with callsign + password using HMAC-SHA1.
 
-**TG mapping**: Same semantics as SvxReflector client — modules must be transcoded. Multiple TGs per module supported. Dynamic TGs can be added via the Admin interface with configurable TTL.
+**TG mapping**: Modules must be transcoded. Multiple TGs per module supported. Dynamic TGs can be added via the Admin interface with configurable TTL.
+
+**TG selection, like SvxReflector**: A node has one selected TG, `MsgSelectTG` replaces it; `MsgTgMonitor` sets the TGs whose talker start/stop it gets. A TG has one talker at a time. The other nodes on the TG get the talker's OPUS packets as they came (no transcoding), also on TGs that aren't mapped to a module; mapped TGs also go to and come from their urfd module. Nodes must speak protocol 2.0: current SvxLink versions use protocol 3 (TLS with certificates), which urfd does not support; they are asked to downgrade and log that they can't.
 
 **Admin commands**:
 ```json
@@ -318,7 +322,7 @@ Both MMDVM and SVX dynamic TGs have a 15-minute inactivity TTL. The timer is ref
 
 **BrandMeister note**: BM maintains its own TG subscription timer independently. When the BM subscription expires, urfd's local mapping will also expire if there is no further activity. Use the **kerchunk** admin command to manually extend the BM-side subscription without needing a radio.
 
-**SVX note**: When all dynamic SVX TGs expire, urfd sends `SELECT_TG(0)` to the SVX server to unsubscribe cleanly and stop receiving traffic for expired TGs.
+**SVX note**: When a dynamic SVX TG expires, urfd takes it off the monitored TGs; if it was selected, the home TG is selected again (or none if no TG is left).
 
 ### Admin Interface
 Runtime management via a JSON-based TCP socket, accessible through the dashboard web panel. Runs in its own thread and does not block audio processing. Each client connection is handled in a separate detached thread with a 5-second idle timeout, so slow or stalled clients cannot block the admin socket.
@@ -340,7 +344,7 @@ $Admin['Port']     = 10101;
 ```
 
 **Features:**
-- **Dynamic TG Management**: Add/remove talkgroups at runtime with configurable TTL. With BM API key: registers as static via REST API (no kerchunk needed). Without: kerchunk to activate on BM. For SVX, sends SELECT_TG via TCP.
+- **Dynamic TG Management**: Add/remove talkgroups at runtime with configurable TTL. With BM API key: registers as static via REST API (no kerchunk needed). Without: kerchunk to activate on BM. For SVX, updates the monitored TGs.
 - **Runtime Protocol Blocking**: Block/unblock any protocol pair bidirectionally at runtime. Not persisted — resets on restart. "Reset to Config Default" button restores INI settings.
 - **Multi-TG per Module**: Dynamically add secondary TGs (RX only) to modules that already have a primary TG.
 - **Kerchunk on Demand**: Send a kerchunk to BrandMeister for a specific TG without a radio. MMDVM only. Not needed when BM API key is configured.
@@ -836,8 +840,8 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 ### Protocol Connectors
 - **MMDVMClient**: Full MMDVM protocol client for BrandMeister/DMR+ masters — multi-TG per module (primary TX/RX + secondary RX-only), per-timeslot support, fallback DMR ID, options string generation
 - **BrandMeister API**: Optional REST API v2 integration — startup sync preserves dynamic TGs (only removes TGs not in config or runtime map), API-based TG add/remove instead of kerchunk, configurable via `BrandMeisterApiKey`
-- **SvxReflector**: TCP/UDP client for SvxLink FM servers — OPUS codec, bidirectional audio bridging, configurable RX/TX gain, SELECT_TG protocol, auto-disconnect on TCP send failure with immediate reconnect
-- **SVXServer**: SvxReflector V2 server — accept incoming SvxLink node connections with HMAC-SHA1 auth, OPUS audio, TG-based module routing, per-user authentication, runtime user/TG management via admin API
+- **SvxReflector**: TCP/UDP client for SvxLink FM servers — OPUS codec, bidirectional audio bridging, configurable RX/TX gain, one selected TG with the others monitored and selected on activity, auto-disconnect on TCP send failure with immediate reconnect
+- **SVXServer**: SvxReflector V2 server — accept incoming SvxLink node connections with HMAC-SHA1 auth, OPUS audio, TG select and monitor like SvxReflector, node-to-node relay, TG-based module routing, per-user authentication, runtime user/TG management via admin API
 - **DCS interlinking**: Native DCS reflector-to-reflector peering with PeerCallsign override and protocol field in interlink file
 - **D-Star client protocols**: DCSClient, DExtraClient, DPlusClient — connect to external D-Star reflectors as a client node with module-to-module mapping, dynamic add/remove via admin API, protocol blocking, dashboard integration
 - **YSF client protocol**: YSFClient — connect to external YSF reflectors with optional DG-ID, dynamic mapping via admin API, reflector callsign in YSF radio field
@@ -876,6 +880,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Mixed mode, MD380, AGC and gains**: see [tcd/README.md](tcd/README.md)
 
 ### Infrastructure
+- **SvxLink (4.8.0)**: the SvxReflector client selects one TG and monitors the other mapped ones, like an SvxLink node (it used to select every mapped TG, the reflector kept only the last one, and audio of any module went into it); the SVX server keeps one selected TG per node, relays audio between its nodes, sends talker start/stop only to nodes on or monitoring the TG and asks protocol 3 nodes to downgrade. Both: OPUS packets of 10 to 60 ms, lost packets concealed, late ones dropped, a lost flush no longer costs the next transmission, gain clips instead of wrapping around, 8 kHz voice encoder instead of upsampling, a fresh encoder per transmission, TCP messages in pieces, no lock-order deadlock between admin socket and protocol thread
 - **Status file and admin socket (4.7.4)**: the XML/JSON status file is written aside and renamed into place, so the dashboard never reads it empty or half written; callsigns and `urfd.ini` texts in it are XML-escaped; the admin socket takes a command split over several TCP segments; a second SIGHUP during a config reload no longer ends urfd
 - **XLX mode hotspots (4.7.1, 4.7.2)**: a module linked with a private call 4001-4026, as Pi-Star/WPSD's XLX master mode (DMRGateway) does, is served on the slot it was linked on and on TG9, like xlxd; DMRGateway's XLX network takes nothing else. A group call to 4001-4026 keeps its TG (4.7.1 answered it on TG9 too). The terminator of a link call no longer logs an orphaned frame
 - **DMR talker alias (4.7.0)**: calls to hotspots on the MMDVM server carry a talker alias, the callsign and first name from the DMR ID database as BrandMeister makes it, or the alias the DMR source sends (BrandMeister, the radio) as soon as it arrived complete
