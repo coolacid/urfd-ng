@@ -50,6 +50,9 @@
 #define AGCMAXGAINUP   "AGCMaxGainUp"
 #define AGCMAXGAINDOWN "AGCMaxGainDown"
 #define AGCNOISEGATE   "AGCNoiseGate"
+#define AGCANALOGGATE  "AGCAnalogNoiseGate"
+#define AGCANALOGUP    "AGCAnalogMaxGainUp"
+#define AGCANALOGFLOOR "AGCAnalogGateFloor"
 #define MONITORENABLE  "Monitor"
 #define MONITORBIND    "MonitorBindAddress"
 #define MONITORHTTP    "MonitorHttpPort"
@@ -196,6 +199,12 @@ bool CConfigure::ReadData(const std::string &path)
 			agc_maxgain_down = std::stof(value);
 		else if (0 == key.compare(AGCNOISEGATE))
 			agc_noisegate = std::stof(value);
+		else if (0 == key.compare(AGCANALOGGATE))
+			agc_analog_noisegate = std::stof(value);
+		else if (0 == key.compare(AGCANALOGUP))
+			agc_analog_maxgain_up = std::stof(value);
+		else if (0 == key.compare(AGCANALOGFLOOR))
+			agc_analog_gatefloor = std::min(std::stof(value), 0.0f);
 		else if (0 == key.compare(MONITORENABLE))
 			monitor_enabled = IS_TRUE(value[0]);
 		else if (0 == key.compare(MONITORBIND))
@@ -268,7 +277,10 @@ bool CConfigure::ReadData(const std::string &path)
 		std::cout << std::endl;
 	}
 	if (agc_enabled)
-		std::cout << "AGC = enabled, Target=" << agc_target << "dBFS, Attack=" << agc_attack << "ms, Release=" << agc_release << "ms, Up=+" << agc_maxgain_up << "dB, Down=-" << agc_maxgain_down << "dB" << std::endl;
+	{
+		std::cout << "AGC = enabled, Target=" << agc_target << "dBFS, Attack=" << agc_attack << "ms, Release=" << agc_release << "ms, Up=+" << agc_maxgain_up << "dB, Down=-" << agc_maxgain_down << "dB, Gate=" << agc_noisegate << "dBFS" << std::endl;
+		std::cout << "AGC analog (SVX/USRP): Up=+" << agc_analog_maxgain_up << "dB, Gate=" << agc_analog_noisegate << "dBFS, GateFloor=" << agc_analog_gatefloor << "dB" << std::endl;
+	}
 	else
 		std::cout << "AGC = disabled" << std::endl;
 	if (monitor_enabled)

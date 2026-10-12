@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <vector>
 #include <cstring>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -151,6 +152,9 @@ std::string CMonitorServer::BuildStatsJson()
 	   << ",\"agc_maxgain_up\":" << g_Stats.config.agc_maxgain_up.load()
 	   << ",\"agc_maxgain_down\":" << g_Stats.config.agc_maxgain_down.load()
 	   << ",\"agc_noisegate\":" << g_Stats.config.agc_noisegate.load()
+	   << ",\"agc_analog_noisegate\":" << g_Stats.config.agc_analog_noisegate.load()
+	   << ",\"agc_analog_maxgain_up\":" << g_Stats.config.agc_analog_maxgain_up.load()
+	   << ",\"agc_analog_gatefloor\":" << g_Stats.config.agc_analog_gatefloor.load()
 	   << ",\"gain_dstar_in\":" << g_Stats.config.gain_dstar_in.load()
 	   << ",\"gain_dstar_out\":" << g_Stats.config.gain_dstar_out.load()
 	   << ",\"gain_dmr_in\":" << g_Stats.config.gain_dmr_in.load()
@@ -266,6 +270,13 @@ void CMonitorServer::HandleRest(struct mg_connection *c, struct mg_http_message 
 		float noisegate;
 		if (json_get_float(hm->body.buf, hm->body.len, "noisegate", noisegate))
 			g_Stats.config.agc_noisegate.store(noisegate);
+		float analog;
+		if (json_get_float(hm->body.buf, hm->body.len, "analog_noisegate", analog))
+			g_Stats.config.agc_analog_noisegate.store(analog);
+		if (json_get_float(hm->body.buf, hm->body.len, "analog_maxgain_up", analog))
+			g_Stats.config.agc_analog_maxgain_up.store(analog);
+		if (json_get_float(hm->body.buf, hm->body.len, "analog_gatefloor", analog))
+			g_Stats.config.agc_analog_gatefloor.store(std::min(analog, 0.0f));
 		float dmr_gain_mode;
 		if (json_get_float(hm->body.buf, hm->body.len, "dmr_gain_mode", dmr_gain_mode))
 		{
@@ -454,6 +465,28 @@ bool CMonitorServer::SaveConfig(const std::string &ini_path)
 	std::ifstream in(ini_path);
 	if (!in.is_open()) return false;
 
+	// keys of the analog AGC: replaced where they stand, else written after
+	// AGCNoiseGate (or at the end), so an older ini gets them on the first save
+	struct SKey { const char *key; float value; bool present; bool written; };
+	std::vector<SKey> analog = {
+		{ "AGCAnalogNoiseGate", g_Stats.config.agc_analog_noisegate.load(), false, false },
+		{ "AGCAnalogMaxGainUp", g_Stats.config.agc_analog_maxgain_up.load(), false, false },
+		{ "AGCAnalogGateFloor", g_Stats.config.agc_analog_gatefloor.load(), false, false },
+	};
+	{
+		std::string l;
+		while (std::getline(in, l))
+		{
+			if (l.empty() || l[0] == '#') continue;
+			std::string k = l.substr(0, l.find('='));
+			while (!k.empty() && k.back() == ' ') k.pop_back();
+			for (auto &a : analog)
+				if (k == a.key) a.present = true;
+		}
+		in.clear();
+		in.seekg(0);
+	}
+
 	std::ostringstream out;
 	std::string line;
 	while (std::getline(in, line))
@@ -490,11 +523,25 @@ bool CMonitorServer::SaveConfig(const std::string &ini_path)
 				if (key == "AGCRelease")        { out << key << " = " << g_Stats.config.agc_release.load() << "\n"; continue; }
 				if (key == "AGCMaxGainUp")     { out << key << " = " << g_Stats.config.agc_maxgain_up.load() << "\n"; continue; }
 				if (key == "AGCMaxGainDown")   { out << key << " = " << g_Stats.config.agc_maxgain_down.load() << "\n"; continue; }
+				if (key == "AGCNoiseGate")
+				{
+					out << key << " = " << g_Stats.config.agc_noisegate.load() << "\n";
+					// the analog settings follow it when the ini doesn't have them yet
+					for (auto &a : analog)
+						if (!a.present && !a.written) { out << a.key << " = " << a.value << "\n"; a.written = true; }
+					continue;
+				}
+				bool done = false;
+				for (auto &a : analog)
+					if (key == a.key) { out << key << " = " << a.value << "\n"; a.written = true; done = true; }
+				if (done) continue;
 				}
 		}
 		out << line << "\n";
 	}
 	in.close();
+	for (auto &a : analog)
+		if (!a.written) out << a.key << " = " << a.value << "\n";
 
 	std::ofstream of(ini_path);
 	if (!of.is_open()) return false;

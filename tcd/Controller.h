@@ -80,6 +80,7 @@ protected:
 	int32_t outgain_dstar_num, outgain_dmr_num, outgain_usrp_num, outgain_imbe_num, outgain_m17_num;
 	imbe_vocoder p25vocoder;
 	CAGC m_agc;
+	CAGC m_agcAnalog;   // SVX and USRP: FM audio, gate above its noise floor
 	CAmbeGain m_ambeGain;  // DmrGainMode = ambe: AGC and gains in the AMBE2+ bitstream
 
 	int32_t calcNumerator(int32_t db) const;

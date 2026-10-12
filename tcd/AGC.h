@@ -7,8 +7,10 @@
 // Design improvements over simple RMS-tracking AGC:
 // 1. Sliding RMS window (3 frames / 60ms) — smooths syllable-level variation
 // 2. Gate with hold and fade — the gate opens at the threshold and closes only
-//    after 60ms below it; closed, the gain fades to at most unity instead of
-//    switching, so word endings are not chopped and noise is not amplified
+//    after 60ms below it; closed, the gain fades to at most the gate floor
+//    (unity for digital sources, below unity for analog FM audio, which has a
+//    noise floor in its pauses) instead of switching, so word endings are not
+//    chopped and noise is not amplified
 // 3. Gain decay in the gate — the tracked gain drifts toward the speaker's
 //    long-term average gain, so next speech onset starts at the right level
 // 4. Fast release after gate — first 5 frames after gate opening use 5x release
@@ -58,9 +60,11 @@ class CAGC
 {
 public:
 	void Configure(bool enable, float targetDbfs, float attackMs, float releaseMs,
-	               float maxGainUpDb, float maxGainDownDb, float noiseGateDbfs = -55.0f)
+	               float maxGainUpDb, float maxGainDownDb, float noiseGateDbfs = -55.0f,
+	               float gateFloorDb = 0.0f)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
+		m_gateFloor = powf(10.0f, std::min(gateFloorDb, 0.0f) / 20.0f);
 		m_enabled = enable;
 		m_targetLinear = powf(10.0f, targetDbfs / 20.0f) * 32767.0f;
 		m_maxGain = powf(10.0f, maxGainUpDb / 20.0f);
@@ -190,8 +194,9 @@ private:
 				state.gain += decayAlpha * (state.avgGain - state.gain);
 			}
 
-			// Fade the applied gain to at most unity: no noise amplification
-			target = std::max(std::min(state.gain, 1.0f), state.applied * GATE_FADE);
+			// Fade the applied gain to at most the gate floor: no noise amplification,
+			// for analog sources the noise between words is lowered
+			target = std::max(std::min(state.gain, m_gateFloor), state.applied * GATE_FADE);
 			target = std::min(target, state.applied);  // a fade never raises the gain
 		}
 
@@ -267,6 +272,7 @@ private:
 	float m_attackAlpha = 0.33f;
 	float m_releaseAlpha = 0.04f;
 	float m_noiseGateLinear = 58.0f;   // -55 dBFS
+	float m_gateFloor = 1.0f;          // gain limit with the gate closed (0 dB)
 	std::unordered_map<uint16_t, AGCState> m_streams;
 	mutable std::mutex m_mutex;
 };

@@ -267,6 +267,7 @@ bool CController::Start()
 	outgain_imbe_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_imbe));
 	outgain_m17_num = calcNumerator(g_Conf.GetGain(EGainType::outgain_m17));
 	m_agc.Configure(g_Conf.GetAGCEnabled(), g_Conf.GetAGCTarget(), g_Conf.GetAGCAttack(), g_Conf.GetAGCRelease(), g_Conf.GetAGCMaxGainUp(), g_Conf.GetAGCMaxGainDown(), g_Conf.GetAGCNoiseGate());
+	m_agcAnalog.Configure(g_Conf.GetAGCEnabled(), g_Conf.GetAGCTarget(), g_Conf.GetAGCAttack(), g_Conf.GetAGCRelease(), g_Conf.GetAGCAnalogMaxGainUp(), g_Conf.GetAGCMaxGainDown(), g_Conf.GetAGCAnalogNoiseGate(), g_Conf.GetAGCAnalogGateFloor());
 
 	if (InitVocoders() || tcClient.Open(g_Conf.GetAddress(), g_Conf.GetTCMods(), g_Conf.GetPort()))
 	{
@@ -295,6 +296,16 @@ void CController::ReconfigureAGC()
 		g_Stats.config.agc_maxgain_up.load(),
 		g_Stats.config.agc_maxgain_down.load(),
 		g_Stats.config.agc_noisegate.load()
+	);
+	m_agcAnalog.Configure(
+		g_Stats.config.agc_enabled.load(),
+		g_Stats.config.agc_target.load(),
+		g_Stats.config.agc_attack.load(),
+		g_Stats.config.agc_release.load(),
+		g_Stats.config.agc_analog_maxgain_up.load(),
+		g_Stats.config.agc_maxgain_down.load(),
+		g_Stats.config.agc_analog_noisegate.load(),
+		g_Stats.config.agc_analog_gatefloor.load()
 	);
 	// Also update gain numerators from live config
 	ambe_in_num = calcNumerator(g_Stats.config.gain_dmr_in.load());
@@ -1144,12 +1155,7 @@ void CController::AudiotoUSRP(std::shared_ptr<CTranscoderPacket> packet)
 	int16_t tmp[160];
 	memcpy(tmp, packet->GetAudioSamples(), sizeof(tmp));
 	ApplyGain(tmp, 160, outgain_usrp_num);
-
-	if (usrp_tx_num != 256)
-	{
-		for(int i = 0; i < 160; ++i)
-			tmp[i] = int16_t((tmp[i] * usrp_tx_num) >> 8);
-	}
+	ApplyGain(tmp, 160, usrp_tx_num);
 	packet->SetUSRPData(tmp);
 
 
@@ -1161,22 +1167,13 @@ void CController::AudiotoUSRP(std::shared_ptr<CTranscoderPacket> packet)
 
 void CController::USRPtoAudio(std::shared_ptr<CTranscoderPacket> packet)
 {
-	const int16_t *p = packet->GetUSRPData();
 	int16_t tmp[160];
-
-	if (usrp_rx_num != 256)
-	{
-		for(int i = 0; i < 160; ++i)
-			tmp[i] = int16_t((p[i] * usrp_rx_num) >> 8);
-	}
-	else
-	{
-		memcpy(tmp, p, sizeof(tmp));
-	}
+	memcpy(tmp, packet->GetUSRPData(), sizeof(tmp));
+	ApplyGain(tmp, 160, usrp_rx_num);
 	g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 	{
 		float agc_db; bool agc_gate;
-		m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+		m_agcAnalog.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 		g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 	}
 	packet->SetAudioSamples(tmp, false);
@@ -1256,7 +1253,7 @@ void CController::SvxToAudio(std::shared_ptr<CTranscoderPacket> packet)
 	g_Stats.UpdateLevelsIn(packet->GetModule(), tmp, 160);
 	{
 		float agc_db; bool agc_gate;
-		m_agc.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
+		m_agcAnalog.Process(tmp, 160, packet->GetStreamId(), agc_db, agc_gate);
 		g_Stats.UpdateAGC(packet->GetModule(), agc_db, agc_gate);
 	}
 	packet->SetAudioSamples(tmp, false);

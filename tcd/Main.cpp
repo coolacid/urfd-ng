@@ -55,41 +55,46 @@ int main(int argc, char *argv[])
 	if (g_Cont.Start())
 		return EXIT_FAILURE;
 
+	// The live config: the controller reapplies it every second, edited by the
+	// monitor if it runs, so it is filled from the ini in any case
+	g_Stats.config.agc_enabled.store(g_Conf.GetAGCEnabled());
+	g_Stats.config.agc_target.store(g_Conf.GetAGCTarget());
+	g_Stats.config.agc_attack.store(g_Conf.GetAGCAttack());
+	g_Stats.config.agc_release.store(g_Conf.GetAGCRelease());
+	g_Stats.config.agc_maxgain_up.store(g_Conf.GetAGCMaxGainUp());
+	g_Stats.config.agc_maxgain_down.store(g_Conf.GetAGCMaxGainDown());
+	g_Stats.config.agc_noisegate.store(g_Conf.GetAGCNoiseGate());
+	g_Stats.config.agc_analog_noisegate.store(g_Conf.GetAGCAnalogNoiseGate());
+	g_Stats.config.agc_analog_maxgain_up.store(g_Conf.GetAGCAnalogMaxGainUp());
+	g_Stats.config.agc_analog_gatefloor.store(g_Conf.GetAGCAnalogGateFloor());
+	g_Stats.config.gain_dstar_in.store(g_Conf.GetGain(EGainType::dstarin));
+	g_Stats.config.gain_dstar_out.store(g_Conf.GetGain(EGainType::dstarout));
+	g_Stats.config.gain_dmr_in.store(g_Conf.GetGain(EGainType::dmrin));
+	g_Stats.config.gain_dmr_out.store(g_Conf.GetGain(EGainType::dmrout));
+	g_Stats.config.gain_usrp_rx.store(g_Conf.GetGain(EGainType::usrprx));
+	g_Stats.config.gain_usrp_tx.store(g_Conf.GetGain(EGainType::usrptx));
+	g_Stats.config.gain_dmr_reencode.store(g_Conf.GetGain(EGainType::dmrreencode));
+	g_Stats.config.outgain_dstar.store(g_Conf.GetGain(EGainType::outgain_dstar));
+	g_Stats.config.outgain_dmr.store(g_Conf.GetGain(EGainType::outgain_dmr));
+	g_Stats.config.outgain_usrp.store(g_Conf.GetGain(EGainType::outgain_usrp));
+	g_Stats.config.outgain_imbe.store(g_Conf.GetGain(EGainType::outgain_imbe));
+	g_Stats.config.outgain_m17.store(g_Conf.GetGain(EGainType::outgain_m17));
+	{
+		auto mode = g_Conf.GetDmrGainMode();
+		// Downgrade reencode to ambe if md380 not available
+		if (mode == CConfigure::EDmrGainMode::reencode && !g_Stats.md380.available.load(std::memory_order_relaxed))
+		{
+			std::cerr << "Warning: DmrGainMode=reencode but md380 not available, falling back to ambe" << std::endl;
+			mode = CConfigure::EDmrGainMode::ambe;
+		}
+		g_Stats.config.dmr_gain_mode.store((int)mode);
+	}
+	g_Stats.config.ambe_gain_db.store(g_Conf.GetAmbeGainDb());
+
 	// Start monitor server (web dashboard + stats socket)
 	if (g_Conf.GetMonitorEnabled())
 	{
 		g_Stats.module_letters = g_Conf.GetTCMods();
-		// Sync initial config into stats for monitor display
-		g_Stats.config.agc_enabled.store(g_Conf.GetAGCEnabled());
-		g_Stats.config.agc_target.store(g_Conf.GetAGCTarget());
-		g_Stats.config.agc_attack.store(g_Conf.GetAGCAttack());
-		g_Stats.config.agc_release.store(g_Conf.GetAGCRelease());
-		g_Stats.config.agc_maxgain_up.store(g_Conf.GetAGCMaxGainUp());
-		g_Stats.config.agc_maxgain_down.store(g_Conf.GetAGCMaxGainDown());
-		g_Stats.config.agc_noisegate.store(g_Conf.GetAGCNoiseGate());
-		g_Stats.config.gain_dstar_in.store(g_Conf.GetGain(EGainType::dstarin));
-		g_Stats.config.gain_dstar_out.store(g_Conf.GetGain(EGainType::dstarout));
-		g_Stats.config.gain_dmr_in.store(g_Conf.GetGain(EGainType::dmrin));
-		g_Stats.config.gain_dmr_out.store(g_Conf.GetGain(EGainType::dmrout));
-		g_Stats.config.gain_usrp_rx.store(g_Conf.GetGain(EGainType::usrprx));
-		g_Stats.config.gain_usrp_tx.store(g_Conf.GetGain(EGainType::usrptx));
-		g_Stats.config.gain_dmr_reencode.store(g_Conf.GetGain(EGainType::dmrreencode));
-		g_Stats.config.outgain_dstar.store(g_Conf.GetGain(EGainType::outgain_dstar));
-		g_Stats.config.outgain_dmr.store(g_Conf.GetGain(EGainType::outgain_dmr));
-		g_Stats.config.outgain_usrp.store(g_Conf.GetGain(EGainType::outgain_usrp));
-		g_Stats.config.outgain_imbe.store(g_Conf.GetGain(EGainType::outgain_imbe));
-		g_Stats.config.outgain_m17.store(g_Conf.GetGain(EGainType::outgain_m17));
-		{
-			auto mode = g_Conf.GetDmrGainMode();
-			// Downgrade reencode to ambe if md380 not available
-			if (mode == CConfigure::EDmrGainMode::reencode && !g_Stats.md380.available.load(std::memory_order_relaxed))
-			{
-				std::cerr << "Warning: DmrGainMode=reencode but md380 not available, falling back to ambe" << std::endl;
-				mode = CConfigure::EDmrGainMode::ambe;
-			}
-			g_Stats.config.dmr_gain_mode.store((int)mode);
-		}
-		g_Stats.config.ambe_gain_db.store(g_Conf.GetAmbeGainDb());
 		g_Monitor.Start(g_Conf.GetMonitorBindAddress(), g_Conf.GetMonitorHttpPort(), g_Conf.GetMonitorStatsPort());
 	}
 
