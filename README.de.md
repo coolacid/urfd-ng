@@ -733,29 +733,20 @@ In `pgs/config.inc.php` E-Mail und Admin einstellen. Modulnamen werden aus der X
 
 ## Verwaltungswerkzeuge
 
-### radmin
+### setup.sh
 
-Verwaltungswerkzeug, interaktiv und für einzelne Befehle. Erkennt selbst, ob der Reflektor in Docker oder als systemd-Dienst läuft.
+Neben Installation und Update erledigt `setup.sh` die Alltagsarbeit am Reflektor (Docker-Container `urfd`) und am Transcoder (systemd-Dienst `tcd`), je nachdem, was auf dem Rechner läuft.
 
 ```bash
-# Interactive menu
-./radmin
-
-# Single commands
-./radmin status          # Show deployment status + git log
-./radmin restart         # Restart container or service
-./radmin stop            # Stop container or service
-./radmin start           # Start container or service
-./radmin logs            # Follow logs (Ctrl-C to exit)
-./radmin reload          # Send SIGHUP (hot-reload config)
-./radmin check           # Run inicheck (quiet mode)
-./radmin build           # Run build.sh (Docker) or make (bare metal)
-
-# With custom ini path
-./radmin /path/to/urfd.ini
+sudo ./setup.sh status              # was hier läuft, in welcher Version
+sudo ./setup.sh restart [urfd|tcd]  # ebenso start, stop
+sudo ./setup.sh logs [urfd|tcd]     # Log verfolgen (Strg-C beendet)
+sudo ./setup.sh reload              # urfd liest Whitelist, Blacklist, Interlink neu (SIGHUP)
+sudo ./setup.sh check               # urfd.ini mit inicheck prüfen
+sudo ./setup.sh update              # pull, neu bauen, neu starten
 ```
 
-Reihenfolge der Erkennung: laufender Docker-Container `urfd` → gestoppter Docker-Container → systemd-Dienst → nicht installiert.
+Ohne `urfd` oder `tcd` wirken die Befehle auf alles Installierte. `reload` schickt das SIGHUP an urfd selbst, nicht an den Container: Dessen PID 1 ist supervisord, der bei SIGHUP alle Programme neu startet.
 
 ### inicheck
 

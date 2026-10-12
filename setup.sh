@@ -7,6 +7,8 @@
 #                              On an installed machine it offers an update.
 #   sudo ./setup.sh update     pull the latest version and rebuild, keeping the
 #                              configuration.
+#   sudo ./setup.sh status|start|stop|restart|logs|reload|check
+#                              day-to-day commands, see 'setup.sh help'.
 #
 # The reflector runs in Docker (with its dashboard), the transcoder natively
 # with systemd, because the AMBE USB devices need low latency. Both can run on
@@ -580,10 +582,113 @@ update() {
 }
 
 # ---------------------------------------------------------------------------
+# day-to-day commands: status, start, stop, restart, logs, reload, check
+# ---------------------------------------------------------------------------
+
+has_urfd() { command -v docker >/dev/null && docker container inspect urfd >/dev/null 2>&1; }
+has_tcd()  { systemctl cat tcd >/dev/null 2>&1; }
+
+# which of urfd/tcd a command acts on: the one named, or every one installed
+targets() {
+    case "${1:-}" in
+        urfd) has_urfd || die "the reflector (Docker container 'urfd') is not installed here"; echo urfd ;;
+        tcd)  has_tcd  || die "the transcoder (systemd service 'tcd') is not installed here";  echo tcd ;;
+        "")   has_urfd && echo urfd; has_tcd && echo tcd; has_urfd || has_tcd || die "neither urfd nor tcd is installed here" ;;
+        *)    die "unknown target '$1', use urfd or tcd" ;;
+    esac
+}
+
+cmd_status() {
+    local t list
+    list=$(targets "${1:-}")
+    for t in $list; do
+        if [ "$t" = urfd ]; then
+            bold "Reflector (Docker container urfd)"
+            docker ps -a -f name='^urfd$' --format '{{.Status}}' | sed 's/^/  /'
+            docker logs urfd 2>&1 | grep 'Starting URF' | tail -1 | sed 's/^/  /' || true
+            echo "  Configuration: $CFG_DIR/urfd.ini"
+        else
+            bold "Transcoder (systemd service tcd)"
+            echo "  $(systemctl is-active tcd) since $(systemctl show -p ActiveEnterTimestamp --value tcd)"
+            echo "  Configuration: $TCD_INI"
+        fi
+    done
+    echo
+    echo "Source: $REPO_DIR ($(repo_git log -1 --format='%h %s' 2>/dev/null || echo 'not a git checkout'))"
+}
+
+# start, stop or restart
+cmd_service() {
+    local action=$1 t list
+    list=$(targets "${2:-}")
+    for t in $list; do
+        info "${action^} $t"
+        if [ "$t" = urfd ]; then docker "$action" urfd >/dev/null; else systemctl "$action" tcd; fi
+    done
+}
+
+cmd_logs() {
+    local t list
+    list=$(targets "${1:-}")
+    t=${list%%$'\n'*}
+    [ -z "${1:-}" ] && has_urfd && has_tcd && echo "(reflector log; 'setup.sh logs tcd' for the transcoder)"
+    if [ "$t" = urfd ]; then docker logs -f --tail 100 urfd; else journalctl -u tcd -f -n 100; fi
+}
+
+# SIGHUP rereads whitelist, blacklist and interlink file. It goes to urfd itself:
+# PID 1 in the container is supervisord, which restarts everything on SIGHUP.
+cmd_reload() {
+    targets urfd >/dev/null
+    docker exec urfd pkill -HUP -x urfd || die "urfd is not running"
+    info "urfd reloads its configuration (docker logs urfd shows the result)"
+}
+
+cmd_check() {
+    targets urfd >/dev/null
+    if docker run --rm -v "$CFG_DIR:/usr/local/etc/urfd:ro" urfd:latest inicheck -q /usr/local/etc/urfd/urfd.ini; then
+        info "$CFG_DIR/urfd.ini has no errors"
+    else
+        die "$CFG_DIR/urfd.ini has errors (see above)"
+    fi
+}
+
+usage() {
+    cat <<EOF
+Usage: sudo $0 [command] [urfd|tcd]
+
+  (none)            install, or offer an update on an installed machine
+  update            pull the latest version and rebuild, keeping the configuration
+  status            show what runs here and in which version
+  start|stop|restart [urfd|tcd]
+  logs [urfd|tcd]   follow the log (Ctrl-C ends it)
+  reload            urfd rereads whitelist, blacklist and interlink file (SIGHUP)
+  check             check urfd.ini with inicheck
+
+Without urfd or tcd, start/stop/restart/status act on everything installed here.
+EOF
+}
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
 main() {
+    case "${1:-}" in
+        ""|update) ;;
+        help|-h|--help) usage; return ;;
+        status|start|stop|restart|logs|reload|check)
+            check_system
+            case "$1" in
+                status)              cmd_status "${2:-}" ;;
+                start|stop|restart)  cmd_service "$1" "${2:-}" ;;
+                logs)                cmd_logs "${2:-}" ;;
+                reload)              cmd_reload ;;
+                check)               cmd_check ;;
+            esac
+            return ;;
+        *) usage >&2; exit 1 ;;
+    esac
+
     check_system
     # the log ends up holding the admin password
     touch "$LOG_FILE" && chmod 600 "$LOG_FILE"
