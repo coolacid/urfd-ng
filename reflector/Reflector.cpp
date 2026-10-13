@@ -379,17 +379,6 @@ std::shared_ptr<CPacketStream> CReflector::OpenStream(std::unique_ptr<CDvHeaderP
 		stream->Push(std::move(DvHeader));
 		StatusChanged();
 
-		// notify stream ownership transitions as the real source of truth for station start/stop
-		CCallsign my = stream->GetUserCallsign();
-		CCallsign viaNode;
-		if (client != nullptr)
-			viaNode = client->GetCallsign();
-		CCallsign viaPeer = g_Reflector.GetCallsign();
-		CCallsign moduleCs;
-		moduleCs.SetCallsign(" ");
-		moduleCs.SetCSModule(module);
-		g_Reflector.GetUsers()->StationStarted(my, viaNode, moduleCs, viaPeer, "DStar");
-
 	}
 	return stream;
 }
@@ -424,17 +413,6 @@ void CReflector::CloseStream(std::shared_ptr<CPacketStream> stream)
 		{
 			// client no longer a master
 			client->NotAMaster();
-
-			// notify stream ownership transitions as the real source of truth for station start/stop
-			CCallsign my = stream->GetUserCallsign();
-			CCallsign viaNode;
-			if (client != nullptr)
-				viaNode = client->GetCallsign();
-			CCallsign viaPeer = g_Reflector.GetCallsign();
-			CCallsign moduleCs;
-			moduleCs.SetCallsign(" ");
-			moduleCs.SetCSModule(GetStreamModule(stream));
-			g_Reflector.GetUsers()->StationStopped(my, viaNode, moduleCs, viaPeer, "DStar");
 
 			std::cout << "Closing stream of module " << GetStreamModule(stream) << std::endl;
 		}
