@@ -74,7 +74,6 @@ void CClients::AddClient(std::shared_ptr<CClient> client)
 		ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
 		nlohmann::json p;
 		p["callsign"] = client->GetCallsign().GetCS();
-		p["ip"] = client->GetIp().GetAddress();
 		p["protocol"] = client->GetProtocolName();
 		p["reflector_module"] = std::string(1, client->GetReflectorModule());
 		p["connect_time"] = client->GetConnectTime();
@@ -112,7 +111,6 @@ void CClients::RemoveClient(std::shared_ptr<CClient> client)
 				    ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
 				    nlohmann::json p;
 				    p["callsign"] = (*it)->GetCallsign().GetCS();
-				    p["ip"] = (*it)->GetIp().GetAddress();
 				    p["protocol"] = (*it)->GetProtocolName();
 				    p["reflector_module"] = std::string(1, (*it)->GetReflectorModule());
 				    p["last_heard_time"] = (*it)->GetLastHeardTime();

@@ -67,14 +67,12 @@ void CPeers::AddPeer(std::shared_ptr<CPeer> peer)
 	    ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
 	    nlohmann::json p;
 	    p["callsign"] = peer->GetCallsign().GetCS();
-	    p["ip"] = peer->GetIp().GetAddress();
 	    p["protocol"] = peer->GetProtocolName();
 	    // aggregate peer clients
 	    nlohmann::json clients = nlohmann::json::array();
 	    for (auto cit = peer->cbegin(); cit != peer->cend(); cit++) {
 	        nlohmann::json c;
 	        c["callsign"] = (*cit)->GetCallsign().GetCS();
-	        c["ip"] = (*cit)->GetIp().GetAddress();
 	        c["protocol"] = (*cit)->GetProtocolName();
 	        c["reflector_module"] = std::string(1, (*cit)->GetReflectorModule());
 	        clients.push_back(c);
@@ -127,7 +125,6 @@ void CPeers::RemovePeer(std::shared_ptr<CPeer> peer)
 				ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
 				nlohmann::json p;
 				p["callsign"] = (*pit)->GetCallsign().GetCS();
-				p["ip"] = (*pit)->GetIp().GetAddress();
 				p["protocol"] = (*pit)->GetProtocolName();
 				ev.payload = p.dump();
 				CNotifierManager::Instance().Dispatch(ev);
