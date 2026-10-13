@@ -176,7 +176,13 @@ int CWebsocketLwsNotifier::Callback(struct lws *wsi, enum lws_callback_reasons r
 
 static nlohmann::json BuildReflectorSnapshot()
 {
+    const auto now = std::time(nullptr);
+    const auto started = g_Reflector.GetStartedAt();
+
     nlohmann::json snapshot = nlohmann::json::object();
+    snapshot["server_started"] = started;
+    snapshot["current_time"] = now;
+    snapshot["uptime_seconds"] = static_cast<std::int64_t>(now - started);
     snapshot["links"] = nlohmann::json::array();
     snapshot["last_heard"] = nlohmann::json::array();
     snapshot["open_channels"] = nlohmann::json::array();

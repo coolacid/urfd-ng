@@ -37,6 +37,7 @@
 
 CReflector::CReflector()
 {
+	m_StartedAt = std::time(nullptr);
 	m_EchoModule = ' ';
 	m_EchoHasHeader = false;
 }
