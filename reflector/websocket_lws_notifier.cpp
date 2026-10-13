@@ -194,8 +194,6 @@ static nlohmann::json BuildInitialConnectPayload()
         payload["reflector"]["sponsor"] = g_Configure.GetString(g_Keys.names.sponsor);
     if (g_Configure.Contains(g_Keys.names.url))
         payload["reflector"]["dashboard_url"] = g_Configure.GetString(g_Keys.names.url);
-    if (g_Configure.Contains(g_Keys.names.email))
-        payload["reflector"]["email"] = g_Configure.GetString(g_Keys.names.email);
 
     payload["modules"] = nlohmann::json::array();
     auto modules = g_Configure.GetString(g_Keys.modules.modules);
@@ -388,8 +386,6 @@ void CWebsocketLwsNotifier::OnEstablished(struct lws *wsi)
         CEvent ev;
         ev.event_type = "initial_connect";
         ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
-        if (!g_Configure.GetString(g_Keys.names.callsign).empty())
-            ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
         ev.payload = BuildInitialConnectPayload().dump();
 
         const std::string msg = ev.ToJson().dump();
@@ -398,8 +394,6 @@ void CWebsocketLwsNotifier::OnEstablished(struct lws *wsi)
         CEvent snapshotEvent;
         snapshotEvent.event_type = "state_snapshot";
         snapshotEvent.timestamp = static_cast<std::int64_t>(std::time(nullptr));
-        if (!g_Configure.GetString(g_Keys.names.callsign).empty())
-            snapshotEvent.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
         snapshotEvent.payload = BuildReflectorSnapshot().dump();
 
         const std::string snapshotMsg = snapshotEvent.ToJson().dump();

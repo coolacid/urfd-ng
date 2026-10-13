@@ -18,7 +18,6 @@ Every message from the server is a JSON object with the following shape:
 {
   "event_type": "initial_connect",
   "timestamp": 1730000000,
-  "reflector_name": "URF123",
   "payload": {
     "server_started": 1730000000,
     "current_time": 1730000000,
@@ -51,7 +50,6 @@ Notes:
 
 - `event_type` identifies the event category.
 - `timestamp` is the Unix time when the server emitted the event.
-- `reflector_name` is the configured reflector callsign when available.
 - `payload` is always a JSON object, even when the event is just a minimal status update.
 
 ## Server-to-client events
@@ -64,7 +62,7 @@ Sent as the first message after a client connects.
 
 This contains static descriptor data for the reflector and the startup timing metadata:
 
-- `reflector`: configured identity details from the XML output, such as callsign, country, sponsor, dashboard URL, and email when present
+- `reflector`: configured identity details from the XML output, such as callsign, country, sponsor, and dashboard URL when present
 - `modules`: the configured module list, including description, echo flag, linked node count, on-air user, transcoded flag, and per-module protocol IDs
 - `protocols`: the enabled protocol list and their configured ports
 - `server_started`: Unix timestamp when the reflector process started
