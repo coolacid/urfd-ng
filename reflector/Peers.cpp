@@ -18,6 +18,8 @@
 
 #include "Global.h"
 #include "Peers.h"
+#include "Notifier.h"
+#include <nlohmann/json.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor
@@ -56,6 +58,34 @@ void CPeers::AddPeer(std::shared_ptr<CPeer> peer)
 	// if not, append to the vector
 	m_Peers.push_back(peer);
 	std::cout << "New peer " << peer->GetCallsign() << " at " << peer->GetIp() << " added with protocol " << peer->GetProtocolName()  << std::endl;
+
+	// Dispatch peer added event
+	try {
+	    CEvent ev;
+	    ev.event_type = "peer_added";
+	    ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
+	    ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
+	    nlohmann::json p;
+	    p["callsign"] = peer->GetCallsign().GetCS();
+	    p["ip"] = peer->GetIp().GetAddress();
+	    p["protocol"] = peer->GetProtocolName();
+	    // aggregate peer clients
+	    nlohmann::json clients = nlohmann::json::array();
+	    for (auto cit = peer->cbegin(); cit != peer->cend(); cit++) {
+	        nlohmann::json c;
+	        c["callsign"] = (*cit)->GetCallsign().GetCS();
+	        c["ip"] = (*cit)->GetIp().GetAddress();
+	        c["protocol"] = (*cit)->GetProtocolName();
+	        c["reflector_module"] = std::string(1, (*cit)->GetReflectorModule());
+	        clients.push_back(c);
+	    }
+	    p["clients"] = clients;
+	    ev.payload = p.dump();
+	    CNotifierManager::Instance().Dispatch(ev);
+	} catch (const std::exception &ex) {
+	    std::cerr << "Notifier: exception in AddPeer dispatch: " << ex.what() << std::endl;
+	}
+
 	// and append all peer's client to reflector client list
 	// it is double lock safe to lock Clients list after Peers list
 	CClients *clients = g_Reflector.GetClients();
@@ -88,6 +118,23 @@ void CPeers::RemovePeer(std::shared_ptr<CPeer> peer)
 
 			// remove it
 			std::cout << "Peer " << (*pit)->GetCallsign() << " at " << (*pit)->GetIp() << " removed" << std::endl;
+
+			// Dispatch peer removed event
+			try {
+				CEvent ev;
+				ev.event_type = "peer_removed";
+				ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
+				ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
+				nlohmann::json p;
+				p["callsign"] = (*pit)->GetCallsign().GetCS();
+				p["ip"] = (*pit)->GetIp().GetAddress();
+				p["protocol"] = (*pit)->GetProtocolName();
+				ev.payload = p.dump();
+				CNotifierManager::Instance().Dispatch(ev);
+			} catch (const std::exception &ex) {
+				std::cerr << "Notifier: exception in RemovePeer dispatch: " << ex.what() << std::endl;
+			}
+
 			pit = m_Peers.erase(pit);
 		}
 		else

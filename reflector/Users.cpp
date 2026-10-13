@@ -20,6 +20,8 @@
 #include <cmath>
 #include "Users.h"
 #include "Global.h"
+#include "Notifier.h"
+#include <nlohmann/json.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor
@@ -76,6 +78,26 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 
 	AddUser(heard);
 	g_Reflector.StatusChanged();
+
+	// Dispatch a station/last-heard update immediately
+	try {
+	    CEvent ev;
+	    ev.event_type = "station_heard";
+	    ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
+	    ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
+	    nlohmann::json p;
+	    p["callsign"] = heard.GetCallsign();
+	    p["via_node"] = heard.GetViaNode();
+	    p["via_peer"] = heard.GetViaPeer();
+	    p["on_module"] = std::string(1, heard.GetOnModule());
+	    p["protocol"] = heard.GetProtocol();
+	    p["last_heard_time"] = heard.GetLastHeardTime();
+	    p["locator"] = heard.GetLocator();
+	    ev.payload = p.dump();
+	    CNotifierManager::Instance().Dispatch(ev);
+	} catch (const std::exception &ex) {
+	    std::cerr << "Notifier: exception in Hearing dispatch: " << ex.what() << std::endl;
+	}
 }
 
 void CUsers::Location(const CCallsign &my, double lat, double lon)

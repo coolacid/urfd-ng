@@ -18,6 +18,9 @@
 
 
 #include <string.h>
+#include <fstream>
+#include <sstream>
+#include <ctime>
 
 #include "Global.h"
 #include "Utils.h"
@@ -30,6 +33,7 @@
 #include "DPlusClientProtocol.h"
 #include "YSFClientProtocol.h"
 #include "NXDNProtocol.h"
+#include "Notifier.h"
 
 CReflector::CReflector()
 {
@@ -584,7 +588,14 @@ void CReflector::MaintenanceThread()
 				// would throw on, ending urfd
 				jsonFile << jreport.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 				jsonFile.close();
-				std::rename(tmppath.c_str(), jsonpath.c_str());
+				if (0 == std::rename(tmppath.c_str(), jsonpath.c_str()))
+				{
+					// JSON snapshot written successfully; no file-reading dispatch (events are emitted upstream)
+				}
+				else
+				{
+					std::cerr << "Failed to rename " << tmppath << " to " << jsonpath << std::endl;
+				}
 			}
 		}
 
