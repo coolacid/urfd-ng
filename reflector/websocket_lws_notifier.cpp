@@ -8,7 +8,9 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <optional>
 #include <nlohmann/json.hpp>
+#include "NXDNProtocol.h"
 
 // Helper to get instance pointer from context user
 static CWebsocketLwsNotifier *GetInstanceFromContext(struct lws_context *ctx)
@@ -174,6 +176,118 @@ int CWebsocketLwsNotifier::Callback(struct lws *wsi, enum lws_callback_reasons r
     return 0;
 }
 
+static nlohmann::json BuildInitialConnectPayload()
+{
+    const auto now = std::time(nullptr);
+    const auto started = g_Reflector.GetStartedAt();
+
+    nlohmann::json payload = nlohmann::json::object();
+    payload["server_started"] = started;
+    payload["current_time"] = now;
+    payload["uptime_seconds"] = static_cast<std::int64_t>(now - started);
+
+    payload["reflector"] = nlohmann::json::object();
+    payload["reflector"]["callsign"] = g_Configure.GetString(g_Keys.names.callsign);
+    if (g_Configure.Contains(g_Keys.names.country))
+        payload["reflector"]["country"] = g_Configure.GetString(g_Keys.names.country);
+    if (g_Configure.Contains(g_Keys.names.sponsor))
+        payload["reflector"]["sponsor"] = g_Configure.GetString(g_Keys.names.sponsor);
+    if (g_Configure.Contains(g_Keys.names.url))
+        payload["reflector"]["dashboard_url"] = g_Configure.GetString(g_Keys.names.url);
+    if (g_Configure.Contains(g_Keys.names.email))
+        payload["reflector"]["email"] = g_Configure.GetString(g_Keys.names.email);
+
+    payload["modules"] = nlohmann::json::array();
+    auto modules = g_Configure.GetString(g_Keys.modules.modules);
+    for (char module : modules)
+    {
+        if (module < 'A' || module > 'Z')
+            continue;
+
+        nlohmann::json moduleEntry = nlohmann::json::object();
+        moduleEntry["name"] = std::string(1, module);
+        auto descKey = g_Keys.modules.descriptor[module - 'A'];
+        if (g_Configure.Contains(descKey))
+            moduleEntry["description"] = g_Configure.GetString(descKey);
+
+        moduleEntry["echo"] = g_Configure.Contains(g_Keys.echo.module) && g_Configure.GetString(g_Keys.echo.module)[0] == module;
+
+        int nodeCount = 0;
+        auto *modClients = g_Reflector.GetClients();
+        for (auto cit = modClients->cbegin(); cit != modClients->cend(); ++cit)
+        {
+            if ((*cit)->IsNode() && !(*cit)->IsLink() && (*cit)->IsLinkedTo(module))
+                ++nodeCount;
+        }
+        g_Reflector.ReleaseClients();
+        moduleEntry["linked_nodes"] = nodeCount;
+
+        auto stream = g_Reflector.GetStream(module);
+        if (stream && stream->IsOpen())
+            moduleEntry["on_air"] = stream->GetUserCallsign().GetCS();
+        else
+            moduleEntry["on_air"] = nullptr;
+
+        auto tcmods = g_Configure.GetString(g_Keys.tc.modules);
+        moduleEntry["transcoded"] = (tcmods.find(module) != std::string::npos);
+
+        int modIdx = module - 'A';
+        if (!g_Configure.Contains(g_Keys.dmrplus.enable) || g_Configure.GetBoolean(g_Keys.dmrplus.enable))
+            moduleEntry["DMRplus"] = 4001 + modIdx;
+        if (!g_Configure.Contains(g_Keys.ysf.enable) || g_Configure.GetBoolean(g_Keys.ysf.enable))
+            moduleEntry["YSFDGID"] = 10 + modIdx;
+        if (!g_Configure.Contains(g_Keys.nxdn.enable) || g_Configure.GetBoolean(g_Keys.nxdn.enable))
+        {
+            uint8_t ran = CNXDNProtocol::ModuleToRAN(module);
+            if (ran != 0)
+                moduleEntry["NXDNRAN"] = static_cast<int>(ran);
+            uint16_t dstid = CNXDNProtocol::ModuleToDstId(module);
+            if (dstid != 0)
+                moduleEntry["NXDNDstId"] = static_cast<int>(dstid);
+        }
+
+        payload["modules"].push_back(moduleEntry);
+    }
+
+    payload["protocols"] = nlohmann::json::array();
+
+    auto addProtocol = [&](const std::string &name, const auto &enableKey, std::optional<uint32_t> port = std::nullopt)
+    {
+        const bool enabled = !g_Configure.Contains(enableKey) || g_Configure.GetBoolean(enableKey);
+        if (!enabled)
+            return;
+
+        nlohmann::json entry = nlohmann::json::object();
+        entry["name"] = name;
+        if (port.has_value())
+            entry["port"] = *port;
+        payload["protocols"].push_back(entry);
+    };
+
+    addProtocol("DExtra", g_Keys.dextra.enable, g_Configure.Contains(g_Keys.dextra.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.dextra.port)) : std::nullopt);
+    addProtocol("DPlus", g_Keys.dplus.enable, g_Configure.Contains(g_Keys.dplus.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.dplus.port)) : std::nullopt);
+    addProtocol("DCS", g_Keys.dcs.enable, g_Configure.Contains(g_Keys.dcs.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.dcs.port)) : std::nullopt);
+    addProtocol("MMDVM", g_Keys.mmdvm.enable, g_Configure.Contains(g_Keys.mmdvm.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.mmdvm.port)) : std::nullopt);
+    addProtocol("DMRPlus", g_Keys.dmrplus.enable, g_Configure.Contains(g_Keys.dmrplus.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.dmrplus.port)) : std::nullopt);
+    addProtocol("M17", g_Keys.m17.enable, g_Configure.Contains(g_Keys.m17.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.m17.port)) : std::nullopt);
+    addProtocol("YSF", g_Keys.ysf.enable, g_Configure.Contains(g_Keys.ysf.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.ysf.port)) : std::nullopt);
+    addProtocol("P25", g_Keys.p25.enable, g_Configure.Contains(g_Keys.p25.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.p25.port)) : std::nullopt);
+    addProtocol("NXDN", g_Keys.nxdn.enable, g_Configure.Contains(g_Keys.nxdn.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.nxdn.port)) : std::nullopt);
+    addProtocol("URF", g_Keys.urf.enable, g_Configure.Contains(g_Keys.urf.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.urf.port)) : std::nullopt);
+    addProtocol("XLXPeer", g_Keys.xlxpeer.enable, g_Configure.Contains(g_Keys.xlxpeer.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.xlxpeer.port)) : std::nullopt);
+    addProtocol("USRP", g_Keys.usrp.enable, g_Configure.Contains(g_Keys.usrp.rxport) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.usrp.rxport)) : std::nullopt);
+    addProtocol("SvxReflector", g_Keys.svx.enable, g_Configure.Contains(g_Keys.svx.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.svx.port)) : std::nullopt);
+    addProtocol("SVX", g_Keys.svxs.enable, g_Configure.Contains(g_Keys.svxs.port) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.svxs.port)) : std::nullopt);
+    addProtocol("G3", g_Keys.g3.enable, std::nullopt);
+    addProtocol("MMDVMClient", g_Keys.mmdvmclient.enable, g_Configure.Contains(g_Keys.mmdvmclient.localport) ? std::optional<uint32_t>(g_Configure.GetUnsigned(g_Keys.mmdvmclient.localport)) : std::nullopt);
+    addProtocol("DCSClient", g_Keys.dcsclient.enable, std::nullopt);
+    addProtocol("DExtraClient", g_Keys.dextraclient.enable, std::nullopt);
+    addProtocol("DPlusClient", g_Keys.dplusclient.enable, std::nullopt);
+    addProtocol("YSFClient", g_Keys.ysfclient.enable, std::nullopt);
+
+    return payload;
+}
+
 static nlohmann::json BuildReflectorSnapshot()
 {
     const auto now = std::time(nullptr);
@@ -272,14 +386,24 @@ void CWebsocketLwsNotifier::OnEstablished(struct lws *wsi)
     try
     {
         CEvent ev;
-        ev.event_type = "state_snapshot";
+        ev.event_type = "initial_connect";
         ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
         if (!g_Configure.GetString(g_Keys.names.callsign).empty())
             ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
-        ev.payload = BuildReflectorSnapshot().dump();
+        ev.payload = BuildInitialConnectPayload().dump();
 
         const std::string msg = ev.ToJson().dump();
         result.first->second.queue.push_back(msg);
+
+        CEvent snapshotEvent;
+        snapshotEvent.event_type = "state_snapshot";
+        snapshotEvent.timestamp = static_cast<std::int64_t>(std::time(nullptr));
+        if (!g_Configure.GetString(g_Keys.names.callsign).empty())
+            snapshotEvent.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
+        snapshotEvent.payload = BuildReflectorSnapshot().dump();
+
+        const std::string snapshotMsg = snapshotEvent.ToJson().dump();
+        result.first->second.queue.push_back(snapshotMsg);
         lws_callback_on_writable(wsi);
     }
     catch (const std::exception &ex)

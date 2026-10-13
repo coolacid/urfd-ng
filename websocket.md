@@ -6,7 +6,8 @@ This project exposes a lightweight WebSocket notifier for clients that want near
 
 - The server opens a libwebsockets context when the notifier backend is enabled.
 - Each client connection is accepted on the configured bind address and port.
-- When a client connects, the server immediately sends a `state_snapshot` event describing the current reflector state.
+- When a client connects, the server sends an `initial_connect` event first. This contains static reflector metadata and startup timing information so the browser can render the reflector description before the live state arrives.
+- The server then sends a `state_snapshot` event describing the current dynamic reflector state.
 - The connection stays alive with periodic keepalive traffic. If a client is idle too long, the server closes it.
 
 ## Message format
@@ -15,41 +16,32 @@ Every message from the server is a JSON object with the following shape:
 
 ```json
 {
-  "event_type": "state_snapshot",
+  "event_type": "initial_connect",
   "timestamp": 1730000000,
   "reflector_name": "URF123",
   "payload": {
     "server_started": 1730000000,
     "current_time": 1730000000,
     "uptime_seconds": 0,
-    "links": [
+    "reflector": {
+      "callsign": "URF123",
+      "country": "US",
+      "dashboard_url": "https://example.invalid"
+    },
+    "modules": [
       {
-        "callsign": "DSTAR1",
-        "on_module": "A",
-        "protocol": "dcs",
-        "connect_time": 1730000000
+        "name": "A",
+        "description": "Main reflector module",
+        "echo": true,
+        "linked_nodes": 1,
+        "on_air": "N7TAE",
+        "transcoded": false,
+        "YSFDGID": 10
       }
     ],
-    "last_heard": [
-      {
-        "callsign": "N7TAE",
-        "on_module": "A",
-        "via_peer": "URF123",
-        "via_node": "",
-        "protocol": "ysf",
-        "last_heard_time": 1730000000,
-        "locator": "FN42xx"
-      }
-    ],
-    "open_channels": [
-      {
-        "module": "A",
-        "stream_id": 1234,
-        "user": "N7TAE",
-        "callsign": "N7TAE",
-        "protocol": "ysf",
-        "linked_module": "A"
-      }
+    "protocols": [
+      { "name": "YSF", "port": 42000 },
+      { "name": "DCS", "port": 50001 }
     ]
   }
 }
@@ -66,11 +58,26 @@ Notes:
 
 The notifier emits regular event objects for the reflector lifecycle and state changes.
 
+### `initial_connect`
+
+Sent as the first message after a client connects.
+
+This contains static descriptor data for the reflector and the startup timing metadata:
+
+- `reflector`: configured identity details from the XML output, such as callsign, country, sponsor, dashboard URL, and email when present
+- `modules`: the configured module list, including description, echo flag, linked node count, on-air user, transcoded flag, and per-module protocol IDs
+- `protocols`: the enabled protocol list and their configured ports
+- `server_started`: Unix timestamp when the reflector process started
+- `current_time`: Unix timestamp at the moment the initial packet was built
+- `uptime_seconds`: elapsed time since startup
+
+This packet is intentionally static metadata and startup information; it is not meant to be the live runtime snapshot.
+
 ### `state_snapshot`
 
-Sent immediately after a client connects.
+Sent immediately after the `initial_connect` message.
 
-This includes the current state of the reflector:
+This includes the current dynamic state of the reflector:
 
 - `server_started`: Unix timestamp when the reflector process started
 - `current_time`: Unix timestamp at the moment the snapshot was built
@@ -198,5 +205,5 @@ This is not a user-space application-level ping/pong protocol; it is the standar
 ## Notes
 
 - The server does not accept messages from clients for this notifier path; it only pushes state updates to connected websocket clients.
-- The `state_snapshot` is intentionally sent on connect so that a freshly connected browser or UI can render the current reflector status immediately rather than showing a blank page.
+- The server sends `initial_connect` first so the browser or UI can render the reflector identity, module list, and enabled protocols immediately. The subsequent `state_snapshot` then shows the live runtime state.
 - The server intentionally omits client IP addresses from websocket payloads for privacy and UI simplicity.
