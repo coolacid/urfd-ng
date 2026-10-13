@@ -1,108 +1,67 @@
-<div class="table-responsive">
-<table class="table table-striped table-hover">
-	<tr class="table-center">
-		<th class="col-md-1 mobile-hide">#</th>
-		<th class="col-md-1">Flag</th>
-		<th class="col-md-2">DV Station</th>
-		<th class="col-md-1 mobile-hide">Band</th>
-		<th class="col-md-2">Last Heard</th>
-		<th class="col-md-2 mobile-hide">Linked for</th>
-		<th class="col-md-1">Protocol</th>
-		<th class="col-md-1">Module</th><?php
-
-if ($PageOptions['RepeatersPage']['IPModus'] != 'HideIP') {
-	echo '
-	<th class="col-md-1">IP</th>';
-}
-
-?>
-		</tr>
 <?php
-$Reflector->LoadFlags();
+// Links: repeaters, hotspots and gateways linked to the reflector
 
-for ($i=0;$i<$Reflector->NodeCount();$i++) {
+$IPMode = $PageOptions['RepeatersPage']['IPModus'];
+$MC = $PageOptions['RepeatersPage']['MasqueradeCharacter'];
+$ShowIP = ($IPMode != 'HideIP');
 
-	echo '<tr class="table-center">
-	<td class="mobile-hide">'.($i+1).'</td>
-	<td>';
-	list ($Flag, $Name) = $Reflector->GetFlag($Reflector->Nodes[$i]->GetCallSign());
-	if (file_exists("./img/flags/".$Flag.".png")) {
-		echo '<a href="#" class="tip"><img src="./img/flags/'.$Flag.'.png" class="table-flag" alt="'.$Name.'"><span>'.$Name.'</span></a>';
-	}
-	$NodeName = $Reflector->Nodes[$i]->GetCallSign();
-	if ($Reflector->Nodes[$i]->GetSuffix() != "") $NodeName .= '-'.$Reflector->Nodes[$i]->GetSuffix();
-	echo '</td>
-	<td><a href="http://www.aprs.fi/'.rawurlencode($NodeName).'" class="pl" target="_blank">'.htmlspecialchars($NodeName, ENT_QUOTES, 'UTF-8').'</a></td>
-	<td class="mobile-hide">';
-	if (($Reflector->Nodes[$i]->GetPrefix() == 'REF') || ($Reflector->Nodes[$i]->GetPrefix() == 'XRF')) {
-		switch ($Reflector->Nodes[$i]->GetPrefix()) {
-			case 'REF'  : echo 'REF-Link'; break;
-			case 'XRF'  : echo 'XRF-Link'; break;
-		}
-	}
-	else {
-		switch ($Reflector->Nodes[$i]->GetSuffix()) {
-			case 'A' : echo '23cm'; break;
-			case 'B' : echo '70cm'; break;
-			case 'C' : echo '2m'; break;
-			case 'D' : echo 'Dongle'; break;
-			case 'G' : echo 'Internet-Gateway'; break;
-			default  : echo '';
-		}
-	}
-	echo '</td>
-	<td>'.date("d.m.Y H:i", $Reflector->Nodes[$i]->GetLastHeardTime()).'</td>
-	<td class="mobile-hide">'.FormatSeconds(time()-$Reflector->Nodes[$i]->GetConnectTime()).' s</td>
-	<td>'.$Reflector->Nodes[$i]->GetProtocol().'</td>
-	<td>';
-	$ts1 = $Reflector->Nodes[$i]->GetLinkedModuleTS1();
-	$ts2 = $Reflector->Nodes[$i]->GetLinkedModuleTS2();
-	if ($ts1 != '' && $ts2 != '' && $ts1 != $ts2) {
-		echo htmlspecialchars($ts1) . '&nbsp;(TS1), ' . htmlspecialchars($ts2) . '&nbsp;(TS2)';
-	} else if ($ts1 != '' && $ts2 == '') {
-		echo htmlspecialchars($ts1) . '&nbsp;(TS1)';
-	} else if ($ts1 == '' && $ts2 != '') {
-		echo htmlspecialchars($ts2) . '&nbsp;(TS2)';
-	} else {
-		echo $Reflector->Nodes[$i]->GetLinkedModule();
-	}
-	echo '</td>';
-	if ($PageOptions['RepeatersPage']['IPModus'] != 'HideIP') {
-		echo '<td>';
-		$Bytes = explode(".", $Reflector->Nodes[$i]->GetIP());
-		$MC = $PageOptions['RepeatersPage']['MasqueradeCharacter'];
-		if ($Bytes !== false && count($Bytes) == 4) {
-			switch ($PageOptions['RepeatersPage']['IPModus']) {
-				case 'ShowLast1ByteOfIP':
-					echo $MC.'.'.$MC.'.'.$MC.'.'.$Bytes[3];
-					break;
-				case 'ShowLast2ByteOfIP':
-					echo $MC.'.'.$MC.'.'.$Bytes[2].'.'.$Bytes[3]; break;
-				case 'ShowLast3ByteOfIP':
-					echo $MC.'.'.$Bytes[1].'.'.$Bytes[2].'.'.$Bytes[3];
-					break;
-				default:
-					echo $Reflector->Nodes[$i]->GetIP();
-			}
-		} else {
-			$ipstr = $Reflector->Nodes[$i]->GetIP();
-			$count = substr_count($ipstr, ":");
-			if ($count > 1) {
-				if (1 == substr_count($ipstr, "::")) { $ipstr = str_replace("::", str_repeat(":", 9 - $count), $ipstr); }
-				if (7 == substr_count($ipstr, ":")) {
-					echo $MC.':'.$MC.':'.$MC.':'.$MC.':'.$MC.':'.$MC;
-					$Bytes = explode(":", $ipstr);
-					for( $k=6; $k<8; $k++) { echo (0==strlen($Bytes[$k])) ? ':0' : ':'.$Bytes[$k]; }
-				}
-			}
-		}
-		echo '</td>';
-   }
-   echo '</tr>';
-   if ($i == $PageOptions['RepeatersPage']['LimitTo']) { $i = $Reflector->NodeCount()+1; }
+function NodeBand($node) {
+    if ($node->GetPrefix() == 'REF') return 'REF link';
+    if ($node->GetPrefix() == 'XRF') return 'XRF link';
+    switch ($node->GetSuffix()) {
+        case 'A' : return '23cm';
+        case 'B' : return '70cm';
+        case 'C' : return '2m';
+        case 'D' : return 'Dongle';
+        case 'G' : return 'Gateway';
+    }
+    return '';
 }
 
+function NodeModules($node) {
+    $ts1 = $node->GetLinkedModuleTS1();
+    $ts2 = $node->GetLinkedModuleTS2();
+    if ($ts1 != '' && $ts2 != '' && $ts1 != $ts2) return '<span class="mod on">'.h($ts1).'</span> <span class="muted">TS1</span> <span class="mod on">'.h($ts2).'</span> <span class="muted">TS2</span>';
+    if ($ts1 != '') return '<span class="mod on">'.h($ts1).'</span> <span class="muted">TS1</span>';
+    if ($ts2 != '') return '<span class="mod on">'.h($ts2).'</span> <span class="muted">TS2</span>';
+    return '<span class="mod on">'.h($node->GetLinkedModule()).'</span>';
+}
 ?>
-
-</table>
+<div class="page">
+    <div>
+        <h1>Links</h1>
+        <p class="lede">Repeaters, hotspots and gateways linked to <?php echo h($Name); ?> right now.</p>
+    </div>
+    <div class="scroll">
+        <table class="t">
+            <thead>
+                <tr><th>Station</th><th class="opt">Band</th><th>Mode</th><th>Module</th><th class="r">Last heard</th><th class="r opt">Linked for</th><?php if ($ShowIP) { ?><th class="opt">IP</th><?php } ?></tr>
+            </thead>
+            <tbody>
+<?php
+$count = min($Reflector->NodeCount(), (int)$PageOptions['RepeatersPage']['LimitTo'] + 1);
+for ($i = 0; $i < $count; $i++) {
+    $node = $Reflector->Nodes[$i];
+    list($flag, $country) = $Reflector->GetFlag($node->GetCallSign());
+    $name = $node->GetCallSign().($node->GetSuffix() != '' ? '-'.$node->GetSuffix() : '');
+    echo '<tr>';
+    echo '<td class="cs"><a href="https://aprs.fi/'.rawurlencode($name).'" target="_blank" rel="noopener">'.h($node->GetCallSign()).'</a>';
+    if ($node->GetSuffix() != '') echo '<span class="sfx">-'.h($node->GetSuffix()).'</span>';
+    if ($flag != '') echo '<span class="cc" title="'.h($country).'">'.h(strtoupper($flag)).'</span>';
+    echo '</td>';
+    echo '<td class="opt">'.h(NodeBand($node)).'</td>';
+    echo '<td>'.h($node->GetProtocol()).'</td>';
+    echo '<td class="nw">'.NodeModules($node).'</td>';
+    echo '<td class="r" title="'.h(date("d.m.Y H:i", $node->GetLastHeardTime())).'">'.FormatAgo($node->GetLastHeardTime()).'</td>';
+    echo '<td class="r opt">'.FormatSpan(time() - $node->GetConnectTime()).'</td>';
+    if ($ShowIP) echo '<td class="opt ip">'.h(MaskIP($node->GetIP(), $IPMode, $MC)).'</td>';
+    echo '</tr>';
+}
+if ($count == 0) {
+    echo '<tr class="empty"><td colspan="'.($ShowIP ? 7 : 6).'">No repeater or hotspot is linked right now. Linked stations appear here within a few seconds.</td></tr>';
+}
+?>
+            </tbody>
+        </table>
+    </div>
 </div>

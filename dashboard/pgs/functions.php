@@ -156,9 +156,149 @@ function GetReflectorList() {
 
 // Inline notice for pages whose remote data source is unavailable.
 function DirectoryUnavailableNotice() {
-	return '<div class="alert alert-warning">The XLX directory server is currently '
-	     . 'unreachable, so this list cannot be shown. The reflector itself is '
-	     . 'unaffected and keeps running normally.</div>';
+	return '<div class="note"><p>The XLX directory server cannot be reached right now, '
+	     . 'so this list cannot be shown. The reflector is not affected and keeps running.</p>'
+	     . '<p class="muted">The list comes back on its own once the directory answers again.</p></div>';
+}
+
+// text for the page, escaped
+function h($s) {
+	return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+}
+
+// "just now", "4 min ago", "2 h 5 min ago", "3 d ago"
+function FormatAgo($time) {
+	$s = time() - (int)$time;
+	if ($s < 60) return 'just now';
+	$m = intdiv($s, 60);
+	if ($m < 60) return $m.' min ago';
+	if ($m < 1440) return intdiv($m, 60).' h '.($m % 60).' min ago';
+	return intdiv($m, 1440).' d ago';
+}
+
+// a duration: "45 min", "3 h 12 min", "4 d 2 h"
+function FormatSpan($seconds) {
+	$m = intdiv(abs((int)$seconds), 60);
+	$d = intdiv($m, 1440);
+	$hr = intdiv($m % 1440, 60);
+	if ($d > 0) return $d.' d '.$hr.' h';
+	if ($hr > 0) return $hr.' h '.($m % 60).' min';
+	return ($m % 60).' min';
+}
+
+// an IP shown as far as the page options allow
+function MaskIP($ip, $mode, $mc) {
+	if ($mode == 'HideIP') return '';
+	$bytes = explode('.', $ip);
+	if (count($bytes) == 4) {
+		switch ($mode) {
+			case 'ShowLast1ByteOfIP': return $mc.'.'.$mc.'.'.$mc.'.'.$bytes[3];
+			case 'ShowLast2ByteOfIP': return $mc.'.'.$mc.'.'.$bytes[2].'.'.$bytes[3];
+			case 'ShowLast3ByteOfIP': return $mc.'.'.$bytes[1].'.'.$bytes[2].'.'.$bytes[3];
+			default:                  return $ip;
+		}
+	}
+	// IPv6: the last two groups
+	$count = substr_count($ip, ':');
+	if ($count > 1) {
+		if ($mode == 'ShowFullIP') return $ip;
+		if (substr_count($ip, '::') == 1) $ip = str_replace('::', str_repeat(':', 9 - $count), $ip);
+		$groups = explode(':', $ip);
+		if (count($groups) == 8) {
+			$out = implode(':', array_fill(0, 6, $mc));
+			for ($k = 6; $k < 8; $k++) $out .= ':'.(($groups[$k] === '') ? '0' : $groups[$k]);
+			return $out;
+		}
+	}
+	return '';
+}
+
+// the configured modules from the status file, keyed by letter
+function DashboardModules($Reflector) {
+	global $PageOptions;
+	$Modules = array();
+	$content = $Reflector->GetXMLContent();
+	if ($content !== null) {
+		$XML = new ParseXML();
+		$block = $XML->GetElement($content, 'Modules');
+		$items = $block ? $XML->GetAllElements($block, 'Module') : array();
+		foreach ($items as $item) {
+			$name = trim((string)$XML->GetText($item, 'Name'));
+			if ($name == '') continue;
+			$mappings = array();
+			foreach ($XML->GetAllElements($item, 'Mapping') as $map) {
+				$mappings[] = array(
+					'protocol'   => (string)$XML->GetText($map, 'Protocol'),
+					'type'       => (string)$XML->GetText($map, 'Type'),
+					'id'         => (string)$XML->GetText($map, 'ID'),
+					'timeslot'   => (string)$XML->GetText($map, 'Timeslot'),
+					'remoteName' => (string)$XML->GetText($map, 'RemoteName'),
+					'dynamic'    => ($XML->GetText($map, 'Dynamic') === 'true'),
+					'remaining'  => (int)$XML->GetText($map, 'Remaining'),
+				);
+			}
+			$Modules[$name] = array(
+				'name'       => trim((string)$XML->GetText($item, 'Description')),
+				'nodes'      => (int)$XML->GetText($item, 'LinkedNodes'),
+				'onair'      => trim((string)$XML->GetText($item, 'OnAir')),
+				'echo'       => ($XML->GetText($item, 'Echo') === 'true'),
+				'transcoded' => ($XML->GetText($item, 'Transcoded') === 'true'),
+				'mappings'   => $mappings,
+				'dmrplus'    => (string)$XML->GetText($item, 'DMRplus'),
+				'ysfdgid'    => (string)$XML->GetText($item, 'YSFDGID'),
+				'nxdnran'    => (string)$XML->GetText($item, 'NXDNRAN'),
+				'nxdndstid'  => (string)$XML->GetText($item, 'NXDNDstId'),
+			);
+		}
+	}
+	// module names from an older config, for modules the reflector does not describe
+	if (isset($PageOptions['ModuleNames']) && is_array($PageOptions['ModuleNames'])) {
+		foreach ($PageOptions['ModuleNames'] as $mod => $name) {
+			if (isset($Modules[$mod]) && $Modules[$mod]['name'] == '') $Modules[$mod]['name'] = $name;
+		}
+	}
+	ksort($Modules);
+	return $Modules;
+}
+
+// the protocols the reflector has enabled, as name and port
+function DashboardProtocols($Reflector) {
+	$out = array();
+	$content = $Reflector->GetXMLContent();
+	if ($content === null) return $out;
+	$XML = new ParseXML();
+	$block = $XML->GetElement($content, 'Protocols');
+	$items = $block ? $XML->GetAllElements($block, 'Protocol') : array();
+	foreach ($items as $item) {
+		$name = trim((string)$XML->GetText($item, 'Name'));
+		if ($name != '') $out[] = array('name' => $name, 'port' => trim((string)$XML->GetText($item, 'Port')));
+	}
+	return $out;
+}
+
+// how a station reached us: its node, and the peer when it came in from another reflector
+function StationVia($Reflector, $st) {
+    // the log string pads the module with spaces: "DL4JC  S" is DL4JC-S
+    $via = preg_replace('/\s+/', '-', trim($st->GetVia()));
+    $peer = trim($st->GetPeer());
+    $refl = trim((string)$Reflector->GetReflectorName());
+    if ($peer != '' && $peer != $refl && $peer != str_replace("XLX", "URF", $refl)) $via .= ($via != '' ? ' / ' : '').$peer;
+    return $via;
+}
+
+// who is on the air: the newest station heard on a module that has an open stream,
+// as array(module, callsign, station or null), or null when nobody transmits
+function OnAirNow($Reflector, $Modules) {
+	foreach ($Modules as $mod => $info) {
+		if ($info['onair'] == '') continue;
+		$cs = trim($info['onair']);
+		for ($i = 0; $i < $Reflector->StationCount(); $i++) {
+			$st = $Reflector->Stations[$i];
+			if ($st->GetModule() == $mod && trim($st->GetCallsignOnly()) == $cs) return array($mod, $cs, $st);
+		}
+		return array($mod, $cs, null);
+	}
+	return null;
 }
 
 function CreateCode ($laenge) {

@@ -1,9 +1,8 @@
 <?php
 
 /*
- *  This dashboard is being developed by the DVBrazil Team as a courtesy to
- *  the XLX Multiprotocol Gateway Reflector Server project.
- *  The dashboard is based of the Bootstrap dashboard template.
+ *  URF dashboard, originally the XLX dashboard by the DVBrazil Team.
+ *  Page shell: top bar, the slim on-air line, the page itself and the footer.
 */
 
 if (file_exists("./pgs/functions.php")) {
@@ -29,210 +28,196 @@ $Reflector->SetPIDFile($Service['PIDFile']);
 $Reflector->SetXMLFile($Service['XMLFile']);
 
 $Reflector->LoadXML();
+$Reflector->LoadFlags();
 
 // the page to show, only one of the known ones: it ends up in the page and in a script
 $Pages = array('users', 'modules', 'modulesd', 'repeaters', 'peers', 'reflectors', 'livequadnet', 'admin');
-$_GET['show'] = (isset($_GET['show']) && in_array($_GET['show'], $Pages, true)) ? $_GET['show'] : '';
+$Show = (isset($_GET['show']) && in_array($_GET['show'], $Pages, true)) ? $_GET['show'] : 'users';
+if ($Show == 'modulesd') $Show = 'modules';   // the old module overview is part of Modules now
+if ($Show == 'admin' && !(isset($Admin) && $Admin['Enable'])) $Show = 'users';
 
-// The reflector registers itself in the XLX directory ([CallingHome] in urfd.ini).
+$Modules = DashboardModules($Reflector);
+$OnAir   = OnAirNow($Reflector, $Modules);
+
+$Name    = str_replace("XLX", "URF", (string)$Reflector->GetReflectorName());
+$Refresh = $PageOptions['PageRefreshActive'] && in_array($Show, array('users', 'modules', 'repeaters', 'peers'), true);
+
+function NavLink($page, $label, $count = null) {
+    global $Show;
+    $href = ($page == 'users') ? './index.php' : './index.php?show='.$page;
+    echo '<a href="'.$href.'"'.(($Show == $page) ? ' aria-current="page"' : '').'>'.$label
+        .(($count !== null) ? '<small>'.(int)$count.'</small>' : '').'</a>';
+}
+
+// the slim LCD line shown above every page but Last heard and Admin
+function OnAirStrip($Reflector, $OnAir) {
+    if ($OnAir !== null) {
+        list($mod, $cs, $st) = $OnAir;
+        echo '<div class="strip" id="strip" aria-live="polite"><div class="strip-in"><span class="ann">TX</span><b>'.h($cs).'</b><span>Module '.h($mod).'</span>';
+        if ($st) {
+            if ($st->GetProtocol() != '') echo '<span>'.h($st->GetProtocol()).'</span>';
+            $via = StationVia($Reflector, $st);
+            if ($via != '') echo '<span>via '.h($via).'</span>';
+            echo '<span class="t" data-since="'.(int)$st->GetLastHeardTime().'"></span>';
+        }
+        echo '</div></div>';
+        return;
+    }
+    $st = $Reflector->GetStation(0);
+    if ($st === false) {
+        echo '<div class="strip idle" id="strip"><div class="strip-in"><span>Nobody heard yet</span></div></div>';
+        return;
+    }
+    echo '<div class="strip idle" id="strip"><div class="strip-in"><span>Last heard</span><b>'.h($st->GetCallsignOnly()).'</b><span>Module '.h($st->GetModule()).'</span>';
+    if ($st->GetProtocol() != '') echo '<span>'.h($st->GetProtocol()).'</span>';
+    echo '<span class="t">'.FormatAgo($st->GetLastHeardTime()).'</span></div></div>';
+}
+
 ?>
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="<?php echo $PageOptions['MetaDescription']; ?>"/>
-    <meta name="keywords" content="<?php echo $PageOptions['MetaKeywords']; ?>"/>
-    <meta name="author" content="<?php echo $PageOptions['MetaAuthor']; ?>"/>
-    <meta name="revisit" content="<?php echo $PageOptions['MetaRevisit']; ?>"/>
-    <meta name="robots" content="<?php echo $PageOptions['MetaAuthor']; ?>"/>
-
-    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
-    <title><?php echo str_replace("XLX", "URF", $Reflector->GetReflectorName()); ?> Universal Reflector</title>
+    <meta name="description" content="<?php echo h($PageOptions['MetaDescription']); ?>">
+    <meta name="keywords" content="<?php echo h($PageOptions['MetaKeywords']); ?>">
+    <meta name="author" content="<?php echo h($PageOptions['MetaAuthor']); ?>">
+    <meta name="robots" content="<?php echo h($PageOptions['MetaRobots'] ?? 'index,follow'); ?>">
+    <title><?php echo h($Name); ?> Universal Reflector</title>
     <link rel="icon" href="./favicon.ico" type="image/vnd.microsoft.icon">
-    <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
-    <link href="css/ie10-viewport-bug-workaround.css" rel="stylesheet">
-
-    <!-- Custom styles for this template -->
-    <link href="css/dashboard.css" rel="stylesheet">
-
-    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
-    <!--[if lt IE 9]>
-    <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
-    <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
-    <![endif]-->
-    <?php
-
-    if ($PageOptions['PageRefreshActive']) {
-        echo '
-   <script src="./js/jquery-1.12.4.min.js"></script>
-   <script>
-      var PageRefresh;
-
-      function ReloadPage() {
-         $.get("./index.php'.(($_GET['show'] !== '')?'?show='.$_GET['show']:'').'", function(data) {
-            var BodyStart = data.indexOf("<bo"+"dy");
-            var BodyEnd = data.indexOf("</bo"+"dy>");
-            if ((BodyStart >= 0) && (BodyEnd > BodyStart)) {
-               BodyStart = data.indexOf(">", BodyStart)+1;
-               $("body").html(data.substring(BodyStart, BodyEnd));
-            }
-         })
-            .always(function() {
-               PageRefresh = setTimeout(ReloadPage, '.$PageOptions['PageRefreshDelay'].');
-            });
-      }';
-
-        if ((($_GET['show'] != 'livequadnet') && ($_GET['show'] != 'reflectors') && ($_GET['show'] != 'interlinks') && ($_GET['show'] != 'admin'))) {
-            echo '
-      PageRefresh = setTimeout(ReloadPage, ' . $PageOptions['PageRefreshDelay'] . ');';
-        }
-        echo '
-
-      function SuspendPageRefresh() {
-        clearTimeout(PageRefresh);
-      }
-   </script>';
-    }
-    ?>
+    <link rel="preload" href="./fonts/saira-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link href="css/dashboard.css?v=<?php echo h($PageOptions['DashboardVersion']); ?>" rel="stylesheet">
+    <script>
+    // the pages hook into the in-place refresh through this
+    window.URF = { onRefresh: [] };
+    // theme before the first paint: system, light or dark
+    try { var t = localStorage.getItem('urf-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
 </head>
 <body>
 <?php if (file_exists("./tracking.php")) {
     include_once("tracking.php");
 } ?>
-<nav class="navbar navbar-inverse navbar-fixed-top">
-    <div class="container-fluid">
-        <div class="navbar-header">
-            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar"
-                    aria-expanded="false" aria-controls="navbar">
-                <span class="sr-only">Toggle navigation</span>
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-            </button>
-            <span class="navbar-brand"><?php echo str_replace("XLX", "URF", $Reflector->GetReflectorName()); ?> Universal Reflector (<?php echo $Reflector->GetReflectorName(); ?>)</span>
-        </div>
-        <div id="navbar" class="navbar-collapse collapse">
-            <ul class="nav navbar-nav navbar-mobile-nav">
-                <li<?php echo (($_GET['show'] == "users") || ($_GET['show'] == "")) ? ' class="active"' : ''; ?>><a href="./index.php">Last Heard</a></li>
-                <li<?php echo ($_GET['show'] == "modules") ? ' class="active"' : ''; ?>><a href="./index.php?show=modules">Active Users</a></li>
-                <li<?php echo ($_GET['show'] == "modulesd") ? ' class="active"' : ''; ?>><a href="./index.php?show=modulesd">Overview Modules</a></li>
-                <li<?php echo ($_GET['show'] == "repeaters") ? ' class="active"' : ''; ?>><a href="./index.php?show=repeaters">Links (<?php echo $Reflector->NodeCount(); ?>)</a></li>
-                <li<?php echo ($_GET['show'] == "peers") ? ' class="active"' : ''; ?>><a href="./index.php?show=peers">Peers (<?php echo $Reflector->PeerCount(); ?>)</a></li>
-                <li<?php echo ($_GET['show'] == "reflectors") ? ' class="active"' : ''; ?>><a href="./index.php?show=reflectors">Reflector List</a></li>
-                <li<?php echo ($_GET['show'] == "livequadnet") ? ' class="active"' : ''; ?>><a href="./index.php?show=livequadnet">QuadNet Live</a></li>
-            </ul>
-            <ul class="nav navbar-nav navbar-right">
-                <li class="navbar-info">v<?php echo $Reflector->GetVersion(); ?> - Dashboard
-                    v<?php echo $PageOptions['DashboardVersion']; ?></li>
-                <li class="navbar-info">Service
-                    uptime: <?php echo FormatSeconds($Reflector->GetServiceUptime()); ?></li>
-            </ul>
-        </div>
-    </div>
-</nav>
-
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-sm-3 col-md-2 sidebar">
-            <ul class="nav nav-sidebar">
-                <li<?php echo (($_GET['show'] == "users") || ($_GET['show'] == "")) ? ' class="active"' : ''; ?>><a
-                            href="./index.php">Last Heard</a></li>
-                <li<?php echo ($_GET['show'] == "modules") ? ' class="active"' : ''; ?>><a
-                            href="./index.php?show=modules">Active Users</a></li>
-                <li<?php echo ($_GET['show'] == "modulesd") ? ' class="active"' : ''; ?>><a
-                            href="./index.php?show=modulesd">Overview Modules</a></li>
-                <li<?php echo ($_GET['show'] == "repeaters") ? ' class="active"' : ''; ?>><a
-                            href="./index.php?show=repeaters">Links (<?php echo $Reflector->NodeCount(); ?>)
-                        </a></li>
-                <li<?php echo ($_GET['show'] == "peers") ? ' class="active"' : ''; ?>><a href="./index.php?show=peers">Peers
-                        (<?php echo $Reflector->PeerCount(); ?>)</a></li>
-                <li<?php echo ($_GET['show'] == "reflectors") ? ' class="active"' : ''; ?>><a
-                            href="./index.php?show=reflectors">Reflector List</a></li>
-                <li<?php echo ($_GET['show'] == "livequadnet") ? ' class="active"' : ''; ?>><a
-                            href="./index.php?show=livequadnet">QuadNet Live</a></li>
-            </ul>
-        </div>
-        <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
-
+<header class="bar">
+    <div class="wrap">
+        <a class="brand" href="./index.php"><b><?php echo h($Name); ?></b><span>Universal Reflector</span></a>
+        <nav class="nav" aria-label="Pages" id="nav">
             <?php
-            // Display MOTD / maintenance banner from config
-            if (isset($PageOptions['MOTD']) && trim($PageOptions['MOTD']) !== '') {
-                echo '<div class="motd-banner">' . htmlspecialchars(trim($PageOptions['MOTD'])) . '</div>';
-            }
-
-            switch ($_GET['show']) {
-                case 'users'      :
-                    require_once("./pgs/users.php");
-                    break;
-                case 'modules'    :
-                    require_once("./pgs/modules.php");
-                    break;
-                case 'modulesd'   :
-                    require_once("./pgs/modulesd.php");
-                    break;
-                case 'repeaters'  :
-                    require_once("./pgs/repeaters.php");
-                    break;
-                case 'livequadnet' :
-                    require_once("./pgs/livequadnet.php");
-                    break;
-                case 'peers'      :
-                    require_once("./pgs/peers.php");
-                    break;
-                case 'reflectors' :
-                    require_once("./pgs/reflectors.php");
-                    break;
-                case 'admin'      :
-                    if (isset($Admin) && $Admin['Enable']) {
-                        require_once("./pgs/admin.php");
-                    } else {
-                        require_once("./pgs/users.php");
-                    }
-                    break;
-                default           :
-                    require_once("./pgs/users.php");
-            }
-
+            NavLink('users', 'Last heard');
+            NavLink('modules', 'Modules');
+            NavLink('repeaters', 'Links', $Reflector->NodeCount());
+            NavLink('peers', 'Peers', $Reflector->PeerCount());
+            NavLink('reflectors', 'Reflector list');
+            NavLink('livequadnet', 'QuadNet live');
             ?>
-
+        </nav>
+        <div class="status">
+            <?php if ($Reflector->GetServiceUptime() !== null) { ?><span class="up">Up <?php echo FormatSpan($Reflector->GetServiceUptime()); ?></span><?php } ?>
+            <span class="ver">urfd <?php echo h($Reflector->GetVersion()); ?>, dashboard <?php echo h($PageOptions['DashboardVersion']); ?></span>
+            <button class="theme-btn" id="theme-btn" type="button">Theme: system</button>
         </div>
     </div>
-</div>
-
-<footer class="footer">
-    <div class="container">
-        <p><?php
-            // Obfuscate email against bots
-            $email = $PageOptions['ContactEmail'];
-            $parts = explode('@', $email);
-            if (count($parts) == 2) {
-                echo '<span class="email-protect" data-u="' . htmlspecialchars($parts[0]) . '" data-d="' . htmlspecialchars($parts[1]) . '">[javascript required]</span>';
-            }
-        ?></p>
+</header>
+<?php
+if (isset($PageOptions['MOTD']) && trim($PageOptions['MOTD']) !== '') {
+    echo '<div class="motd"><div class="wrap">'.h(trim($PageOptions['MOTD'])).'</div></div>';
+}
+?>
+<main>
+    <div class="wrap">
+        <?php if ($Show != 'users' && $Show != 'admin') OnAirStrip($Reflector, $OnAir); ?>
+        <div id="page" data-now="<?php echo time(); ?>">
+<?php
+switch ($Show) {
+    case 'modules'     : require_once("./pgs/modules.php"); break;
+    case 'repeaters'   : require_once("./pgs/repeaters.php"); break;
+    case 'peers'       : require_once("./pgs/peers.php"); break;
+    case 'reflectors'  : require_once("./pgs/reflectors.php"); break;
+    case 'livequadnet' : require_once("./pgs/livequadnet.php"); break;
+    case 'admin'       : require_once("./pgs/admin.php"); break;
+    default            : require_once("./pgs/users.php");
+}
+?>
+        </div>
     </div>
-    <?php if (isset($Admin) && $Admin['Enable']) { ?>
-    <a href="./index.php?show=admin" style="position:fixed;bottom:8px;right:12px;color:#333;font-size:14px;text-decoration:none;opacity:0.3;z-index:9999;" title="Hack the planet">&pi;</a>
-    <?php } ?>
-</footer>
-<script>
-document.querySelectorAll('.email-protect').forEach(function(el){
-    var a=el.dataset.u+'@'+el.dataset.d;
-    el.innerHTML='<a href="mai'+'lto:'+a+'">'+a+'</a>';
-});
-</script>
+</main>
 
-<!-- Bootstrap core JavaScript
- ================================================== -->
-<!-- Placed at the end of the document so the pages load faster -->
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
-<script>window.jQuery || document.write('<script src="../../assets/js/vendor/jquery.min.js"><\/script>')</script>
-<script src="js/bootstrap.min.js"></script>
-<!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
-<script src="js/ie10-viewport-bug-workaround.js"></script>
+<footer class="foot">
+    <div class="wrap">
+        <span><?php
+            // the address is put together by script, against harvesters
+            $parts = explode('@', (string)$PageOptions['ContactEmail']);
+            if (count($parts) == 2) {
+                echo 'Sysop: <span class="email-protect" data-u="'.h($parts[0]).'" data-d="'.h($parts[1]).'">address needs JavaScript</span>';
+            }
+        ?></span>
+        <?php if (isset($Admin) && $Admin['Enable']) { ?>
+        <a class="pi" href="./index.php?show=admin" title="Admin">&pi;</a>
+        <?php } ?>
+    </div>
+</footer>
+
+<script>
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+
+    document.querySelectorAll('.email-protect').forEach(function (el) {
+        var a = el.dataset.u + '@' + el.dataset.d;
+        el.innerHTML = '<a href="mai' + 'lto:' + a + '">' + a + '</a>';
+    });
+
+    // theme toggle: system, light, dark
+    var modes = ['system', 'light', 'dark'], mode = 'system';
+    try { mode = localStorage.getItem('urf-theme') || 'system'; } catch (e) {}
+    function applyTheme() {
+        if (mode === 'system') document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme', mode);
+        $('theme-btn').textContent = 'Theme: ' + mode;
+    }
+    $('theme-btn').addEventListener('click', function () {
+        mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+        try { localStorage.setItem('urf-theme', mode); } catch (e) {}
+        applyTheme();
+    });
+    applyTheme();
+
+    // running transmit timers, against the server's clock
+    var skew = 0;
+    function setSkew() { var p = $('page'); if (p) skew = Date.now() / 1000 - parseInt(p.dataset.now, 10); }
+    function tick() {
+        document.querySelectorAll('[data-since]').forEach(function (el) {
+            var s = Math.max(0, Math.floor(Date.now() / 1000 - skew - parseInt(el.dataset.since, 10)));
+            el.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        });
+    }
+    setSkew(); tick();
+    setInterval(tick, 1000);
+
+    window.URF.tick = tick;
+
+<?php if ($Refresh) { ?>
+    // reload the page content in place; keep open details and skip while someone types
+    var delay = <?php echo (int)$PageOptions['PageRefreshDelay']; ?>;
+    function reload() {
+        var a = document.activeElement;
+        if (a && $('page').contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT')) { setTimeout(reload, delay); return; }
+        fetch(location.href, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.text() : null; }).then(function (html) {
+            if (!html) return;
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            var open = [];
+            document.querySelectorAll('#page details[open][id]').forEach(function (d) { open.push(d.id); });
+            ['page', 'strip', 'nav'].forEach(function (id) {
+                var cur = $(id), next = doc.getElementById(id);
+                if (cur && next) { cur.innerHTML = next.innerHTML; cur.className = next.className; Array.prototype.forEach.call(next.attributes, function (at) { if (at.name.indexOf('data-') === 0) cur.setAttribute(at.name, at.value); }); }
+            });
+            open.forEach(function (id) { var d = $(id); if (d) d.open = true; });
+            setSkew(); tick();
+            window.URF.onRefresh.forEach(function (fn) { fn(); });
+        }).catch(function () {}).then(function () { setTimeout(reload, delay); });
+    }
+    setTimeout(reload, delay);
+<?php } ?>
+})();
+</script>
 </body>
 </html>

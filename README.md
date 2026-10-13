@@ -561,6 +561,7 @@ The XML status file now includes:
 - **Per-module mappings**: autolinks (YSF, NXDN, P25), TG mappings (MMDVM, MMDVMClient, SvxReflector, SVXServer), D-Star client mappings (DCSClient, DExtraClient, DPlusClient with connection status), YSF client mappings (YSFClient with DG-ID)
 - **Enabled protocols**: name and port for each active protocol
 - **Per-station protocol**: which protocol a user was heard on (DCS, MMDVMClient, YSF, etc.)
+- **On air**: `<OnAir>` in each module that has an open stream, with the callsign transmitting
 - **Per-station position**: `<Locator>`, `<Latitude>` and `<Longitude>` for stations that sent an M17 GNSS or a D-Star DPRS position
 - **Dynamic TG indicators**: `<Dynamic>true</Dynamic>` and `<Remaining>` seconds for runtime-added TGs
 
@@ -568,26 +569,28 @@ Module names are configured once in `urfd.ini` and automatically available in th
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.8.3
-Complete redesign with dark mode theme (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2), status file and admin socket fixes (v2.8.3).
+### Dashboard v2.9.0
+Redesigned in v2.9.0 as the front panel of a radio: an amber LCD shows who is on the air, the modules are a keypad, the rest are plain tables. Before that: dark mode (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2), status file and admin socket fixes (v2.8.3).
 
-**New pages:**
-- **Active Users** - Connected nodes per module in card layout
-- **Overview Modules** - Module table with DMR+ IDs, YSF DG-IDs, NXDN RANs and destination IDs, mappings (static + dynamic), transcoder status, connected nodes. Protocol columns hidden when disabled.
-- **Enabled Protocols** - Server-side protocols with ports and type classification (client protocols like MMDVMClient, SvxReflector, D-Star/YSF clients are hidden as they connect outbound)
+**Pages:**
+- **Last heard** - The LCD shows the station transmitting right now with its module, mode, route and a running timer, or the last station heard, dimmed. Next to it a key per module: amber when nodes are linked, a red mark while someone transmits. A key filters the log to its module; the callsign filter takes wildcards (`DL*`). Both filters survive the page refresh.
+- **Modules** - One table per module: name, linked nodes (expandable), DMR+ TG, YSF DG-ID, NXDN RAN and destination ID, transcoding and bridges (static, and dashed for runtime ones). Protocol columns are hidden when the protocol is off. Below it the server protocols with their ports; client protocols that connect outbound are left out. `?show=modulesd` from older links lands here.
+- **Links**, **Peers** - Linked nodes and peer reflectors, with how long they have been linked and the IP as far as `IPModus` allows.
+- **Reflector list** - The XLX directory with search and 25 per page.
+- **QuadNet live** - D-Star routing traffic from the OpenQuad feed, with search.
+- **Admin** (hidden): talkgroups with kerchunk, D-Star and YSF links, SVX and MMDVM users and nodes, transcoder, protocol blocks, log. An index lists only the sections the running protocols use. Access via the pi symbol in the footer or `?show=admin`.
+
+Every page but Last heard and Admin carries a slim LCD line with the current transmission. The TX state comes from the `<OnAir>` element of the status file (urfd 4.11.0 and later); with an older urfd the dashboard shows the last station heard instead.
 
 **Features:**
-- Dark mode with CSS custom properties
-- Mobile-responsive tables for peers, repeaters, users
-- Last Heard table with protocol column, pulsing TX indicator, module display
-- Locator of stations that send an M17 GNSS or a D-Star DPRS position, linked to OpenStreetMap, in place of the aprs.fi link
+- Light and dark theme, following the system, with a switch in the top bar
+- Font (Saira, OFL) served from the dashboard itself, no Google Fonts request
+- No Bootstrap any more; jQuery only on the admin page
+- Content refreshes in place every `PageRefreshDelay` ms, not while you type in a field
+- Locator of stations that send an M17 GNSS or a D-Star DPRS position, linked to OpenStreetMap
 - MOTD/maintenance banner via `$PageOptions['MOTD']` in config.inc.php
 - Module names read from urfd XML (single source of truth)
 - Contact email obfuscated against bots
-- QuadNet Live: native PHP proxy table with search and auto-refresh (replaces iframe)
-- Reflector list: client-side search and pagination (25 per page) with CSS status dots
-- QRZ links use callsign without module suffix
-- **Admin panel** (hidden): dynamic TG management with kerchunk button, transcoder stats, live log, protocol controls. Access via pi symbol or `?show=admin`.
 
 **Resilience against a directory outage**: the dashboard does not depend on
 `xlxapi.rlx.lu` being reachable. The reflector list has an explicit timeout and is
@@ -842,6 +845,8 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
 - **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
+- **Dashboard v2.9.0**: Redesign as a radio front panel: LCD with the station on the air, module keypad, merged Modules page, light and dark theme, self-hosted font, Bootstrap removed
+- **On-air state in the status file (4.11.0)**: each module that has an open stream carries `<OnAir>` with the callsign transmitting, so the dashboard shows TX from the reflector instead of guessing from the last-heard time
 - **Dashboard v2.8.3**: A page load no longer dies on an empty status file; admin replies past 8 KB (user and peer lists, the log) arrive whole instead of as "No response from admin socket"; `&`, `<` and `>` in callsigns and descriptions show as such
 - **Dashboard v2.8.2**: The admin password is no longer kept in `config.inc.php` (`setup.sh update` removes old copies); the admin page logs in with the `urfd.ini` password
 - **Dashboard v2.8.1**: Everything from outside is escaped (the `show` parameter, the reflector list from the XLX directory, hotspot and node data on the admin page, callsigns and filters); the admin API accepts only requests from its own page (JSON and `X-Requested-With`, no CORS), its session cookie is `HttpOnly` and `SameSite=Strict` and renewed at login

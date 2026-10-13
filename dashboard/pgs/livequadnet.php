@@ -1,37 +1,49 @@
 <?php
-// QuadNet Live - parsed natively from OpenQuad ICS data stream
+// QuadNet live: D-Star routing traffic, parsed from the OpenQuad ICS data stream
 ?>
-<h2 class="sub-header">QuadNet Live</h2>
-<div style="margin-bottom: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-   <input type="text" id="quadnet-search" class="form-control" placeholder="Search callsign, name or reflector..." style="max-width: 400px;">
-   <span id="quadnet-status" style="color: var(--text-muted); font-size: 13px;"></span>
+<div class="page">
+   <div class="tbl-head">
+      <div>
+         <h1>QuadNet live</h1>
+         <p class="lede">D-Star routing traffic across the QuadNet servers, newest first.</p>
+      </div>
+      <div class="filters">
+         <label for="quadnet-search">Search</label>
+         <input class="field" type="search" id="quadnet-search" placeholder="Callsign, name or reflector" autocomplete="off">
+         <span class="hint" id="quadnet-status"></span>
+      </div>
+   </div>
+   <div class="scroll">
+      <table class="t" id="quadnet-table">
+         <thead>
+         <tr>
+            <th>Time</th>
+            <th>Callsign</th>
+            <th class="opt">Radio</th>
+            <th>Target</th>
+            <th>Repeater</th>
+            <th class="opt">Name</th>
+            <th>Reflector</th>
+            <th class="r opt">Duration</th>
+         </tr>
+         </thead>
+         <tbody id="quadnet-body">
+         <tr class="empty"><td colspan="8">Loading the QuadNet feed</td></tr>
+         </tbody>
+      </table>
+   </div>
 </div>
-
-<table class="table table-striped table-hover table-condensed" id="quadnet-table">
-   <thead>
-   <tr class="table-center">
-      <th>Time</th>
-      <th>Callsign</th>
-      <th>Radio</th>
-      <th>Target</th>
-      <th>Repeater</th>
-      <th class="mobile-hide">Name</th>
-      <th>Reflector</th>
-      <th class="mobile-hide">Duration</th>
-   </tr>
-   </thead>
-   <tbody id="quadnet-body">
-   <tr><td colspan="8" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>
-   </tbody>
-</table>
 
 <script>
 (function() {
-   var $body = $('#quadnet-body');
-   var $search = $('#quadnet-search');
-   var $status = $('#quadnet-status');
+   var body = document.getElementById('quadnet-body');
+   var search = document.getElementById('quadnet-search');
+   var status = document.getElementById('quadnet-status');
    var entries = [];
 
+   function esc(v) {
+      return String(v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; });
+   }
    function cleanCall(s) {
       // Preserve portable/mobile suffixes: _P -> /P, _M -> /M, _AM -> /AM etc.
       var m = s.match(/^(.+?)_(P|M|AM|MM|QRP)$/);
@@ -65,7 +77,7 @@
    }
 
    function render() {
-      var q = $search.val().toLowerCase();
+      var q = search.value.toLowerCase();
       var html = '';
       var shown = 0;
       for (var i = entries.length - 1; i >= 0; i--) {
@@ -74,25 +86,25 @@
             var text = [e.call, e.radio, e.target, e.repeater, e.name, e.reflector].join(' ').toLowerCase();
             if (text.indexOf(q) === -1) continue;
          }
-         html += '<tr class="table-center">' +
-            '<td>' + e.time + '</td>' +
-            '<td><strong>' + e.call + '</strong></td>' +
-            '<td>' + e.radio + '</td>' +
-            '<td>' + e.target + '</td>' +
-            '<td>' + e.repeater + '</td>' +
-            '<td class="mobile-hide">' + e.name + '</td>' +
-            '<td>' + e.reflector + '</td>' +
-            '<td class="mobile-hide">' + e.duration + '</td>' +
+         html += '<tr>' +
+            '<td class="nw">' + esc(e.time) + '</td>' +
+            '<td class="cs"><b>' + esc(e.call) + '</b></td>' +
+            '<td class="opt">' + esc(e.radio) + '</td>' +
+            '<td>' + esc(e.target) + '</td>' +
+            '<td>' + esc(e.repeater) + '</td>' +
+            '<td class="opt muted">' + esc(e.name) + '</td>' +
+            '<td>' + esc(e.reflector) + '</td>' +
+            '<td class="r opt">' + esc(e.duration) + '</td>' +
             '</tr>';
          shown++;
       }
-      if (!html) html = '<tr><td colspan="8" style="text-align:center; color: var(--text-muted);">No data</td></tr>';
-      $body.html(html);
-      $status.text(shown + ' entries');
+      if (!html) html = '<tr class="empty"><td colspan="8">' + (q ? 'Nothing in the feed matches this search.' : 'The feed has no traffic yet.') + '</td></tr>';
+      body.innerHTML = html;
+      status.textContent = shown + (shown === 1 ? ' entry' : ' entries');
    }
 
    function poll() {
-      $.get('./pgs/quadnet_proxy.php', function(data) {
+      fetch('./pgs/quadnet_proxy.php', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (data) {
          var lines = data.split('\n');
          var parsed = [];
          for (var i = 0; i < lines.length; i++) {
@@ -101,12 +113,14 @@
          }
          entries = parsed;
          render();
-      }).always(function() {
+      }).catch(function () {
+         status.textContent = 'Feed not reachable, retrying';
+      }).then(function () {
          setTimeout(poll, 3000);
       });
    }
 
-   $search.on('keyup', function() { render(); });
+   search.addEventListener('input', render);
    poll();
 })();
 </script>

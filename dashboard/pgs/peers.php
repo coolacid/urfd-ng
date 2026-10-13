@@ -1,97 +1,61 @@
 <?php
+// Peers: other reflectors that share modules with this one
 
-$Reflectors = GetReflectorList();
+$IPMode = $PageOptions['PeerPage']['IPModus'];
+$MC = $PageOptions['PeerPage']['MasqueradeCharacter'];
+$ShowIP = ($IPMode != 'HideIP');
 
-if ($Reflectors === false) {
-	echo DirectoryUnavailableNotice();
-	return;
+// dashboard links from the XLX directory; without it the names stay plain text
+$DashboardURLs = array();
+if ($Reflector->PeerCount() > 0) {
+    $List = GetReflectorList();
+    if ($List !== false) {
+        $XML = new ParseXML();
+        foreach ($List as $r) {
+            $url = trim(html_entity_decode((string)$XML->GetElement($r, "dashboardurl"), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if (preg_match('#^https?://#i', $url)) $DashboardURLs[(string)$XML->GetElement($r, "name")] = $url;
+        }
+    }
 }
-
-$XML = new ParseXML();
 ?>
-
-<div class="table-responsive">
-<table class="table table-striped table-hover">
-	<tr class="table-center">
-		<th class="col-md-1 mobile-hide">#</th>
-		<th class="col-md-2">Peer</th>
-		<th class="col-md-2">Last Heard</th>
-		<th class="col-md-2 mobile-hide">Linked for</th>
-		<th class="col-md-2">Protocol</th>
-		<th class="col-md-1">Module</th><?php
-
-if ($PageOptions['PeerPage']['IPModus'] != 'HideIP') {
-	echo '<th class="col-md-2">IP</th>';
-}
-
-?>
- </tr>
+<div class="page">
+    <div>
+        <h1>Peers</h1>
+        <p class="lede">Other reflectors that share modules with <?php echo h($Name); ?>. A call on a shared module is heard on both.</p>
+    </div>
+    <div class="scroll">
+        <table class="t">
+            <thead>
+                <tr><th>Reflector</th><th>Mode</th><th>Shared modules</th><th class="r">Last heard</th><th class="r opt">Linked for</th><?php if ($ShowIP) { ?><th class="opt">IP</th><?php } ?></tr>
+            </thead>
+            <tbody>
 <?php
-
-$Reflector->LoadFlags();
-
-for ($i=0;$i<$Reflector->PeerCount();$i++) {
-	echo '
-	<tr class="table-center">
-	<td class="mobile-hide">'.($i+1).'</td>';
-
-	$Name = $Reflector->Peers[$i]->GetCallSign();
-	$URL = '';
-
-	for ($j=1;$j<count($Reflectors);$j++) {
-		if ($Name === $XML->GetElement($Reflectors[$j], "name")) {
-			$URL  = trim(html_entity_decode((string)$XML->GetElement($Reflectors[$j], "dashboardurl"), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-		}
-	}
-	$Name = htmlspecialchars($Name, ENT_QUOTES, 'UTF-8');
-	if ($Result && preg_match('#^https?://#i', $URL)) {
-		echo '<td><a href="'.htmlspecialchars($URL, ENT_QUOTES, 'UTF-8').'" target="_blank" rel="noopener noreferrer" class="listinglink" title="Visit the Dashboard of&nbsp;'.$Name.'" style="text-decoration:none;color:#000000;">'.$Name.'</a></td>';
-	} else {
-		echo '<td>'.$Name.'</td>';
-	}
-	echo '
-	<td>'.date("d.m.Y H:i", $Reflector->Peers[$i]->GetLastHeardTime()).'</td>
-	<td class="mobile-hide">'.FormatSeconds(time()-$Reflector->Peers[$i]->GetConnectTime()).' s</td>
-	<td>'.$Reflector->Peers[$i]->GetProtocol().'</td>
-	<td>'.$Reflector->Peers[$i]->GetLinkedModule().'</td>';
-	if ($PageOptions['PeerPage']['IPModus'] != 'HideIP') {
-		echo '<td>';
-		$Bytes = explode(".", $Reflector->Peers[$i]->GetIP());
-		$MC = $PageOptions['RepeatersPage']['MasqueradeCharacter'];
-		if ($Bytes !== false && count($Bytes) == 4) {
-			switch ($PageOptions['PeerPage']['IPModus']) {
-				case 'ShowLast1ByteOfIP':
-					echo $MC.'.'.$MC.'.'.$MC.'.'.$Bytes[3];
-					break;
-				case 'ShowLast2ByteOfIP':
-					echo $MC.'.'.$MC.'.'.$Bytes[2].'.'.$Bytes[3];
-					break;
-				case 'ShowLast3ByteOfIP':
-					echo $MC.'.'.$Bytes[1].'.'.$Bytes[2].'.'.$Bytes[3];
-					break;
-				default:
-					$PeerIP = htmlspecialchars($Reflector->Peers[$i]->GetIP(), ENT_QUOTES, 'UTF-8');
-					echo '<a href="http://'.$PeerIP.'" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:#000000;">'.$PeerIP.'</a>';
-			}
-		} else {
-			$ipstr = $Reflector->Peers[$i]->GetIP();
-			$count = substr_count($ipstr, ":");
-			if ($count > 1) {
-				if (1 == substr_count($ipstr, "::")) { $ipstr = str_replace("::", str_repeat(":", 9 - $count), $ipstr); }
-				if (7 == substr_count($ipstr, ":")) {
-					echo $MC.':'.$MC.':'.$MC.':'.$MC.':'.$MC.':'.$MC;
-					$Bytes = explode(":", $ipstr);
-					for( $k=6; $k<8; $k++) { echo (0==strlen($Bytes[$k])) ? ':0' : ':'.$Bytes[$k]; }
-				}
-			}
-		}
-		echo '</td>';
-	}
-	echo '</tr>';
-	if ($i == $PageOptions['PeerPage']['LimitTo']) { $i = $Reflector->PeerCount()+1; }
+$count = min($Reflector->PeerCount(), (int)$PageOptions['PeerPage']['LimitTo'] + 1);
+for ($i = 0; $i < $count; $i++) {
+    $peer = $Reflector->Peers[$i];
+    $name = $peer->GetCallSign();
+    echo '<tr>';
+    if (isset($DashboardURLs[$name])) {
+        echo '<td class="cs"><a href="'.h($DashboardURLs[$name]).'" target="_blank" rel="noopener noreferrer" title="Open the dashboard of '.h($name).'">'.h($name).'</a></td>';
+    } else {
+        echo '<td class="cs"><b>'.h($name).'</b></td>';
+    }
+    echo '<td>'.h($peer->GetProtocol()).'</td>';
+    $mods = array();
+    foreach (str_split(preg_replace('/[^A-Z]/', '', strtoupper((string)$peer->GetLinkedModule()))) as $m) {
+        if ($m !== '') $mods[] = '<span class="mod'.(isset($Modules[$m]) && $Modules[$m]['nodes'] > 0 ? ' on' : '').'">'.h($m).'</span>';
+    }
+    echo '<td>'.(count($mods) ? implode(' ', $mods) : '<span class="muted">none</span>').'</td>';
+    echo '<td class="r" title="'.h(date("d.m.Y H:i", $peer->GetLastHeardTime())).'">'.FormatAgo($peer->GetLastHeardTime()).'</td>';
+    echo '<td class="r opt">'.FormatSpan(time() - $peer->GetConnectTime()).'</td>';
+    if ($ShowIP) echo '<td class="opt ip">'.h(MaskIP($peer->GetIP(), $IPMode, $MC)).'</td>';
+    echo '</tr>';
 }
-
+if ($count == 0) {
+    echo '<tr class="empty"><td colspan="'.($ShowIP ? 6 : 5).'">No peer reflector is linked. Peers are set up in the interlink file of urfd.</td></tr>';
+}
 ?>
-
-</table>
+            </tbody>
+        </table>
+    </div>
 </div>

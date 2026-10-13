@@ -551,6 +551,7 @@ Die XML-Statusdatei enthält jetzt:
 - **Zuordnungen pro Modul**: Autolinks (YSF, NXDN, P25), TG-Zuordnungen (MMDVM, MMDVMClient, SvxReflector, SVXServer), D-Star-Client-Zuordnungen (DCSClient, DExtraClient, DPlusClient mit Verbindungsstatus), YSF-Client-Zuordnungen (YSFClient mit DG-ID)
 - **Aktive Protokolle**: Name und Port jedes eingeschalteten Protokolls
 - **Protokoll pro Station**: Über welches Protokoll eine Station gehört wurde (DCS, MMDVMClient, YSF usw.)
+- **Auf Sendung**: `<OnAir>` in jedem Modul mit offenem Stream, mit dem sendenden Rufzeichen
 - **Position pro Station**: `<Locator>`, `<Latitude>` und `<Longitude>` für Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position gesendet haben
 - **Kennzeichnung dynamischer TGs**: `<Dynamic>true</Dynamic>` und `<Remaining>` Sekunden für zur Laufzeit hinzugefügte TGs
 
@@ -558,26 +559,28 @@ Modulnamen werden einmal in `urfd.ini` eingetragen und stehen automatisch im Das
 
 Der JSON-Report enthält außerdem ein Array `DynamicTGs` mit Protokoll, TG, Modul und Restlaufzeit aller aktiven dynamischen Zuordnungen.
 
-### Dashboard v2.8.3
-Komplett neu gestaltet mit dunklem Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0), Sicherheitskorrekturen (v2.8.1, v2.8.2), Korrekturen an Statusdatei und Admin-Socket (v2.8.3).
+### Dashboard v2.9.0
+In v2.9.0 neu gestaltet als Frontplatte eines Funkgeräts: Ein bernsteinfarbenes LCD zeigt, wer gerade sendet, die Module sind ein Tastenfeld, der Rest sind schlichte Tabellen. Davor: dunkles Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0), Sicherheitskorrekturen (v2.8.1, v2.8.2), Korrekturen an Statusdatei und Admin-Socket (v2.8.3).
 
-**Neue Seiten:**
-- **Active Users**: Verbundene Knoten pro Modul als Karten
-- **Overview Modules**: Modultabelle mit DMR+-IDs, YSF-DG-IDs, NXDN-RANs und -Ziel-IDs, Zuordnungen (statisch und dynamisch), Transcoder-Status, verbundenen Knoten. Spalten ausgeschalteter Protokolle werden ausgeblendet.
-- **Enabled Protocols**: Server-Protokolle mit Ports und Einordnung (Client-Protokolle wie MMDVMClient, SvxReflector und die D-Star-/YSF-Clients sind ausgeblendet, weil sie nach außen verbinden)
+**Seiten:**
+- **Last heard**: Das LCD zeigt die Station, die gerade sendet, mit Modul, Betriebsart, Weg und laufender Sendezeit, sonst gedimmt die zuletzt gehörte. Daneben eine Taste pro Modul: bernsteinfarben, wenn Knoten verbunden sind, mit roter Markierung, solange jemand sendet. Eine Taste filtert das Log auf ihr Modul; der Rufzeichenfilter versteht Platzhalter (`DL*`). Beide Filter überstehen das Neuladen.
+- **Modules**: Eine Tabelle mit einer Zeile pro Modul: Name, verbundene Knoten (aufklappbar), DMR+-TG, YSF-DG-ID, NXDN-RAN und -Ziel-ID, Transcoding und Brücken (statisch, und gestrichelt für die zur Laufzeit angelegten). Spalten ausgeschalteter Protokolle werden ausgeblendet. Darunter die Server-Protokolle mit ihren Ports; Client-Protokolle, die nach außen verbinden, fehlen. `?show=modulesd` aus alten Links landet hier.
+- **Links**, **Peers**: Verbundene Knoten und Partner-Reflektoren, mit Verbindungsdauer und der IP, soweit `IPModus` es erlaubt.
+- **Reflector list**: Das XLX-Verzeichnis mit Suche und 25 pro Seite.
+- **QuadNet live**: D-Star-Routing-Verkehr aus dem OpenQuad-Feed, mit Suche.
+- **Admin** (versteckt): Talkgroups mit Kerchunk, D-Star- und YSF-Links, SVX- und MMDVM-Nutzer und -Knoten, Transcoder, Protokoll-Sperren, Log. Ein Index zeigt nur die Abschnitte, die die laufenden Protokolle nutzen. Zugang über das Pi-Symbol in der Fußzeile oder `?show=admin`.
+
+Jede Seite außer Last heard und Admin trägt oben eine schmale LCD-Zeile mit der laufenden Aussendung. Den Sendezustand liefert das Element `<OnAir>` der Statusdatei (ab urfd 4.11.0); mit einem älteren urfd zeigt das Dashboard stattdessen die zuletzt gehörte Station.
 
 **Funktionen:**
-- Dunkles Design mit CSS-Variablen
-- Tabellen für Peers, Repeater und Nutzer auch auf dem Handy lesbar
-- Last-Heard-Tabelle mit Protokollspalte, pulsierender TX-Anzeige und Modul
-- Locator von Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position senden, mit Link auf OpenStreetMap statt auf aprs.fi
+- Helles und dunkles Design, folgt dem System, mit Umschalter in der Kopfleiste
+- Schrift (Saira, OFL) vom Dashboard selbst ausgeliefert, keine Anfrage an Google Fonts
+- Kein Bootstrap mehr; jQuery nur noch auf der Admin-Seite
+- Inhalt lädt sich alle `PageRefreshDelay` ms an Ort und Stelle neu, nicht während man in einem Feld tippt
+- Locator von Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position senden, mit Link auf OpenStreetMap
 - MOTD-/Wartungsbanner über `$PageOptions['MOTD']` in config.inc.php
 - Modulnamen aus dem urfd-XML (eine einzige Quelle)
 - Kontakt-E-Mail gegen Bots verschleiert
-- QuadNet Live: eigene PHP-Proxy-Tabelle mit Suche und automatischer Aktualisierung (statt iframe)
-- Reflektorliste: Suche und Seitenaufteilung im Browser (25 pro Seite) mit Status-Punkten
-- QRZ-Links verwenden das Rufzeichen ohne Modul-Endung
-- **Admin-Panel** (versteckt): dynamische TG-Verwaltung mit Kerchunk-Knopf, Transcoder-Statistik, Live-Log, Protokoll-Steuerung. Zugang über das Pi-Symbol oder `?show=admin`.
 
 **Robust gegen einen Ausfall des Verzeichnisses**: Das Dashboard hängt nicht davon ab, dass `xlxapi.rlx.lu` erreichbar ist. Die Reflektorliste hat ein festes Timeout und wird auf der Platte zwischengespeichert (`<CacheDir>/reflectorlist.cache`). Ein frischer Eintrag liefert die Seite ganz ohne Netzwerkzugriff, ein veralteter hält die Liste am Laufen, solange das Verzeichnis ausgefallen ist. Seit v2.8.0 trägt das Dashboard den Reflektor nicht mehr im Verzeichnis ein; das macht der Reflektor selbst, siehe [CallingHome](#xlx-verzeichnis-callinghome).
 
@@ -820,6 +823,8 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Dashboard v2.6.0**: Neugestaltung im dunklen Design, Admin-Panel, Modulübersicht mit TG-Zuordnungen und NXDN-RAN, Spalten ausgeschalteter Protokolle ausgeblendet, Protokollliste, QuadNet-Live-Proxy, Reflektorliste mit Suche und Seitenaufteilung
 - **Dashboard v2.6.1**: Übersteht einen Ausfall des XLX-Verzeichnisses. Feste Timeouts bei jeder ausgehenden Anfrage, CallingHome-Fehler werden ins Log geschrieben, statt die Seite abzubrechen, Reflektor- und Peer-Listen aus einem Cache auf der Platte, Admin-API nicht mehr hinter der PHP-Session-Sperre aufgereiht
 - **Dashboard v2.7.0**: Locator-Spalte für Stationen, die eine M17-GPS-Position senden, auch in `/json/stations`
+- **Dashboard v2.9.0**: Neugestaltung als Frontplatte eines Funkgeräts: LCD mit der Station auf Sendung, Modul-Tastenfeld, zusammengelegte Modules-Seite, helles und dunkles Design, Schrift lokal, Bootstrap entfernt
+- **Sendezustand in der Statusdatei (4.11.0)**: Jedes Modul mit offenem Stream trägt `<OnAir>` mit dem sendenden Rufzeichen, sodass das Dashboard TX vom Reflektor erfährt, statt es aus der Last-Heard-Zeit zu raten
 - **Dashboard v2.8.3**: Ein Seitenaufruf bricht bei leerer Statusdatei nicht mehr ab; Admin-Antworten über 8 KB (Nutzer- und Peer-Listen, das Log) kommen vollständig an statt als "No response from admin socket"; `&`, `<` und `>` in Rufzeichen und Beschreibungen erscheinen als solche
 - **Dashboard v2.8.2**: Das Admin-Passwort steht nicht mehr in `config.inc.php` (`setup.sh update` entfernt alte Kopien); die Admin-Seite meldet sich mit dem Passwort aus `urfd.ini` an
 - **Dashboard v2.8.1**: Alles, was von außen kommt, wird escapet (der Parameter `show`, die Reflektorliste aus dem XLX-Verzeichnis, Hotspot- und Knotendaten auf der Admin-Seite, Rufzeichen und Filter); die Admin-API nimmt nur Anfragen der eigenen Seite an (JSON und `X-Requested-With`, kein CORS), ihr Session-Cookie ist `HttpOnly` und `SameSite=Strict` und wird beim Anmelden erneuert

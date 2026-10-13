@@ -3,6 +3,7 @@
 class Node {
 
    private $Callsign;
+   private $FullCallsign;
    private $IP;
    private $LinkedModule;
    private $LinkedModuleTS1;
