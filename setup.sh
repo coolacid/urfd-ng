@@ -564,7 +564,7 @@ update() {
         migrate_callinghome
         secure_files
         build_urfd
-        # the dashboard version shown in the footer lives in the kept config
+        # the dashboard version shown in the top bar lives in the kept config
         local ver
         ver=$(sed -n "s/^\$PageOptions\['DashboardVersion'\] *= *'\(.*\)';/\1/p" "$REPO_DIR/dashboard/pgs/config.inc.php")
         [ -n "$ver" ] && set_php "$DATA_DIR/dashboard/config.inc.php" "PageOptions['DashboardVersion']" "'$ver'"
