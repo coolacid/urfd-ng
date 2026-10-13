@@ -379,6 +379,10 @@ std::shared_ptr<CPacketStream> CReflector::OpenStream(std::unique_ptr<CDvHeaderP
 		stream->Push(std::move(DvHeader));
 		StatusChanged();
 
+		CCallsign viaPeer = g_Reflector.GetCallsign();
+		CCallsign moduleCs;
+		moduleCs.SetCSModule(module);
+		g_Reflector.GetUsers()->StationStarted(stream->GetUserCallsign(), client->GetCallsign(), moduleCs, viaPeer, client->GetProtocolName());
 	}
 	return stream;
 }
@@ -413,6 +417,11 @@ void CReflector::CloseStream(std::shared_ptr<CPacketStream> stream)
 		{
 			// client no longer a master
 			client->NotAMaster();
+
+			CCallsign viaPeer = g_Reflector.GetCallsign();
+			CCallsign moduleCs;
+			moduleCs.SetCSModule(GetStreamModule(stream));
+			g_Reflector.GetUsers()->StationStopped(stream->GetUserCallsign(), client->GetCallsign(), moduleCs, viaPeer, client->GetProtocolName());
 
 			std::cout << "Closing stream of module " << GetStreamModule(stream) << std::endl;
 		}

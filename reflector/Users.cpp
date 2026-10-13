@@ -81,7 +81,6 @@ void CUsers::CleanupInactiveStations(void)
 	{
 		if (now - it->second.GetLastHeardTime() > kStationEndTimeoutSec)
 		{
-			DispatchStationEvent("station_stopped", it->second);
 			it = m_ActiveStations.erase(it);
 		}
 		else
@@ -132,22 +131,6 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 			break;
 		}
 	}
-
-	const auto now = std::time(nullptr);
-	for (auto it = m_ActiveStations.begin(); it != m_ActiveStations.end(); )
-	{
-		if (now - it->second.GetLastHeardTime() > kStationEndTimeoutSec)
-		{
-			DispatchStationEvent("station_stopped", it->second);
-			it = m_ActiveStations.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
-
-	StationStarted(my, rpt1, rpt2, xlx, proto);
 
 	// first check if this user is already listed. If so, erase him.
 	for ( auto it=begin(); it!=end(); it++ )
