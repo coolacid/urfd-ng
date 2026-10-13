@@ -91,6 +91,34 @@ void CUsers::CleanupInactiveStations(void)
 	}
 }
 
+void CUsers::StationStarted(const CCallsign &my, const CCallsign &rpt1, const CCallsign &rpt2, const CCallsign &xlx, const std::string &proto)
+{
+	CUser heard(my, rpt1, rpt2, xlx, proto);
+	const std::string key = my.GetBase();
+	const auto activeIt = m_ActiveStations.find(key);
+	if (activeIt == m_ActiveStations.end())
+	{
+		m_ActiveStations.emplace(key, heard);
+		DispatchStationEvent("station_started", heard);
+	}
+	else
+	{
+		activeIt->second = heard;
+	}
+}
+
+void CUsers::StationStopped(const CCallsign &my, const CCallsign &rpt1, const CCallsign &rpt2, const CCallsign &xlx, const std::string &proto)
+{
+	CUser heard(my, rpt1, rpt2, xlx, proto);
+	const std::string key = my.GetBase();
+	const auto activeIt = m_ActiveStations.find(key);
+	if (activeIt != m_ActiveStations.end())
+	{
+		DispatchStationEvent("station_stopped", activeIt->second);
+		m_ActiveStations.erase(activeIt);
+	}
+}
+
 void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign &rpt2, const CCallsign &xlx, const std::string &proto)
 {
 	CUser heard(my, rpt1, rpt2, xlx, proto);
@@ -119,17 +147,7 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 		}
 	}
 
-	const std::string key = my.GetBase();
-	const auto activeIt = m_ActiveStations.find(key);
-	if (activeIt == m_ActiveStations.end())
-	{
-		m_ActiveStations.emplace(key, heard);
-		DispatchStationEvent("station_started", heard);
-	}
-	else
-	{
-		activeIt->second = heard;
-	}
+	StationStarted(my, rpt1, rpt2, xlx, proto);
 
 	// first check if this user is already listed. If so, erase him.
 	for ( auto it=begin(); it!=end(); it++ )
