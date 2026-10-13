@@ -81,6 +81,8 @@ void CUsers::CleanupInactiveStations(void)
 	{
 		if (now - it->second.GetLastHeardTime() > kStationEndTimeoutSec)
 		{
+			DispatchStationEvent("station_stopped", it->second);
+			g_Reflector.StatusChanged();
 			it = m_ActiveStations.erase(it);
 		}
 		else
@@ -104,6 +106,7 @@ void CUsers::StationStarted(const CCallsign &my, const CCallsign &rpt1, const CC
 	{
 		activeIt->second = heard;
 	}
+	g_Reflector.StatusChanged();
 }
 
 void CUsers::StationStopped(const CCallsign &my, const CCallsign &rpt1, const CCallsign &rpt2, const CCallsign &xlx, const std::string &proto)
@@ -115,6 +118,7 @@ void CUsers::StationStopped(const CCallsign &my, const CCallsign &rpt1, const CC
 	{
 		DispatchStationEvent("station_stopped", activeIt->second);
 		m_ActiveStations.erase(activeIt);
+		g_Reflector.StatusChanged();
 	}
 }
 
