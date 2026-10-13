@@ -382,7 +382,9 @@ std::shared_ptr<CPacketStream> CReflector::OpenStream(std::unique_ptr<CDvHeaderP
 		CCallsign viaPeer = g_Reflector.GetCallsign();
 		CCallsign moduleCs;
 		moduleCs.SetCSModule(module);
-		g_Reflector.GetUsers()->StationStarted(stream->GetUserCallsign(), client->GetCallsign(), moduleCs, viaPeer, client->GetProtocolName());
+		auto *users = g_Reflector.GetUsers();
+		users->StationStarted(stream->GetUserCallsign(), client->GetCallsign(), moduleCs, viaPeer, client->GetProtocolName());
+		g_Reflector.ReleaseUsers();
 	}
 	return stream;
 }
@@ -421,7 +423,9 @@ void CReflector::CloseStream(std::shared_ptr<CPacketStream> stream)
 			CCallsign viaPeer = g_Reflector.GetCallsign();
 			CCallsign moduleCs;
 			moduleCs.SetCSModule(GetStreamModule(stream));
-			g_Reflector.GetUsers()->StationStopped(stream->GetUserCallsign(), client->GetCallsign(), moduleCs, viaPeer, client->GetProtocolName());
+			auto *users = g_Reflector.GetUsers();
+			users->StationStopped(stream->GetUserCallsign(), client->GetCallsign(), moduleCs, viaPeer, client->GetProtocolName());
+			g_Reflector.ReleaseUsers();
 
 			std::cout << "Closing stream of module " << GetStreamModule(stream) << std::endl;
 		}
