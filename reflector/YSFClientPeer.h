@@ -17,6 +17,7 @@ public:
 	EProtocol GetProtocol(void) const           { return EProtocol::ysfclient; }
 	const char *GetProtocolName(void) const     { return "YSFClient"; }
 	bool IsNode(void) const                     { return true; }
+	bool IsLink(void) const                     { return true; }
 
 	bool IsAlive(void) const;
 	void WriteXml(std::ofstream &) {}

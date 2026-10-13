@@ -19,6 +19,7 @@ public:
 	EProtocol GetProtocol(void) const           { return EProtocol::dcsclient; }
 	const char *GetProtocolName(void) const     { return "DCSClient"; }
 	bool IsNode(void) const                     { return true; }
+	bool IsLink(void) const                     { return true; }
 
 	// status
 	bool IsAlive(void) const;

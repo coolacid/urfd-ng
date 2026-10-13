@@ -19,6 +19,7 @@ public:
 	EProtocol GetProtocol(void) const           { return EProtocol::mmdvmclient; }
 	const char *GetProtocolName(void) const     { return "MMDVMClient"; }
 	bool IsNode(void) const                     { return true; }
+	bool IsLink(void) const                     { return true; }
 
 	// status
 	bool IsAlive(void) const;

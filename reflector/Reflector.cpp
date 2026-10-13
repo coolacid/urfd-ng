@@ -751,7 +751,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 		CClients *modClients = GetClients();
 		for (auto cit = modClients->cbegin(); cit != modClients->cend(); cit++)
 		{
-			if ((*cit)->IsNode() && (*cit)->IsLinkedTo(m))
+			if ((*cit)->IsNode() && !(*cit)->IsLink() && (*cit)->IsLinkedTo(m))
 				nodeCount++;
 		}
 		ReleaseClients();
@@ -1059,7 +1059,7 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 	// iterate on clients
 	for ( auto cit=clients->cbegin(); cit!=clients->cend(); cit++ )
 	{
-		if ( (*cit)->IsNode() )
+		if ( (*cit)->IsNode() && !(*cit)->IsLink() )
 		{
 			(*cit)->WriteXml(xmlFile);
 		}

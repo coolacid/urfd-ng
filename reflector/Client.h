@@ -64,6 +64,8 @@ public:
 	virtual const char *GetProtocolName(void) const      { return "none"; }
 	virtual bool IsNode(void) const                      { return false; }
 	virtual bool IsPeer(void) const                      { return false; }
+	// a link this reflector keeps to another server, kept as a node but no station of its own
+	virtual bool IsLink(void) const                      { return false; }
 	virtual bool IsDextraDongle(void) const              { return false; }
 	virtual void SetDextraDongle(void)                   { }
 

@@ -4,7 +4,7 @@
 
 Based on [urfd](https://github.com/n7tae/urfd) by Thomas Early N7TAE, with extended features, the hybrid transcoder [tcd](tcd/) and a setup script that installs both. Originally developed for the URF363 reflector.
 
-**urfd 4.12.1-dht** | tcd 0.4.0 | Dashboard v2.12.0
+**urfd 4.12.2-dht** | tcd 0.4.0 | Dashboard v2.12.0
 
 **New to this? Install with the setup script, see [docs/INSTALL.md](docs/INSTALL.md):**
 
@@ -849,6 +849,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Dashboard v2.12.0**: "also on" names three modules at most and counts the rest (all of them in the tooltip); more than 8 modules get a compact keypad of 7 columns with the module name in the tooltip
 - **Dashboard v2.11.0**: The LCD follows the selected module key (who transmits there, or who was heard there last); without a selection it shows the transmission that started last, and "also on S" names the other modules on the air, in the LCD and the on-air line
 - **Dashboard v2.10.0**: Operator's first name next to the callsign in the LCD, the last-heard list, the on-air line and `/json/stations`; a speaker change shows within about two seconds (a small probe, `api/onair.php`, is polled every 1.5 s and triggers the reload); a smaller LCD; the theme switch keeps the top bar on one line
+- **Module node count without links (4.12.2)**: `<LinkedNodes>` counts only the nodes the status file lists; a link the reflector keeps to another server (MMDVMClient, DCS, DExtra, DPlus or YSF client, DCS peer) no longer adds one to each module it is mapped to
 - **Clean transcoder shutdown (4.12.1)**: stopping urfd no longer floods the log with `POLLNVAL received on module`; a socket that turns invalid is dropped, the socket list is no longer emptied under the running codec threads, and an error or hangup without data is no longer handed on as a packet
 - **Operator names in the status file (4.12.0)**: `<Name>` per station from the DMR ID database (NXDN as fallback), looked up on a copy of the list so a database reload never holds up the last-heard lock; the status file is written right after a stream opens or closes or a station is heard, not only every 10 s
 - **Dashboard v2.9.0**: Redesign as a radio front panel: LCD with the station on the air, module keypad, merged Modules page, light and dark theme, self-hosted font, Bootstrap removed
