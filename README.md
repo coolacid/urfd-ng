@@ -570,11 +570,11 @@ Module names are configured once in `urfd.ini` and automatically available in th
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.10.0
+### Dashboard v2.11.0
 Redesigned in v2.9.0 as the front panel of a radio: an amber LCD shows who is on the air, the modules are a keypad, the rest are plain tables. Before that: dark mode (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2), status file and admin socket fixes (v2.8.3). Since v2.10.0 the operator's first name stands next to the callsign, from the ID databases urfd loads (urfd 4.12.0 and later).
 
 **Pages:**
-- **Last heard** - The LCD shows the station transmitting right now with its module, mode, route and a running timer, or the last station heard, dimmed. Next to it a key per module: amber when nodes are linked, a red mark while someone transmits. A key filters the log to its module; the callsign filter takes wildcards (`DL*`). Both filters survive the page refresh.
+- **Last heard** - The LCD shows the station transmitting right now with its module, mode, route and a running timer, or the last station heard, dimmed. Next to it a key per module: amber when nodes are linked, a red mark while someone transmits. A key switches the LCD and the log to its module; without a key the LCD shows the transmission that started last and names the other modules on the air; the callsign filter takes wildcards (`DL*`). Both filters survive the page refresh.
 - **Modules** - One table per module: name, linked nodes (expandable), DMR+ TG, YSF DG-ID, NXDN RAN and destination ID, transcoding and bridges (static, and dashed for runtime ones). Protocol columns are hidden when the protocol is off. Below it the server protocols with their ports; client protocols that connect outbound are left out. `?show=modulesd` from older links lands here.
 - **Links**, **Peers** - Linked nodes and peer reflectors, with how long they have been linked and the IP as far as `IPModus` allows.
 - **Reflector list** - The XLX directory with search and 25 per page.
@@ -846,6 +846,7 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
 - **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
+- **Dashboard v2.11.0**: The LCD follows the selected module key (who transmits there, or who was heard there last); without a selection it shows the transmission that started last, and "also on S" names the other modules on the air, in the LCD and the on-air line
 - **Dashboard v2.10.0**: Operator's first name next to the callsign in the LCD, the last-heard list, the on-air line and `/json/stations`; a speaker change shows within about two seconds (a small probe, `api/onair.php`, is polled every 1.5 s and triggers the reload); a smaller LCD; the theme switch keeps the top bar on one line
 - **Clean transcoder shutdown (4.12.1)**: stopping urfd no longer floods the log with `POLLNVAL received on module`; a socket that turns invalid is dropped, the socket list is no longer emptied under the running codec threads, and an error or hangup without data is no longer handed on as a packet
 - **Operator names in the status file (4.12.0)**: `<Name>` per station from the DMR ID database (NXDN as fallback), looked up on a copy of the list so a database reload never holds up the last-heard lock; the status file is written right after a stream opens or closes or a station is heard, not only every 10 s

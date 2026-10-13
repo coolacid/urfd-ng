@@ -286,19 +286,30 @@ function StationVia($Reflector, $st) {
     return $via;
 }
 
-// who is on the air: the newest station heard on a module that has an open stream,
-// as array(module, callsign, station or null), or null when nobody transmits
-function OnAirNow($Reflector, $Modules) {
+// everyone on the air, one array(module, callsign, station or null) per module with an
+// open stream, the transmission that started last first
+function OnAirAll($Reflector, $Modules) {
+	$out = array();
 	foreach ($Modules as $mod => $info) {
 		if ($info['onair'] == '') continue;
 		$cs = trim($info['onair']);
+		$found = null;
 		for ($i = 0; $i < $Reflector->StationCount(); $i++) {
 			$st = $Reflector->Stations[$i];
-			if ($st->GetModule() == $mod && trim($st->GetCallsignOnly()) == $cs) return array($mod, $cs, $st);
+			if ($st->GetModule() == $mod && trim($st->GetCallsignOnly()) == $cs) { $found = $st; break; }
 		}
-		return array($mod, $cs, null);
+		$out[] = array($mod, $cs, $found);
 	}
-	return null;
+	usort($out, function ($a, $b) {
+		return ($b[2] ? $b[2]->GetLastHeardTime() : 0) <=> ($a[2] ? $a[2]->GetLastHeardTime() : 0);
+	});
+	return $out;
+}
+
+// the transmission that started last, or null when nobody transmits
+function OnAirNow($Reflector, $Modules) {
+	$all = OnAirAll($Reflector, $Modules);
+	return count($all) ? $all[0] : null;
 }
 
 // a fingerprint of the status file: who is on the air on which module and who was heard

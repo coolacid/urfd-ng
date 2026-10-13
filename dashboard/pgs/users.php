@@ -10,54 +10,77 @@ if (count($Keys) == 0) {
     ksort($Keys);
 }
 
-// what the LCD shows: the station on the air, else the last one heard
-$LcdStation = null;
-$LcdCall = '';
-$LcdMod = '';
-if ($OnAir !== null) {
-    list($LcdMod, $LcdCall, $LcdStation) = $OnAir;
-} else if ($Reflector->GetStation(0) !== false) {
-    $LcdStation = $Reflector->GetStation(0);
-    $LcdCall = $LcdStation->GetCallsignOnly();
-    $LcdMod = $LcdStation->GetModule();
+// the LCD: one panel for the whole reflector and, with the filter on, one per module;
+// the page shows the one that matches the selected key
+$AllOnAir = OnAirAll($Reflector, $Modules);
+
+function LcdPanel($Reflector, $key, $onair, $last, $also, $hidden) {
+    $st = $onair ? $onair[2] : $last;
+    $call = $onair ? $onair[1] : ($last ? $last->GetCallsignOnly() : '');
+    $mod = $onair ? $onair[0] : ($last ? $last->GetModule() : $key);
+    $cls = 'lcd'.($onair ? '' : ' idle').($call == '' ? ' empty' : '');
+    echo '<div class="'.$cls.'" data-lcd="'.h($key).'" data-call="'.h($mod.$call).'"'.($hidden ? ' hidden' : '').'>';
+    echo '<div class="lcd-top">';
+    if ($onair) {
+        echo '<span class="ann">TX</span><span>Transmitting</span>';
+    } else if ($last) {
+        echo '<span>Last heard '.FormatAgo($last->GetLastHeardTime()).'</span>';
+    } else {
+        echo '<span>'.($key != '' ? 'Nothing heard on module '.h($key).' yet' : 'Nobody heard yet').'</span>';
+    }
+    if (count($also)) echo '<span class="lcd-also">also on '.h(implode(', ', $also)).'</span>';
+    if ($onair && $st) echo '<span class="lcd-timer" data-since="'.(int)$st->GetLastHeardTime().'"></span>';
+    echo '</div>';
+    if ($call != '') {
+        echo '<p class="lcd-call">'.h($call);
+        if ($st && $st->GetSuffix() != '') echo '<small>/'.h($st->GetSuffix()).'</small>';
+        if ($st && $st->GetName() != '') echo '<span class="lcd-name">'.h($st->GetName()).'</span>';
+        echo '</p>';
+        echo '<div class="lcd-ch"><span>Module</span><b>'.h($mod).'</b></div>';
+        echo '<dl class="lcd-fields">';
+        echo '<div><dt>Mode</dt><dd>'.(($st && $st->GetProtocol() != '') ? h($st->GetProtocol()) : 'unknown').'</dd></div>';
+        echo '<div><dt>Via</dt><dd>'.($st ? h(StationVia($Reflector, $st)) : 'unknown').'</dd></div>';
+        if ($st && $st->GetLocator() != '') echo '<div><dt>Locator</dt><dd>'.h($st->GetLocator()).'</dd></div>';
+        echo '</dl>';
+    } else {
+        echo '<p class="lcd-call">'.($key != '' ? 'Quiet so far' : 'Waiting for the first call').'</p>';
+        if ($key != '') echo '<div class="lcd-ch"><span>Module</span><b>'.h($key).'</b></div>';
+    }
+    echo '</div>';
 }
 
-$LcdClass = 'lcd'.(($OnAir === null) ? ' idle' : '').(($LcdCall == '') ? ' empty' : '');
+// modules on the air other than $mod
+function OtherOnAir($AllOnAir, $mod) {
+    $out = array();
+    foreach ($AllOnAir as $e) if ($e[0] != $mod) $out[] = $e[0];
+    sort($out);
+    return $out;
+}
 ?>
 <div class="page">
     <section class="deck" aria-label="On the air">
-        <div class="bezel">
-            <div class="<?php echo $LcdClass; ?>" id="lcd" data-call="<?php echo h($LcdMod.$LcdCall); ?>" aria-live="polite">
-                <div class="lcd-top">
-<?php if ($OnAir !== null) { ?>
-                    <span class="ann">TX</span><span>Transmitting</span>
-                    <?php if ($LcdStation) { ?><span class="lcd-timer" data-since="<?php echo (int)$LcdStation->GetLastHeardTime(); ?>"></span><?php } ?>
-<?php } else if ($LcdStation) { ?>
-                    <span>Last heard <?php echo FormatAgo($LcdStation->GetLastHeardTime()); ?></span>
-<?php } else { ?>
-                    <span>Nobody heard yet</span>
-<?php } ?>
-                </div>
-<?php if ($LcdCall != '') {
-    $sfx = $LcdStation ? $LcdStation->GetSuffix() : '';
+        <div class="bezel" id="lcds" aria-live="polite">
+<?php
+$first = count($AllOnAir) ? $AllOnAir[0] : null;
+LcdPanel($Reflector, '', $first, $Reflector->GetStation(0) ?: null, OtherOnAir($AllOnAir, $first ? $first[0] : ''), false);
+if ($ShowFilter) {
+    foreach ($Keys as $mod => $info) {
+        $mine = null;
+        foreach ($AllOnAir as $e) if ($e[0] == $mod) $mine = $e;
+        $last = null;
+        for ($i = 0; $i < $Reflector->StationCount(); $i++) {
+            if ($Reflector->Stations[$i]->GetModule() == $mod) { $last = $Reflector->Stations[$i]; break; }
+        }
+        LcdPanel($Reflector, $mod, $mine, $last, OtherOnAir($AllOnAir, $mod), true);
+    }
+}
 ?>
-                <p class="lcd-call"><?php echo h($LcdCall); ?><?php if ($sfx != '') echo '<small>/'.h($sfx).'</small>'; ?><?php if ($LcdStation && $LcdStation->GetName() != '') echo '<span class="lcd-name">'.h($LcdStation->GetName()).'</span>'; ?></p>
-                <div class="lcd-ch"><span>Module</span><b><?php echo h($LcdMod); ?></b></div>
-                <dl class="lcd-fields">
-                    <div><dt>Mode</dt><dd><?php echo ($LcdStation && $LcdStation->GetProtocol() != '') ? h($LcdStation->GetProtocol()) : 'unknown'; ?></dd></div>
-                    <div><dt>Via</dt><dd><?php echo $LcdStation ? h(StationVia($Reflector, $LcdStation)) : 'unknown'; ?></dd></div>
-                    <?php if ($LcdStation && $LcdStation->GetLocator() != '') { ?><div><dt>Locator</dt><dd><?php echo h($LcdStation->GetLocator()); ?></dd></div><?php } ?>
-                </dl>
-<?php } else { ?>
-                <p class="lcd-call">Waiting for the first call</p>
-<?php } ?>
-            </div>
         </div>
 
         <div>
             <div class="keys-head">
                 <h2>Modules</h2>
-                <?php if ($ShowFilter) { ?><p class="hint">Tap one to filter the log</p><?php } ?>
+                <?php if ($ShowFilter) { ?><p class="hint">Tap one to follow it in the display and the log</p><?php } ?>
             </div>
             <div class="keys" id="keys">
 <?php
@@ -167,11 +190,17 @@ if ($count == 0) echo '<tr class="empty"><td colspan="7">Nobody heard since the 
         var clear = document.getElementById('f-clear'); if (clear) clear.hidden = !(state.m || state.cs);
         try { sessionStorage.setItem('urf-filter', JSON.stringify(state)); } catch (e) {}
 
-        // a new call on the LCD flickers once, like the display switching over
-        var lcd = document.getElementById('lcd');
-        if (lcd) {
-            if (lastCall !== null && lcd.dataset.call !== lastCall) { lcd.classList.remove('flick'); void lcd.offsetWidth; lcd.classList.add('flick'); }
-            lastCall = lcd.dataset.call;
+        // the LCD follows the selected module; a new call on it flickers once, like the display switching over
+        var shownLcd = null;
+        document.querySelectorAll('#lcds .lcd').forEach(function (l) {
+            var on = l.dataset.lcd === (state.m || '');
+            l.hidden = !on; if (on) shownLcd = l;
+        });
+        if (!shownLcd) { shownLcd = document.querySelector('#lcds .lcd[data-lcd=""]'); if (shownLcd) shownLcd.hidden = false; }
+        if (shownLcd) {
+            var key = shownLcd.dataset.lcd + '|' + shownLcd.dataset.call;
+            if (lastCall !== null && key !== lastCall && key.split('|')[0] === lastCall.split('|')[0]) { shownLcd.classList.remove('flick'); void shownLcd.offsetWidth; shownLcd.classList.add('flick'); }
+            lastCall = key;
         }
     }
     document.addEventListener('click', function (e) {

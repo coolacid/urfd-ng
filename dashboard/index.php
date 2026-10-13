@@ -50,14 +50,20 @@ function NavLink($page, $label, $count = null) {
 }
 
 // the slim LCD line shown above every page but Last heard and Admin
-function OnAirStrip($Reflector, $OnAir) {
+function OnAirStrip($Reflector, $OnAir, $Modules) {
     if ($OnAir !== null) {
+        $also = array();
+        foreach (OnAirAll($Reflector, $Modules) as $e) if ($e[0] != $OnAir[0]) $also[] = $e[0];
+        sort($also);
         list($mod, $cs, $st) = $OnAir;
         echo '<div class="strip" id="strip" aria-live="polite"><div class="strip-in"><span class="ann">TX</span><b>'.h($cs).'</b>'.(($st && $st->GetName() != '') ? '<span>'.h($st->GetName()).'</span>' : '').'<span>Module '.h($mod).'</span>';
         if ($st) {
             if ($st->GetProtocol() != '') echo '<span>'.h($st->GetProtocol()).'</span>';
             $via = StationVia($Reflector, $st);
             if ($via != '') echo '<span>via '.h($via).'</span>';
+        }
+        if (count($also)) echo '<span class="lcd-also">also on '.h(implode(', ', $also)).'</span>';
+        if ($st) {
             echo '<span class="t" data-since="'.(int)$st->GetLastHeardTime().'"></span>';
         }
         echo '</div></div>';
@@ -125,7 +131,7 @@ if (isset($PageOptions['MOTD']) && trim($PageOptions['MOTD']) !== '') {
 ?>
 <main>
     <div class="wrap">
-        <?php if ($Show != 'users' && $Show != 'admin') OnAirStrip($Reflector, $OnAir); ?>
+        <?php if ($Show != 'users' && $Show != 'admin') OnAirStrip($Reflector, $OnAir, $Modules); ?>
         <div id="page" data-now="<?php echo time(); ?>" data-state="<?php echo OnAirFingerprint($Reflector->GetXMLContent()); ?>">
 <?php
 switch ($Show) {

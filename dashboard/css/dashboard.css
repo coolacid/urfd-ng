@@ -134,6 +134,8 @@ h3 { font-size: var(--fs-m); }
 }
 .lcd-top { grid-area: top; display: flex; align-items: center; gap: 0.6rem; font-size: var(--fs-s); font-weight: 600; min-height: 1.6rem; }
 .ann { background: var(--lcd-ink); color: var(--lcd); font-weight: 750; font-size: var(--fs-s); line-height: 1; padding: 0.22rem 0.4rem 0.18rem; border-radius: 2px; }
+.lcd-also { margin-left: auto; font-size: var(--fs-xs); font-weight: 600; border: 1px solid var(--lcd-ink); border-radius: 2px; padding: 0.05rem 0.35rem; }
+.lcd-also + .lcd-timer { margin-left: 0.6rem; }
 .lcd-timer { margin-left: auto; font-weight: 600; font-stretch: 80%; font-size: var(--fs-l); line-height: 1; }
 .lcd-call {
   grid-area: call; align-self: end; margin: 0;
@@ -160,6 +162,7 @@ h3 { font-size: var(--fs-m); }
             padding: 0.4rem 0.8rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.9rem; font-size: var(--fs-s); }
 .strip-in b { font-size: var(--fs-l); font-stretch: 62%; font-weight: 650; line-height: 1.1; }
 .strip-in .t { margin-left: auto; font-weight: 600; }
+.strip-in .lcd-also + .t { margin-left: 0; }
 .strip.idle .strip-in { color: var(--lcd-dim); }
 
 /* Module keypad */
