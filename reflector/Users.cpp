@@ -52,6 +52,28 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 	Hearing(my, rpt1, rpt2, g_Reflector.GetCallsign(), proto);
 }
 
+static void DispatchStationEvent(const std::string &eventType, const CUser &heard)
+{
+	try {
+		CEvent ev;
+		ev.event_type = eventType;
+		ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
+		ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
+		nlohmann::json p;
+		p["callsign"] = heard.GetCallsign();
+		p["via_node"] = heard.GetViaNode();
+		p["via_peer"] = heard.GetViaPeer();
+		p["on_module"] = std::string(1, heard.GetOnModule());
+		p["protocol"] = heard.GetProtocol();
+		p["last_heard_time"] = heard.GetLastHeardTime();
+		p["locator"] = heard.GetLocator();
+		ev.payload = p.dump();
+		CNotifierManager::Instance().Dispatch(ev);
+	} catch (const std::exception &ex) {
+		std::cerr << "Notifier: exception in station event dispatch: " << ex.what() << std::endl;
+	}
+}
+
 void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign &rpt2, const CCallsign &xlx, const std::string &proto)
 {
 	CUser heard(my, rpt1, rpt2, xlx, proto);
@@ -66,6 +88,32 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 		}
 	}
 
+	const auto now = std::time(nullptr);
+	for (auto it = m_ActiveStations.begin(); it != m_ActiveStations.end(); )
+	{
+		if (now - it->second.GetLastHeardTime() > kStationEndTimeoutSec)
+		{
+			DispatchStationEvent("station_stopped", it->second);
+			it = m_ActiveStations.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	const std::string key = my.GetBase();
+	const auto activeIt = m_ActiveStations.find(key);
+	if (activeIt == m_ActiveStations.end())
+	{
+		m_ActiveStations.emplace(key, heard);
+		DispatchStationEvent("station_started", heard);
+	}
+	else
+	{
+		activeIt->second = heard;
+	}
+
 	// first check if this user is already listed. If so, erase him.
 	for ( auto it=begin(); it!=end(); it++ )
 	{
@@ -78,26 +126,6 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 
 	AddUser(heard);
 	g_Reflector.StatusChanged();
-
-	// Dispatch a station/last-heard update immediately
-	try {
-	    CEvent ev;
-	    ev.event_type = "station_heard";
-	    ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
-	    ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
-	    nlohmann::json p;
-	    p["callsign"] = heard.GetCallsign();
-	    p["via_node"] = heard.GetViaNode();
-	    p["via_peer"] = heard.GetViaPeer();
-	    p["on_module"] = std::string(1, heard.GetOnModule());
-	    p["protocol"] = heard.GetProtocol();
-	    p["last_heard_time"] = heard.GetLastHeardTime();
-	    p["locator"] = heard.GetLocator();
-	    ev.payload = p.dump();
-	    CNotifierManager::Instance().Dispatch(ev);
-	} catch (const std::exception &ex) {
-	    std::cerr << "Notifier: exception in Hearing dispatch: " << ex.what() << std::endl;
-	}
 }
 
 void CUsers::Location(const CCallsign &my, double lat, double lon)
