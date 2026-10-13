@@ -306,6 +306,16 @@ function OnAirAll($Reflector, $Modules) {
 	return $out;
 }
 
+// the "also on" box for the other modules on the air: three letters at most, the rest
+// as a count, all of them in the tooltip
+function AlsoOnAir($mods) {
+	if (count($mods) == 0) return '';
+	$shown = array_slice($mods, 0, 3);
+	$more = count($mods) - count($shown);
+	return '<span class="lcd-also" title="Also on the air: module '.h(implode(', ', $mods)).'">also on '
+		.h(implode(', ', $shown)).($more > 0 ? ' +'.$more : '').'</span>';
+}
+
 // the transmission that started last, or null when nobody transmits
 function OnAirNow($Reflector, $Modules) {
 	$all = OnAirAll($Reflector, $Modules);

@@ -28,7 +28,7 @@ function LcdPanel($Reflector, $key, $onair, $last, $also, $hidden) {
     } else {
         echo '<span>'.($key != '' ? 'Nothing heard on module '.h($key).' yet' : 'Nobody heard yet').'</span>';
     }
-    if (count($also)) echo '<span class="lcd-also">also on '.h(implode(', ', $also)).'</span>';
+    echo AlsoOnAir($also);
     if ($onair && $st) echo '<span class="lcd-timer" data-since="'.(int)$st->GetLastHeardTime().'"></span>';
     echo '</div>';
     if ($call != '') {
@@ -82,7 +82,11 @@ if ($ShowFilter) {
                 <h2>Modules</h2>
                 <?php if ($ShowFilter) { ?><p class="hint">Tap one to follow it in the display and the log</p><?php } ?>
             </div>
-            <div class="keys" id="keys">
+<?php
+// up to 8 modules get wide keys with their name, more get a compact pad of 7 columns
+$Cols = (count($Keys) > 8) ? 7 : 4;
+?>
+            <div class="keys<?php echo ($Cols == 7) ? ' many' : ''; ?>" id="keys">
 <?php
 $n = 0;
 foreach ($Keys as $mod => $info) {
@@ -92,13 +96,13 @@ foreach ($Keys as $mod => $info) {
     $label = 'Module '.$mod.($info['name'] != '' ? ', '.$info['name'] : '').', '.$nodes.($nodes == 1 ? ' node' : ' nodes').($tx ? ', transmitting' : '');
     $inner = '<i class="led"></i><span class="l">'.h($mod).'</span><span class="n">'.$nodes.'</span><span class="d">'.h($info['name']).'</span>';
     if ($ShowFilter) {
-        echo '<button type="button" class="'.$cls.'" data-m="'.h($mod).'" aria-pressed="false" aria-label="'.h($label).'">'.$inner.'</button>';
+        echo '<button type="button" class="'.$cls.'" data-m="'.h($mod).'" aria-pressed="false" aria-label="'.h($label).'" title="'.h($label).'">'.$inner.'</button>';
     } else {
-        echo '<div class="'.$cls.'" aria-label="'.h($label).'" role="img">'.$inner.'</div>';
+        echo '<div class="'.$cls.'" aria-label="'.h($label).'" title="'.h($label).'" role="img">'.$inner.'</div>';
     }
     $n++;
 }
-while ($n == 0 || $n % 4) { echo '<span class="key blank" aria-hidden="true"></span>'; $n++; }
+while ($n == 0 || $n % $Cols) { echo '<span class="key blank" aria-hidden="true"></span>'; $n++; }
 ?>
             </div>
         </div>

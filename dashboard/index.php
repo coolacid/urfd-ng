@@ -62,7 +62,7 @@ function OnAirStrip($Reflector, $OnAir, $Modules) {
             $via = StationVia($Reflector, $st);
             if ($via != '') echo '<span>via '.h($via).'</span>';
         }
-        if (count($also)) echo '<span class="lcd-also">also on '.h(implode(', ', $also)).'</span>';
+        echo AlsoOnAir($also);
         if ($st) {
             echo '<span class="t" data-since="'.(int)$st->GetLastHeardTime().'"></span>';
         }

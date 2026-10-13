@@ -132,9 +132,9 @@ h3 { font-size: var(--fs-m); }
   gap: 0.25rem 1.1rem;
   min-height: 11rem;
 }
-.lcd-top { grid-area: top; display: flex; align-items: center; gap: 0.6rem; font-size: var(--fs-s); font-weight: 600; min-height: 1.6rem; }
+.lcd-top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; row-gap: 0.3rem; gap: 0.6rem; font-size: var(--fs-s); font-weight: 600; min-height: 1.6rem; }
 .ann { background: var(--lcd-ink); color: var(--lcd); font-weight: 750; font-size: var(--fs-s); line-height: 1; padding: 0.22rem 0.4rem 0.18rem; border-radius: 2px; }
-.lcd-also { margin-left: auto; font-size: var(--fs-xs); font-weight: 600; border: 1px solid var(--lcd-ink); border-radius: 2px; padding: 0.05rem 0.35rem; }
+.lcd-also { margin-left: auto; white-space: nowrap; font-size: var(--fs-xs); font-weight: 600; border: 1px solid var(--lcd-ink); border-radius: 2px; padding: 0.05rem 0.35rem; }
 .lcd-also + .lcd-timer { margin-left: 0.6rem; }
 .lcd-timer { margin-left: auto; font-weight: 600; font-stretch: 80%; font-size: var(--fs-l); line-height: 1; }
 .lcd-call {
@@ -191,6 +191,11 @@ button.key.busy:hover { background: var(--lcd-press); }
 .key.tx .led { background: var(--tx); }
 .key[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
 .key.blank { background: var(--panel-sunk); }
+.keys.many { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.keys.many .key { min-height: 3.4rem; padding: 0.4rem 0.45rem; }
+.keys.many .key .l { font-size: var(--fs-l); }
+.keys.many .key .d { display: none; }
+.keys.many .key .led { left: 0.45rem; width: 0.9rem; }
 
 /* Tables */
 .tbl-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 0.75rem 1.5rem; margin-bottom: 0.75rem; }
