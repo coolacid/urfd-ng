@@ -89,8 +89,8 @@ section > header { display: flex; flex-wrap: wrap; justify-content: space-betwee
 
 /* module LCDs */
 .mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 1.25rem; }
-.mod { display: grid; gap: 0.5rem; min-width: 0; }
-.bezel { background: var(--bezel); border-radius: 12px; padding: 8px; }
+.mod { display: grid; grid-template-rows: 1fr auto; gap: 0.5rem; min-width: 0; }
+.bezel { background: var(--bezel); border-radius: 12px; padding: 8px; display: grid; }
 .lcd { border-radius: 5px; background: var(--lcd); color: var(--lcd-ink); box-shadow: inset 0 3px 0 #00000024;
        padding: 0.7rem 1rem 0.8rem; display: grid; grid-template-columns: minmax(0, 1fr) auto;
        grid-template-areas: "top ch" "codec ch" "meters meters"; gap: 0.2rem 1rem; }
@@ -98,7 +98,7 @@ section > header { display: flex; flex-wrap: wrap; justify-content: space-betwee
 .ann { background: var(--lcd-ink); color: var(--lcd); font-weight: 750; font-size: var(--fs-xs); line-height: 1; padding: 0.22rem 0.4rem 0.18rem; border-radius: 2px; }
 .ann.gate { background: transparent; color: var(--lcd-ink); box-shadow: inset 0 0 0 1.5px var(--lcd-ink); }
 .lcd-codec { grid-area: codec; margin: 0; font-size: clamp(2.2rem, 6vw, 3.25rem); font-weight: 650; font-stretch: 60%; line-height: 0.95; overflow-wrap: anywhere; }
-.lcd-codec small { display: block; font-size: var(--fs-xs); font-weight: 500; font-stretch: 90%; line-height: 1.3; margin-top: 0.3rem; color: var(--lcd-dim); }
+.lcd-codec small { display: block; min-height: 1.3em; font-size: var(--fs-xs); font-weight: 500; font-stretch: 90%; line-height: 1.3; margin-top: 0.3rem; color: var(--lcd-dim); }
 .lcd-ch { grid-area: ch; align-self: stretch; display: grid; align-content: center; justify-items: center;
           border-left: 2px solid #2a190533; padding-left: 1rem; }
 .lcd-ch span { font-size: var(--fs-xs); color: var(--lcd-dim); }
@@ -388,7 +388,7 @@ function render() {
       p.ann.hidden = true;
       p.state.textContent = m.codec_in === 'none' ? 'No stream since tcd started' : 'Last stream ' + m.codec_in + ', ' + Math.round(m.idle) + ' s ago';
       p.codec.textContent = 'Idle';
-      p.to.textContent = '';
+      p.to.textContent = 'Waiting for a stream';
     }
     p.fin.style.width = pos(m.rms_in) + '%';
     p.pin.style.left = 'calc(' + pos(m.peak_in) + '% - 1.5px)';
@@ -408,7 +408,7 @@ function render() {
         '<span class="arr">→</span>PCM ' + db(m.rms_in) +
         '<span class="arr">→</span>' + (cfg.agc_enabled ? (m.agc_gate ? 'gate' : 'AGC ' + signed(m.agc_gain) + ' dB') : 'no AGC') +
         '<span class="arr">→</span>PCM ' + db(m.rms_out)
-      : '<span>Waiting for a stream</span>';
+      : '<span>No signal path while idle</span>';
     p.flow.innerHTML = flow + '<span class="pkts">' + m.pkts_in + ' in, ' + m.pkts_out + ' out</span>';
   });
 
