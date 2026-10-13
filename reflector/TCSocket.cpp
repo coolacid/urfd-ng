@@ -37,7 +37,8 @@ void CTCSocket::Close()
 			Close(item.fd);
 		}
 	}
-	m_Pfd.clear();
+	// the entries stay, each now -1: codec threads still running at shutdown look
+	// them up by module and must find a closed socket, not a vector emptied under them
 }
 
 void CTCSocket::Close(char mod)
@@ -232,12 +233,19 @@ bool CTCServer::Receive(char module, STCPacket *packet, int ms)
 	}
 	if (pfds->revents & POLLNVAL)
 	{
-		std::cerr << "POLLNVAL received on module " << module << "'" << std::endl;
+		// the descriptor is no longer open (closed at shutdown): forget it, or the
+		// codec thread polls it again at once, forever
+		std::cerr << "POLLNVAL received on module '" << module << "', dropping the socket" << std::endl;
+		pfds->fd = -1;
 	}
 
 	if (rv)
 		Close(pfds->fd);
-		
+
+	// only an error or hangup, nothing read: there is no packet
+	if (!(pfds->revents & POLLIN))
+		return false;
+
 	if(packet->codec_in == ECodecType::ping)
 		return false; 
 	else 
