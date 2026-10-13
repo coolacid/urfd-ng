@@ -51,6 +51,15 @@ bool CWebsocketLwsNotifier::Start(const std::string &bindAddr, uint16_t port, in
     m_PingInterval = std::chrono::seconds(std::max(5, pingIntervalSec));
     m_IdleTimeout = std::chrono::seconds(std::max<int>(static_cast<int>(m_PingInterval.count()) * 3, idleTimeoutSec));
 
+    // libwebsockets emits its own verbose startup chatter to stderr. Keep it quiet
+    // in normal builds so it doesn't pollute the rest of the reflector logs; allow
+    // higher levels only in debug builds.
+#ifdef DEBUG
+    lws_set_log_level(LLL_ERR | LLL_WARN, nullptr);
+#else
+    lws_set_log_level(0, nullptr);
+#endif
+
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
     info.port = port;
