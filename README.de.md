@@ -551,6 +551,7 @@ Die XML-Statusdatei enthält jetzt:
 - **Zuordnungen pro Modul**: Autolinks (YSF, NXDN, P25), TG-Zuordnungen (MMDVM, MMDVMClient, SvxReflector, SVXServer), D-Star-Client-Zuordnungen (DCSClient, DExtraClient, DPlusClient mit Verbindungsstatus), YSF-Client-Zuordnungen (YSFClient mit DG-ID)
 - **Aktive Protokolle**: Name und Port jedes eingeschalteten Protokolls
 - **Protokoll pro Station**: Über welches Protokoll eine Station gehört wurde (DCS, MMDVMClient, YSF usw.)
+- **Name pro Station**: `<Name>` mit dem Vornamen aus der DMR-ID-Datenbank, sonst aus der NXDN-Datenbank, wenn das Rufzeichen darin steht
 - **Auf Sendung**: `<OnAir>` in jedem Modul mit offenem Stream, mit dem sendenden Rufzeichen
 - **Position pro Station**: `<Locator>`, `<Latitude>` und `<Longitude>` für Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position gesendet haben
 - **Kennzeichnung dynamischer TGs**: `<Dynamic>true</Dynamic>` und `<Remaining>` Sekunden für zur Laufzeit hinzugefügte TGs
@@ -559,8 +560,8 @@ Modulnamen werden einmal in `urfd.ini` eingetragen und stehen automatisch im Das
 
 Der JSON-Report enthält außerdem ein Array `DynamicTGs` mit Protokoll, TG, Modul und Restlaufzeit aller aktiven dynamischen Zuordnungen.
 
-### Dashboard v2.9.0
-In v2.9.0 neu gestaltet als Frontplatte eines Funkgeräts: Ein bernsteinfarbenes LCD zeigt, wer gerade sendet, die Module sind ein Tastenfeld, der Rest sind schlichte Tabellen. Davor: dunkles Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0), Sicherheitskorrekturen (v2.8.1, v2.8.2), Korrekturen an Statusdatei und Admin-Socket (v2.8.3).
+### Dashboard v2.10.0
+In v2.9.0 neu gestaltet als Frontplatte eines Funkgeräts: Ein bernsteinfarbenes LCD zeigt, wer gerade sendet, die Module sind ein Tastenfeld, der Rest sind schlichte Tabellen. Davor: dunkles Design (v2.6.0), robust gegen Ausfälle des Verzeichnisses (v2.6.1), M17-Positionen in der Last-Heard-Liste (v2.7.0), Eintrag ins Verzeichnis an den Reflektor abgegeben (v2.8.0), Sicherheitskorrekturen (v2.8.1, v2.8.2), Korrekturen an Statusdatei und Admin-Socket (v2.8.3). Seit v2.10.0 steht der Vorname neben dem Rufzeichen, aus den ID-Datenbanken, die urfd lädt (ab urfd 4.12.0).
 
 **Seiten:**
 - **Last heard**: Das LCD zeigt die Station, die gerade sendet, mit Modul, Betriebsart, Weg und laufender Sendezeit, sonst gedimmt die zuletzt gehörte. Daneben eine Taste pro Modul: bernsteinfarben, wenn Knoten verbunden sind, mit roter Markierung, solange jemand sendet. Eine Taste filtert das Log auf ihr Modul; der Rufzeichenfilter versteht Platzhalter (`DL*`). Beide Filter überstehen das Neuladen.
@@ -576,7 +577,7 @@ Jede Seite außer Last heard und Admin trägt oben eine schmale LCD-Zeile mit de
 - Helles und dunkles Design, folgt dem System, mit Umschalter in der Kopfleiste
 - Schrift (Saira, OFL) vom Dashboard selbst ausgeliefert, keine Anfrage an Google Fonts
 - Kein Bootstrap mehr; jQuery nur noch auf der Admin-Seite
-- Inhalt lädt sich alle `PageRefreshDelay` ms an Ort und Stelle neu, nicht während man in einem Feld tippt
+- Inhalt lädt sich alle `PageRefreshDelay` ms an Ort und Stelle neu, bei einem Sprecherwechsel sofort, nicht während man in einem Feld tippt
 - Locator von Stationen, die eine M17-GPS- oder eine D-Star-DPRS-Position senden, mit Link auf OpenStreetMap
 - MOTD-/Wartungsbanner über `$PageOptions['MOTD']` in config.inc.php
 - Modulnamen aus dem urfd-XML (eine einzige Quelle)
@@ -603,7 +604,7 @@ Nur lesende HTTP-Endpunkte unter `/json/`, ausgeliefert vom Dashboard:
 | `/json/reflector` | Vollständiger Reflektor-Datensatz mit Modulen und Angaben |
 | `/json/links` | Verbundene Knoten mit Rufzeichen, IP, Modul, Protokoll, Verbindungs- und Last-Heard-Zeit |
 | `/json/peers` | Gekoppelte Partner-Reflektoren |
-| `/json/stations` | Zuletzt gehörte Stationen mit Land; `locator`, `latitude` und `longitude`, wenn die Station eine M17-GPS- oder eine D-Star-DPRS-Position gesendet hat |
+| `/json/stations` | Zuletzt gehörte Stationen mit Land und `name` (Vorname aus der DMR- oder NXDN-ID-Datenbank, leer wenn unbekannt); `locator`, `latitude` und `longitude`, wenn die Station eine M17-GPS- oder eine D-Star-DPRS-Position gesendet hat |
 | `/json/modulesinuse` | Module mit den Rufzeichen, die gerade darauf sind |
 
 Endpunkte für Listen liefern `[]`, wenn sie leer sind (`/json/stations` liefert `{"stations":[]}`); ein unbekannter Pfad liefert 404.
@@ -823,6 +824,8 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Dashboard v2.6.0**: Neugestaltung im dunklen Design, Admin-Panel, Modulübersicht mit TG-Zuordnungen und NXDN-RAN, Spalten ausgeschalteter Protokolle ausgeblendet, Protokollliste, QuadNet-Live-Proxy, Reflektorliste mit Suche und Seitenaufteilung
 - **Dashboard v2.6.1**: Übersteht einen Ausfall des XLX-Verzeichnisses. Feste Timeouts bei jeder ausgehenden Anfrage, CallingHome-Fehler werden ins Log geschrieben, statt die Seite abzubrechen, Reflektor- und Peer-Listen aus einem Cache auf der Platte, Admin-API nicht mehr hinter der PHP-Session-Sperre aufgereiht
 - **Dashboard v2.7.0**: Locator-Spalte für Stationen, die eine M17-GPS-Position senden, auch in `/json/stations`
+- **Dashboard v2.10.0**: Vorname neben dem Rufzeichen im LCD, in der Last-Heard-Liste, in der Sendezeile und in `/json/stations`; ein Sprecherwechsel erscheint nach etwa zwei Sekunden (eine kleine Abfrage, `api/onair.php`, läuft alle 1,5 s und stößt das Neuladen an); ein kleineres LCD; der Theme-Umschalter hält die Kopfleiste in einer Zeile
+- **Namen in der Statusdatei (4.12.0)**: `<Name>` pro Station aus der DMR-ID-Datenbank (NXDN als Rückfall), nachgeschlagen auf einer Kopie der Liste, damit ein Neuladen der Datenbank nie die Last-Heard-Sperre aufhält; die Statusdatei wird gleich nach dem Öffnen oder Schließen eines Streams oder dem Hören einer Station geschrieben, nicht nur alle 10 s
 - **Dashboard v2.9.0**: Neugestaltung als Frontplatte eines Funkgeräts: LCD mit der Station auf Sendung, Modul-Tastenfeld, zusammengelegte Modules-Seite, helles und dunkles Design, Schrift lokal, Bootstrap entfernt
 - **Sendezustand in der Statusdatei (4.11.0)**: Jedes Modul mit offenem Stream trägt `<OnAir>` mit dem sendenden Rufzeichen, sodass das Dashboard TX vom Reflektor erfährt, statt es aus der Last-Heard-Zeit zu raten
 - **Dashboard v2.8.3**: Ein Seitenaufruf bricht bei leerer Statusdatei nicht mehr ab; Admin-Antworten über 8 KB (Nutzer- und Peer-Listen, das Log) kommen vollständig an statt als "No response from admin socket"; `&`, `<` und `>` in Rufzeichen und Beschreibungen erscheinen als solche

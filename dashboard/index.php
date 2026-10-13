@@ -53,7 +53,7 @@ function NavLink($page, $label, $count = null) {
 function OnAirStrip($Reflector, $OnAir) {
     if ($OnAir !== null) {
         list($mod, $cs, $st) = $OnAir;
-        echo '<div class="strip" id="strip" aria-live="polite"><div class="strip-in"><span class="ann">TX</span><b>'.h($cs).'</b><span>Module '.h($mod).'</span>';
+        echo '<div class="strip" id="strip" aria-live="polite"><div class="strip-in"><span class="ann">TX</span><b>'.h($cs).'</b>'.(($st && $st->GetName() != '') ? '<span>'.h($st->GetName()).'</span>' : '').'<span>Module '.h($mod).'</span>';
         if ($st) {
             if ($st->GetProtocol() != '') echo '<span>'.h($st->GetProtocol()).'</span>';
             $via = StationVia($Reflector, $st);
@@ -68,7 +68,7 @@ function OnAirStrip($Reflector, $OnAir) {
         echo '<div class="strip idle" id="strip"><div class="strip-in"><span>Nobody heard yet</span></div></div>';
         return;
     }
-    echo '<div class="strip idle" id="strip"><div class="strip-in"><span>Last heard</span><b>'.h($st->GetCallsignOnly()).'</b><span>Module '.h($st->GetModule()).'</span>';
+    echo '<div class="strip idle" id="strip"><div class="strip-in"><span>Last heard</span><b>'.h($st->GetCallsignOnly()).'</b>'.($st->GetName() != '' ? '<span>'.h($st->GetName()).'</span>' : '').'<span>Module '.h($st->GetModule()).'</span>';
     if ($st->GetProtocol() != '') echo '<span>'.h($st->GetProtocol()).'</span>';
     echo '<span class="t">'.FormatAgo($st->GetLastHeardTime()).'</span></div></div>';
 }
@@ -114,7 +114,7 @@ function OnAirStrip($Reflector, $OnAir) {
         <div class="status">
             <?php if ($Reflector->GetServiceUptime() !== null) { ?><span class="up">Up <?php echo FormatSpan($Reflector->GetServiceUptime()); ?></span><?php } ?>
             <span class="ver">urfd <?php echo h($Reflector->GetVersion()); ?>, dashboard <?php echo h($PageOptions['DashboardVersion']); ?></span>
-            <button class="theme-btn" id="theme-btn" type="button">Theme: system</button>
+            <button class="theme-btn" id="theme-btn" type="button" aria-label="Theme: system" title="Theme: system. Click to switch">System</button>
         </div>
     </div>
 </header>
@@ -126,7 +126,7 @@ if (isset($PageOptions['MOTD']) && trim($PageOptions['MOTD']) !== '') {
 <main>
     <div class="wrap">
         <?php if ($Show != 'users' && $Show != 'admin') OnAirStrip($Reflector, $OnAir); ?>
-        <div id="page" data-now="<?php echo time(); ?>">
+        <div id="page" data-now="<?php echo time(); ?>" data-state="<?php echo OnAirFingerprint($Reflector->GetXMLContent()); ?>">
 <?php
 switch ($Show) {
     case 'modules'     : require_once("./pgs/modules.php"); break;
@@ -172,7 +172,10 @@ switch ($Show) {
     function applyTheme() {
         if (mode === 'system') document.documentElement.removeAttribute('data-theme');
         else document.documentElement.setAttribute('data-theme', mode);
-        $('theme-btn').textContent = 'Theme: ' + mode;
+        var b = $('theme-btn'), label = mode.charAt(0).toUpperCase() + mode.slice(1);
+        b.textContent = label;
+        b.setAttribute('aria-label', 'Theme: ' + mode);
+        b.title = 'Theme: ' + mode + '. Click to switch';
     }
     $('theme-btn').addEventListener('click', function () {
         mode = modes[(modes.indexOf(mode) + 1) % modes.length];
@@ -197,10 +200,15 @@ switch ($Show) {
 
 <?php if ($Refresh) { ?>
     // reload the page content in place; keep open details and skip while someone types
-    var delay = <?php echo (int)$PageOptions['PageRefreshDelay']; ?>;
+    // and right away when the on-air state changes, which a small probe tells every 1.5 s
+    var delay = <?php echo (int)$PageOptions['PageRefreshDelay']; ?>, timer = null, busy = false;
+    function later() { clearTimeout(timer); timer = setTimeout(reload, delay); }
     function reload() {
         var a = document.activeElement;
-        if (a && $('page').contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT')) { setTimeout(reload, delay); return; }
+        if (busy) return;
+        if (a && $('page').contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT')) { later(); return; }
+        busy = true;
+        clearTimeout(timer);
         fetch(location.href, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.text() : null; }).then(function (html) {
             if (!html) return;
             var doc = new DOMParser().parseFromString(html, 'text/html');
@@ -213,9 +221,16 @@ switch ($Show) {
             open.forEach(function (id) { var d = $(id); if (d) d.open = true; });
             setSkew(); tick();
             window.URF.onRefresh.forEach(function (fn) { fn(); });
-        }).catch(function () {}).then(function () { setTimeout(reload, delay); });
+        }).catch(function () {}).then(function () { busy = false; later(); });
     }
-    setTimeout(reload, delay);
+    function probe() {
+        if (document.hidden || busy) return;
+        fetch('./api/onair.php', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+            if (j && j.state && j.state !== $('page').dataset.state) reload();
+        }).catch(function () {});
+    }
+    later();
+    setInterval(probe, 1500);
 <?php } ?>
 })();
 </script>

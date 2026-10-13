@@ -301,6 +301,22 @@ function OnAirNow($Reflector, $Modules) {
 	return null;
 }
 
+// a fingerprint of the status file: who is on the air on which module and who was heard
+// last; it changes on every speaker change, so the pages reload right then
+function OnAirFingerprint($xml) {
+	$parts = array();
+	preg_match_all('#<Module>(.*?)</Module>#s', (string)$xml, $modules);
+	foreach ($modules[1] as $mod) {
+		if (preg_match('#<Name>([A-Z])</Name>#', $mod, $n) && preg_match('#<OnAir>([^<]*)</OnAir>#', $mod, $o)) {
+			$parts[] = $n[1].'='.trim($o[1]);
+		}
+	}
+	if (preg_match('#<STATION>.*?<Callsign>([^<]*)</Callsign>.*?<LastHeardTime>([^<]*)</LastHeardTime>#s', (string)$xml, $st)) {
+		$parts[] = trim($st[1]).'@'.trim($st[2]);
+	}
+	return md5(implode('|', $parts));
+}
+
 function CreateCode ($laenge) {
 	$zeichen = "1234567890abcdefghijklmnopqrstuvwyxzABCDEFGHIJKLMNAOPQRSTUVWYXZ";   
 	mt_srand( (double) microtime() * 1000000); 

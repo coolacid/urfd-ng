@@ -13,8 +13,9 @@ class Station {
    private $Locator;
    private $Latitude;
    private $Longitude;
+   private $Name;
 
-   public function __construct($Callsign, $Via, $Peer, $LastHeardTime, $OnModule, $Protocol = '', $Locator = '', $Latitude = '', $Longitude = '') {
+   public function __construct($Callsign, $Via, $Peer, $LastHeardTime, $OnModule, $Protocol = '', $Locator = '', $Latitude = '', $Longitude = '', $Name = '') {
       $this->Callsign      = trim($Callsign);
       $this->Via           = trim($Via);
       $this->Peer          = trim($Peer);
@@ -34,6 +35,8 @@ class Station {
       $this->Locator      = trim($Locator);
       $this->Latitude     = trim($Latitude);
       $this->Longitude    = trim($Longitude);
+      // operator's first name from the DMR or NXDN ID database, empty if unknown
+      $this->Name         = trim((string)$Name);
    }
  
    public function GetCallsign()             { return $this->Callsign;       }
@@ -47,6 +50,7 @@ class Station {
    public function GetLocator()              { return $this->Locator;        }
    public function GetLatitude()             { return $this->Latitude;       }
    public function GetLongitude()            { return $this->Longitude;      }
+   public function GetName()                 { return $this->Name;           }
    
 }
 

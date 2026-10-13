@@ -22,6 +22,7 @@ for ($i=0;$i<$Reflector->StationCount();$i++) {
         'callsignsuffix' => $CallsignSuffix,
         'vianode'        => $Reflector->Stations[$i]->GetVia(),
         'onmodule'       => $Reflector->Stations[$i]->GetModule(),
+        'name'           => $Reflector->Stations[$i]->GetName(),
         'lastheard'      => gmdate('Y-m-d\TH:i:sp', $Reflector->Stations[$i]->GetLastHeardTime())
     );
 

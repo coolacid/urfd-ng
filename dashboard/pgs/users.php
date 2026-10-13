@@ -41,7 +41,7 @@ $LcdClass = 'lcd'.(($OnAir === null) ? ' idle' : '').(($LcdCall == '') ? ' empty
 <?php if ($LcdCall != '') {
     $sfx = $LcdStation ? $LcdStation->GetSuffix() : '';
 ?>
-                <p class="lcd-call"><?php echo h($LcdCall); ?><?php if ($sfx != '') echo '<small>/'.h($sfx).'</small>'; ?></p>
+                <p class="lcd-call"><?php echo h($LcdCall); ?><?php if ($sfx != '') echo '<small>/'.h($sfx).'</small>'; ?><?php if ($LcdStation && $LcdStation->GetName() != '') echo '<span class="lcd-name">'.h($LcdStation->GetName()).'</span>'; ?></p>
                 <div class="lcd-ch"><span>Module</span><b><?php echo h($LcdMod); ?></b></div>
                 <dl class="lcd-fields">
                     <div><dt>Mode</dt><dd><?php echo ($LcdStation && $LcdStation->GetProtocol() != '') ? h($LcdStation->GetProtocol()) : 'unknown'; ?></dd></div>
@@ -114,6 +114,7 @@ for ($i = 0; $i < $count; $i++) {
     echo '<td class="state">'.($live ? '<span class="txtag">TX</span>' : '').'</td>';
     echo '<td class="cs"><a href="https://www.qrz.com/db/'.rawurlencode($cs).'" target="_blank" rel="noopener">'.h($cs).'</a>';
     if ($st->GetSuffix() != '') echo '<span class="sfx">/'.h($st->GetSuffix()).'</span>';
+    if ($st->GetName() != '') echo '<span class="op">'.h($st->GetName()).'</span>';
     if ($flag != '') echo '<span class="cc" title="'.h($country).'">'.h(strtoupper($flag)).'</span>';
     echo '</td>';
     echo '<td class="m"><span class="mod'.($live ? ' on' : '').'">'.h($mod).'</span></td>';

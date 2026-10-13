@@ -561,6 +561,7 @@ The XML status file now includes:
 - **Per-module mappings**: autolinks (YSF, NXDN, P25), TG mappings (MMDVM, MMDVMClient, SvxReflector, SVXServer), D-Star client mappings (DCSClient, DExtraClient, DPlusClient with connection status), YSF client mappings (YSFClient with DG-ID)
 - **Enabled protocols**: name and port for each active protocol
 - **Per-station protocol**: which protocol a user was heard on (DCS, MMDVMClient, YSF, etc.)
+- **Per-station name**: `<Name>` with the operator's first name from the DMR ID database, else the NXDN one, when the callsign is in there
 - **On air**: `<OnAir>` in each module that has an open stream, with the callsign transmitting
 - **Per-station position**: `<Locator>`, `<Latitude>` and `<Longitude>` for stations that sent an M17 GNSS or a D-Star DPRS position
 - **Dynamic TG indicators**: `<Dynamic>true</Dynamic>` and `<Remaining>` seconds for runtime-added TGs
@@ -569,8 +570,8 @@ Module names are configured once in `urfd.ini` and automatically available in th
 
 The JSON report also includes a `DynamicTGs` array with protocol, TG, module, and remaining seconds for all active dynamic mappings.
 
-### Dashboard v2.9.0
-Redesigned in v2.9.0 as the front panel of a radio: an amber LCD shows who is on the air, the modules are a keypad, the rest are plain tables. Before that: dark mode (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2), status file and admin socket fixes (v2.8.3).
+### Dashboard v2.10.0
+Redesigned in v2.9.0 as the front panel of a radio: an amber LCD shows who is on the air, the modules are a keypad, the rest are plain tables. Before that: dark mode (v2.6.0), hardened against directory outages (v2.6.1), M17 positions in the last-heard list (v2.7.0), directory registration moved to the reflector (v2.8.0), security fixes (v2.8.1, v2.8.2), status file and admin socket fixes (v2.8.3). Since v2.10.0 the operator's first name stands next to the callsign, from the ID databases urfd loads (urfd 4.12.0 and later).
 
 **Pages:**
 - **Last heard** - The LCD shows the station transmitting right now with its module, mode, route and a running timer, or the last station heard, dimmed. Next to it a key per module: amber when nodes are linked, a red mark while someone transmits. A key filters the log to its module; the callsign filter takes wildcards (`DL*`). Both filters survive the page refresh.
@@ -586,7 +587,7 @@ Every page but Last heard and Admin carries a slim LCD line with the current tra
 - Light and dark theme, following the system, with a switch in the top bar
 - Font (Saira, OFL) served from the dashboard itself, no Google Fonts request
 - No Bootstrap any more; jQuery only on the admin page
-- Content refreshes in place every `PageRefreshDelay` ms, not while you type in a field
+- Content refreshes in place every `PageRefreshDelay` ms, and at once on a speaker change, not while you type in a field
 - Locator of stations that send an M17 GNSS or a D-Star DPRS position, linked to OpenStreetMap
 - MOTD/maintenance banner via `$PageOptions['MOTD']` in config.inc.php
 - Module names read from urfd XML (single source of truth)
@@ -619,7 +620,7 @@ Read-only HTTP endpoints under `/json/`, served by the dashboard:
 | `/json/reflector` | Full reflector record including modules and metadata |
 | `/json/links` | Connected nodes with callsign, IP, module, protocol, connect and last-heard time |
 | `/json/peers` | Linked peer reflectors |
-| `/json/stations` | Last-heard stations with country lookup; `locator`, `latitude` and `longitude` when the station sent an M17 GNSS or a D-Star DPRS position |
+| `/json/stations` | Last-heard stations with country lookup and `name` (first name from the DMR or NXDN ID database, empty if unknown); `locator`, `latitude` and `longitude` when the station sent an M17 GNSS or a D-Star DPRS position |
 | `/json/modulesinuse` | Modules with the callsigns currently on them |
 
 Collection endpoints return `[]` when empty (`/json/stations` returns
@@ -845,6 +846,8 @@ URF acts as a YSF Master providing Wires-X rooms (one per module). YSF users con
 - **Dashboard v2.6.0**: Dark mode redesign, admin panel, module overview with TG mappings and NXDN RAN, protocol-specific columns hidden when disabled, protocol list, QuadNet Live proxy, reflector list with search/pagination
 - **Dashboard v2.6.1**: Survives an outage of the XLX directory. Explicit timeouts on every outbound request, CallingHome failures logged instead of aborting the page render, reflector and peer lists served from an on-disk cache, admin API no longer serialized behind the PHP session lock
 - **Dashboard v2.7.0**: Locator column for stations that send an M17 GNSS position, also in `/json/stations`
+- **Dashboard v2.10.0**: Operator's first name next to the callsign in the LCD, the last-heard list, the on-air line and `/json/stations`; a speaker change shows within about two seconds (a small probe, `api/onair.php`, is polled every 1.5 s and triggers the reload); a smaller LCD; the theme switch keeps the top bar on one line
+- **Operator names in the status file (4.12.0)**: `<Name>` per station from the DMR ID database (NXDN as fallback), looked up on a copy of the list so a database reload never holds up the last-heard lock; the status file is written right after a stream opens or closes or a station is heard, not only every 10 s
 - **Dashboard v2.9.0**: Redesign as a radio front panel: LCD with the station on the air, module keypad, merged Modules page, light and dark theme, self-hosted font, Bootstrap removed
 - **On-air state in the status file (4.11.0)**: each module that has an open stream carries `<OnAir>` with the callsign transmitting, so the dashboard shows TX from the reflector instead of guessing from the last-heard time
 - **Dashboard v2.8.3**: A page load no longer dies on an empty status file; admin replies past 8 KB (user and peer lists, the log) arrive whole instead of as "No response from admin socket"; `&`, `<` and `>` in callsigns and descriptions show as such
