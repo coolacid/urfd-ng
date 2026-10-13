@@ -1,10 +1,14 @@
 #ifdef USE_LIBWEBSOCKETS
 
 #include "websocket_lws_notifier.h"
+#include "Global.h"
+#include "Notifier.h"
 #include <algorithm>
+#include <ctime>
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 // Helper to get instance pointer from context user
 static CWebsocketLwsNotifier *GetInstanceFromContext(struct lws_context *ctx)
@@ -170,6 +174,74 @@ int CWebsocketLwsNotifier::Callback(struct lws *wsi, enum lws_callback_reasons r
     return 0;
 }
 
+static nlohmann::json BuildReflectorSnapshot()
+{
+    nlohmann::json snapshot = nlohmann::json::object();
+    snapshot["links"] = nlohmann::json::array();
+    snapshot["last_heard"] = nlohmann::json::array();
+    snapshot["open_channels"] = nlohmann::json::array();
+
+    auto *clients = g_Reflector.GetClients();
+    if (clients)
+    {
+        for (const auto &client : *clients)
+        {
+            nlohmann::json entry;
+            entry["callsign"] = client->GetCallsign().GetCS();
+            entry["on_module"] = std::string(1, client->GetReflectorModule());
+            entry["protocol"] = client->GetProtocolName();
+            entry["ip"] = client->GetIp().GetAddress();
+            if (client->GetConnectTime() > 0)
+                entry["connect_time"] = client->GetConnectTime();
+            snapshot["links"].push_back(entry);
+        }
+        g_Reflector.ReleaseClients();
+    }
+
+    auto *users = g_Reflector.GetUsers();
+    if (users)
+    {
+        for (const auto &user : *users)
+        {
+            nlohmann::json entry;
+            entry["callsign"] = user.GetCallsign();
+            entry["on_module"] = std::string(1, user.GetOnModule());
+            entry["via_peer"] = user.GetViaPeer();
+            entry["via_node"] = user.GetViaNode();
+            entry["protocol"] = user.GetProtocol();
+            entry["last_heard_time"] = user.GetLastHeardTime();
+            if (!user.GetLocator().empty())
+                entry["locator"] = user.GetLocator();
+            snapshot["last_heard"].push_back(entry);
+        }
+        g_Reflector.ReleaseUsers();
+    }
+
+    const std::string modules = g_Reflector.GetModules();
+    for (char module : modules)
+    {
+        auto stream = g_Reflector.GetStream(module);
+        if (!stream || !stream->IsOpen())
+            continue;
+
+        nlohmann::json entry;
+        entry["module"] = std::string(1, module);
+        entry["stream_id"] = stream->GetStreamId();
+        entry["user"] = stream->GetUserCallsign().GetCS();
+
+        auto owner = stream->GetOwnerClient();
+        if (owner)
+        {
+            entry["callsign"] = owner->GetCallsign().GetCS();
+            entry["protocol"] = owner->GetProtocolName();
+            entry["linked_module"] = std::string(1, owner->GetReflectorModule());
+        }
+        snapshot["open_channels"].push_back(entry);
+    }
+
+    return snapshot;
+}
+
 void CWebsocketLwsNotifier::OnEstablished(struct lws *wsi)
 {
     std::lock_guard<std::mutex> lk(m_Mutex);
@@ -191,6 +263,25 @@ void CWebsocketLwsNotifier::OnEstablished(struct lws *wsi)
     }
     result.first->second.lastSeen = std::chrono::steady_clock::now();
     lws_set_timer_usecs(wsi, std::chrono::duration_cast<std::chrono::microseconds>(m_PingInterval).count());
+
+    try
+    {
+        CEvent ev;
+        ev.event_type = "state_snapshot";
+        ev.timestamp = static_cast<std::int64_t>(std::time(nullptr));
+        if (!g_Configure.GetString(g_Keys.names.callsign).empty())
+            ev.reflector_name = g_Configure.GetString(g_Keys.names.callsign);
+        ev.payload = BuildReflectorSnapshot().dump();
+
+        const std::string msg = ev.ToJson().dump();
+        result.first->second.queue.push_back(msg);
+        lws_callback_on_writable(wsi);
+    }
+    catch (const std::exception &ex)
+    {
+        std::cerr << "websocket_lws_notifier: failed to build state snapshot: " << ex.what() << std::endl;
+    }
+
     std::cout << "websocket_lws_notifier: client connected" << std::endl;
 }
 
