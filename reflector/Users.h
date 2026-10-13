@@ -51,6 +51,7 @@ public:
 	// operation
 	void   Hearing(const CCallsign &, const CCallsign &, const CCallsign &, const std::string &proto = "");
 	void   Hearing(const CCallsign &, const CCallsign &, const CCallsign &, const CCallsign &, const std::string &proto = "");
+	void   CleanupInactiveStations(void);
 	void   Location(const CCallsign &, double lat, double lon);
 
 protected:

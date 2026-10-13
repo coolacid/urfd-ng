@@ -74,6 +74,23 @@ static void DispatchStationEvent(const std::string &eventType, const CUser &hear
 	}
 }
 
+void CUsers::CleanupInactiveStations(void)
+{
+	const auto now = std::time(nullptr);
+	for (auto it = m_ActiveStations.begin(); it != m_ActiveStations.end(); )
+	{
+		if (now - it->second.GetLastHeardTime() > kStationEndTimeoutSec)
+		{
+			DispatchStationEvent("station_stopped", it->second);
+			it = m_ActiveStations.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+}
+
 void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign &rpt2, const CCallsign &xlx, const std::string &proto)
 {
 	CUser heard(my, rpt1, rpt2, xlx, proto);
