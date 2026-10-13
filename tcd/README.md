@@ -2,7 +2,7 @@
 
 **English** | [Deutsch](README.de.md)
 
-**Version 0.3.2** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.4.0** — the transcoder of [urfd-ng](../README.md), in the `tcd/` folder of the same repository. Based on [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd converts voice between the digital modes on a URF reflector, so a D-Star user hears a DMR user and the other way round. It uses DVSI AMBE hardware for D-Star (AMBE) and DMR/YSF (AMBE2+), and software vocoders for M17 (Codec2), P25/NXDN (IMBE) and, optionally, DMR/YSF (MD380). The reflector hands the audio of its transcoded modules to tcd over TCP and gets every other mode back.
 
@@ -243,8 +243,9 @@ The gain limits are asymmetric on purpose: attenuating is safe, amplifying also 
 
 `http://localhost:8080` on the tcd machine, from elsewhere through `ssh -L 8080:localhost:8080 <tcd-host>`, or `http://<tcd-host>:8080` with `MonitorBindAddress = 0.0.0.0`:
 
-- signal flow of the active path with live levels at each stage
-- VU meters before and after the AGC, with peak hold
+- in the look of the urfd dashboard (since 0.4.0): an amber LCD per module with the input codec, the targets and the AGC state, light and dark theme; the Saira font is built into the page, so it loads nothing from outside
+- LCD bar graphs before and after the AGC, with peak hold and the AGC target marked
+- signal path of the active stream with the level at each stage
 - AGC and gain controls that apply immediately, and a button to save them to `tcd.ini`
 - DVSI devices: serial, type, role, channels in use and their modules, buffer depth
 - MD380 status and counters, reflector connection and packet counters
@@ -309,7 +310,7 @@ journalctl -u tcd -f
 - **Mixed mode output gains** (0.2.3): the DV3003's D-Star channel uses `OutputGainDStar`, not `OutputGainDMR`; M17 at 1600 bit/s no longer runs the second half of each packet through the AGC twice; since 0.2.11 a module missing from the module list is not sent to a DMR channel
 
 ### Monitoring and configuration
-- **Web dashboard**: embedded HTTP/WebSocket server with signal flow, VU meters, gain and AGC controls, device and MD380 status, save to INI
+- **Web dashboard**: embedded HTTP/WebSocket server, in the urfd dashboard's look since 0.4.0, with signal flow, LCD level meters, gain and AGC controls, device and MD380 status, save to INI
 - **tcdmon**: terminal monitor
 - **Stats CSV** with automatic cleanup and the `agc-analyze` tool; since 0.2.9 it reports gate flicker as openings under 100 ms (noise crossing the threshold, raise the profile's noise gate), as the gate holds before it closes since 0.2.4
 - **Renamed keys**: `DmrGainIn/Out` (was `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (was `UsrpRxGain/TxGain`, gone since 0.3.2), gains extended to ±40 dB

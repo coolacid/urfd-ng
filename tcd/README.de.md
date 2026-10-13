@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-**Version 0.3.2** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
+**Version 0.4.0** — der Transcoder von [urfd-ng](../README.de.md), im Ordner `tcd/` desselben Repositorys. Basiert auf [n7tae/tcd](https://github.com/n7tae/tcd).
 
 tcd wandelt Sprache zwischen den digitalen Betriebsarten eines URF-Reflektors um, damit ein D-Star-Nutzer einen DMR-Nutzer hört und umgekehrt. Für D-Star (AMBE) und DMR/YSF (AMBE2+) nutzt er DVSI-AMBE-Hardware, für M17 (Codec2), P25/NXDN (IMBE) und optional DMR/YSF (MD380) Software-Vocoder. Der Reflektor gibt das Audio seiner transcodierten Module über TCP an tcd und bekommt alle anderen Betriebsarten zurück.
 
@@ -243,8 +243,9 @@ Die Grenzen sind absichtlich ungleich: Absenken ist unkritisch, Anheben hebt auc
 
 `http://localhost:8080` auf dem tcd-Rechner, von anderswo über `ssh -L 8080:localhost:8080 <tcd-host>`, oder `http://<tcd-host>:8080` mit `MonitorBindAddress = 0.0.0.0`:
 
-- Signalweg des aktiven Pfads mit Live-Pegeln an jeder Stufe
-- VU-Meter vor und nach der AGC, mit Spitzenwert-Anzeige
+- im Stil des urfd-Dashboards (seit 0.4.0): ein bernsteinfarbenes LCD pro Modul mit Eingangs-Codec, Zielen und AGC-Zustand, helles und dunkles Design; die Schrift Saira ist in die Seite eingebaut, sie lädt also nichts von außen
+- LCD-Balkenanzeigen vor und nach der AGC, mit Spitzenwert und markiertem AGC-Ziel
+- Signalweg des aktiven Streams mit dem Pegel an jeder Stufe
 - AGC- und Verstärkungsregler, die sofort wirken, und ein Knopf, um sie in `tcd.ini` zu speichern
 - DVSI-Geräte: Seriennummer, Typ, Rolle, belegte Kanäle mit ihren Modulen, Puffertiefe
 - MD380-Status und -Zähler, Verbindung zum Reflektor und Paketzähler
@@ -309,7 +310,7 @@ journalctl -u tcd -f
 - **Ausgangsverstärkung im Mischbetrieb** (0.2.3): Der D-Star-Kanal des DV3003 nutzt `OutputGainDStar` statt `OutputGainDMR`; M17 mit 1600 bit/s schickt die zweite Hälfte jedes Pakets nicht mehr zweimal durch die AGC; seit 0.2.11 geht ein Modul, das nicht in der Modulliste steht, an keinen DMR-Kanal
 
 ### Überwachung und Konfiguration
-- **Web-Dashboard**: eingebauter HTTP/WebSocket-Server mit Signalweg, VU-Metern, Verstärkungs- und AGC-Reglern, Geräte- und MD380-Status, Speichern in die INI
+- **Web-Dashboard**: eingebauter HTTP/WebSocket-Server, seit 0.4.0 im Stil des urfd-Dashboards, mit Signalweg, LCD-Pegelanzeigen, Verstärkungs- und AGC-Reglern, Geräte- und MD380-Status, Speichern in die INI
 - **tcdmon**: Monitor im Terminal
 - **Statistik-CSV** mit automatischem Aufräumen und dem Werkzeug `agc-analyze`; seit 0.2.9 meldet es Flackern des Gates als Öffnungen unter 100 ms (Rauschen über der Schwelle, das Noise-Gate des Profils anheben), da das Gate seit 0.2.4 vor dem Schließen nachhält
 - **Umbenannte Schlüssel**: `DmrGainIn/Out` (war `DmrYsfGainIn/Out`), `UsrpGainIn/Out` (war `UsrpRxGain/TxGain`, seit 0.3.2 entfallen), Verstärkungen erweitert auf ±40 dB
