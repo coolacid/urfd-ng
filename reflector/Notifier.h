@@ -29,8 +29,29 @@ public:
         j["event_type"] = event_type;
         j["timestamp"] = timestamp;
         if (!reflector_name.empty()) j["reflector_name"] = reflector_name;
-        // payload may itself be JSON or XML; include as string
-        j["payload"] = payload;
+
+        nlohmann::json payloadJson = nlohmann::json::object();
+        if (!payload.empty())
+        {
+            try
+            {
+                payloadJson = nlohmann::json::parse(payload);
+            }
+            catch (const std::exception &)
+            {
+                payloadJson = nlohmann::json::object();
+                payloadJson["data"] = payload;
+            }
+        }
+
+        // ensure websocket payloads are always objects instead of raw strings
+        if (payloadJson.is_string())
+        {
+            payloadJson = nlohmann::json::object();
+            payloadJson["data"] = payload;
+        }
+
+        j["payload"] = payloadJson;
         return j;
     }
 };
