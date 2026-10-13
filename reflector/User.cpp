@@ -22,6 +22,7 @@
 #include <iomanip>
 #include "User.h"
 #include "Utils.h"
+#include "Global.h"
 
 CUser::CUser()
 {
@@ -81,6 +82,26 @@ bool CUser::operator <(const CUser &user) const
 ////////////////////////////////////////////////////////////////////////////////////////
 // reporting
 
+std::string CUser::OperatorName(const CCallsign &my)
+{
+	std::string name;
+	g_LDid.Lock();
+	uint32_t dmrid = g_LDid.FindDmrid(my.GetKey());
+	if (dmrid != 0)
+		name = g_LDid.FindName(dmrid);
+	g_LDid.Unlock();
+	if (name.empty())
+	{
+		g_LNid.Lock();
+		uint16_t nxdnid = g_LNid.FindNXDNid(my.GetKey());
+		if (nxdnid != 0)
+			name = g_LNid.FindName(nxdnid);
+		g_LNid.Unlock();
+	}
+	return name;
+}
+
+// takes the ID database locks, so the caller must not hold the users lock
 void CUser::WriteXml(std::ofstream &xmlFile)
 {
 	xmlFile << "<STATION>" << std::endl;
@@ -90,6 +111,9 @@ void CUser::WriteXml(std::ofstream &xmlFile)
 	xmlFile << "\t<Via peer>" << CUtils::XmlEscape(m_Xlx.GetLogString()) << "</Via peer>" << std::endl;
 	if (!m_Protocol.empty())
 		xmlFile << "\t<Protocol>" << m_Protocol << "</Protocol>" << std::endl;
+	auto name = OperatorName(m_My);
+	if (!name.empty())
+		xmlFile << "\t<Name>" << CUtils::XmlEscape(name) << "</Name>" << std::endl;
 	if (!m_Locator.empty())
 	{
 		xmlFile << "\t<Locator>" << m_Locator << "</Locator>" << std::endl;

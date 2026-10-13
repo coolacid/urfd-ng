@@ -68,6 +68,8 @@ public:
 	// stream opening & closing
 	std::shared_ptr<CPacketStream> OpenStream(std::unique_ptr<CDvHeaderPacket> &, std::shared_ptr<CClient>);
 	bool IsStreaming(char);
+	// a stream opened or closed or a station was heard: write the status file now
+	void StatusChanged(void) { m_StatusChanged = true; }
 	void CloseStream(std::shared_ptr<CPacketStream>);
 
 	// get
@@ -138,6 +140,7 @@ protected:
 
 	// threads
 	std::atomic<bool> keep_running;
+	std::atomic<bool> m_StatusChanged { false };
 	std::unordered_map<char, std::future<void>> m_RouterFuture;
 	std::future<void> m_MaintenanceFuture;
 

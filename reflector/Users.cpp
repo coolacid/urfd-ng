@@ -75,6 +75,7 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
 	}
 
 	AddUser(heard);
+	g_Reflector.StatusChanged();
 }
 
 void CUsers::Location(const CCallsign &my, double lat, double lon)

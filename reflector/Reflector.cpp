@@ -373,6 +373,7 @@ std::shared_ptr<CPacketStream> CReflector::OpenStream(std::unique_ptr<CDvHeaderP
 
 		// and push header packet
 		stream->Push(std::move(DvHeader));
+		StatusChanged();
 
 		// notify
 		//OnStreamOpen(stream->GetUserCallsign());
@@ -423,6 +424,7 @@ void CReflector::CloseStream(std::shared_ptr<CPacketStream> stream)
 
 		// and stop the queue
 		stream->ClosePacketStream();
+		StatusChanged();
 	}
 }
 
@@ -587,8 +589,9 @@ void CReflector::MaintenanceThread()
 		}
 
 
-		// and wait a bit and do something useful at the same time
-		for (int i=0; i< XML_UPDATE_PERIOD*10 && keep_running; i++)
+		// and wait a bit and do something useful at the same time; a speaker change
+		// cuts the wait short, so the dashboard shows it within a tenth of a second
+		for (int i=0; i< XML_UPDATE_PERIOD*10 && keep_running && !m_StatusChanged.exchange(false); i++)
 		{
 			if (tcport)
 			{
@@ -1067,15 +1070,14 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 
 	// last heard users
 	xmlFile << "<" << (const char *)cs << "heard users>" << std::endl;
-	// lock
+	// a copy, so the name lookups never hold up the users lock while the ID database reloads
 	CUsers *users = GetUsers();
-	// iterate on users
-	for ( auto it=users->begin(); it!=users->end(); it++ )
-	{
-		it->WriteXml(xmlFile);
-	}
-	// unlock
+	std::list<CUser> heard(users->begin(), users->end());
 	ReleaseUsers();
+	for ( auto &user : heard )
+	{
+		user.WriteXml(xmlFile);
+	}
 	xmlFile << "</" << (const char *)cs << "heard users>" << std::endl;
 }
 

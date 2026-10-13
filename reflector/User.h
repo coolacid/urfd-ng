@@ -50,6 +50,8 @@ public:
 	void SetLocation(const std::string &loc, double lat, double lon) { m_Locator = loc; m_Latitude = lat; m_Longitude = lon; }
 	// 6 character Maidenhead locator of a position
 	static std::string Locator(double lat, double lon);
+	// the operator's name from the DMR ID database, else the NXDN one, empty if unknown
+	static std::string OperatorName(const CCallsign &my);
 
 	// operators
 	bool operator ==(const CUser &) const;
