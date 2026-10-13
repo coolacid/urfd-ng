@@ -102,6 +102,6 @@ struct SJsonKeys {
 	struct ADMIN { const std::string enable, port, password, bindaddress; }
 	admin { "adminEnable", "adminPort", "adminPassword", "adminBindAddress" };
 
-	struct WEBSOCKET { const std::string enable, port, bind, maxclients, perclientqueuelen, pingintervalsec, idletimoutsec, uselibwebsockets; }
-	websocket { "websocket.enable", "websocket.port", "websocket.bind", "websocket.maxclients", "websocket.perclientqueuelen", "websocket.ping_interval", "websocket.idle_timeout", "websocket.use_libwebsockets" };
+	struct WEBSOCKET { const std::string enable, port, bind, maxclients, perclientqueuelen, pingintervalsec, idletimoutsec; }
+	websocket { "websocket.enable", "websocket.port", "websocket.bind", "websocket.maxclients", "websocket.perclientqueuelen", "websocket.ping_interval", "websocket.idle_timeout" };
 };

@@ -21,36 +21,35 @@ CNotifierManager::CNotifierManager()
         int perClientQueue = 32;
         int pingIntervalSec = 30;
         int idleTimeoutSec = 90;
-        bool useLws = false;
 
-        // configuration lookup (prefer [Websocket] section)
+        // configuration lookup (prefer [Websocket] section; accept both capitalized and lowercase object keys)
         const auto &cfg = g_Configure.GetData();
+        const nlohmann::json *wsCfg = nullptr;
         if (cfg.contains("Websocket") && cfg["Websocket"].is_object())
+            wsCfg = &cfg["Websocket"];
+        if (cfg.contains("websocket") && cfg["websocket"].is_object())
+            wsCfg = &cfg["websocket"];
+        if (wsCfg)
         {
-            const auto &n = cfg["Websocket"];
+            const auto &n = *wsCfg;
             if (n.contains("Enable")) wsEnabled = n["Enable"].get<bool>();
+            else if (n.contains("enable")) wsEnabled = n["enable"].get<bool>();
             if (n.contains("Port")) wsPort = static_cast<uint16_t>(n["Port"].get<unsigned>());
+            else if (n.contains("port")) wsPort = static_cast<uint16_t>(n["port"].get<unsigned>());
             if (n.contains("Bind")) wsBind = n["Bind"].get<std::string>();
+            else if (n.contains("bind")) wsBind = n["bind"].get<std::string>();
             if (n.contains("MaxClients")) maxClients = n["MaxClients"].get<int>();
+            else if (n.contains("maxclients")) maxClients = n["maxclients"].get<int>();
             if (n.contains("PerClientQueueLen")) perClientQueue = n["PerClientQueueLen"].get<int>();
+            else if (n.contains("perclientqueuelen")) perClientQueue = n["perclientqueuelen"].get<int>();
             if (n.contains("PingIntervalSec")) pingIntervalSec = n["PingIntervalSec"].get<int>();
+            else if (n.contains("ping_interval")) pingIntervalSec = n["ping_interval"].get<int>();
             if (n.contains("IdleTimeoutSec")) idleTimeoutSec = n["IdleTimeoutSec"].get<int>();
-            if (n.contains("UseLibWebsockets")) useLws = n["UseLibWebsockets"].get<bool>();
+            else if (n.contains("idle_timeout")) idleTimeoutSec = n["idle_timeout"].get<int>();
         }
-        // fallback dotted keys
-        if (g_Configure.Contains("websocket.enable"))
-            wsEnabled = g_Configure.GetBoolean("websocket.enable");
-        if (g_Configure.Contains("websocket.port"))
-            wsPort = static_cast<uint16_t>(g_Configure.GetUnsigned("websocket.port"));
-        if (g_Configure.Contains("websocket.bind"))
-            wsBind = g_Configure.GetString("websocket.bind");
-        if (g_Configure.Contains("websocket.ping_interval"))
-            pingIntervalSec = (int)g_Configure.GetUnsigned("websocket.ping_interval");
-        if (g_Configure.Contains("websocket.idle_timeout"))
-            idleTimeoutSec = (int)g_Configure.GetUnsigned("websocket.idle_timeout");
 
 #ifdef USE_LIBWEBSOCKETS
-        if (wsEnabled && useLws)
+        if (wsEnabled)
         {
             try {
                 m_WsLwsNotifier = std::make_unique<CWebsocketLwsNotifier>();
@@ -67,13 +66,6 @@ CNotifierManager::CNotifierManager()
             } catch (const std::exception &ex) {
                 std::cerr << "NotifierManager: exception starting LWS WebSocket notifier: " << ex.what() << std::endl;
                 m_WsLwsNotifier.reset();
-            }
-        }
-        else
-        {
-            if (wsEnabled && !useLws)
-            {
-                std::cout << "NotifierManager: websocket enabled in config but UseLibWebsockets=false; not starting websocket listener" << std::endl;
             }
         }
 #else

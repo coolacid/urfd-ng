@@ -817,55 +817,41 @@ bool CConfigure::ReadData(const std::string &path)
 					const bool enabled = IS_TRUE(value[0]);
 					data["Websocket"]["Enable"] = enabled;
 					data["websocket"]["enable"] = enabled;
-					data["websocket.enable"] = enabled;
 				}
 				else if (0 == key.compare("Port"))
 				{
 					const auto port = std::stoul(value);
 					data["Websocket"]["Port"] = port;
 					data["websocket"]["port"] = port;
-					data["websocket.port"] = port;
 				}
 				else if (0 == key.compare("Bind"))
 				{
 					data["Websocket"]["Bind"] = value;
 					data["websocket"]["bind"] = value;
-					data["websocket.bind"] = value;
 				}
 				else if (0 == key.compare("MaxClients"))
 				{
 					const auto max = std::stoi(value);
 					data["Websocket"]["MaxClients"] = max;
 					data["websocket"]["maxclients"] = max;
-					data["websocket.maxclients"] = max;
 				}
 				else if (0 == key.compare("PerClientQueueLen"))
 				{
 					const auto max = std::stoi(value);
 					data["Websocket"]["PerClientQueueLen"] = max;
 					data["websocket"]["perclientqueuelen"] = max;
-					data["websocket.perclientqueuelen"] = max;
 				}
 				else if (0 == key.compare("PingIntervalSec"))
 				{
 					const auto valueSec = std::stoi(value);
 					data["Websocket"]["PingIntervalSec"] = valueSec;
 					data["websocket"]["ping_interval"] = valueSec;
-					data["websocket.ping_interval"] = valueSec;
 				}
 				else if (0 == key.compare("IdleTimeoutSec"))
 				{
 					const auto valueSec = std::stoi(value);
 					data["Websocket"]["IdleTimeoutSec"] = valueSec;
 					data["websocket"]["idle_timeout"] = valueSec;
-					data["websocket.idle_timeout"] = valueSec;
-				}
-				else if (0 == key.compare("UseLibWebsockets"))
-				{
-					const bool enabled = IS_TRUE(value[0]);
-					data["Websocket"]["UseLibWebsockets"] = enabled;
-					data["websocket"]["use_libwebsockets"] = enabled;
-					data["websocket.use_libwebsockets"] = enabled;
 				}
 				else
 					badParam(key);
