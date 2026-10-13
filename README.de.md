@@ -4,7 +4,7 @@
 
 Basiert auf [urfd](https://github.com/n7tae/urfd) von Thomas Early N7TAE, mit erweiterten Funktionen, dem hybriden Transcoder [tcd](tcd/) und einem Setup-Script, das beides installiert. Ursprünglich für den Reflektor URF363 entwickelt.
 
-**urfd 4.12.1-dht** | tcd 0.4.0 | Dashboard v2.12.0
+**urfd 4.12.2-dht** | tcd 0.4.0 | Dashboard v2.12.0
 
 **Neu hier? Mit dem Setup-Script installieren, siehe [docs/INSTALL.de.md](docs/INSTALL.de.md):**
 
@@ -827,6 +827,7 @@ URF arbeitet als YSF-Master und stellt Wires-X-Räume bereit (einen pro Modul). 
 - **Dashboard v2.12.0**: "also on" nennt höchstens drei Module und zählt den Rest (alle im Tooltip); mehr als 8 Module bekommen ein kompaktes Tastenfeld mit 7 Spalten, der Modulname steht im Tooltip
 - **Dashboard v2.11.0**: Das LCD folgt der gewählten Modultaste (wer dort sendet oder zuletzt gehört wurde); ohne Auswahl zeigt es die zuletzt begonnene Aussendung, und "also on S" nennt die weiteren Module auf Sendung, im LCD und in der Sendezeile
 - **Dashboard v2.10.0**: Vorname neben dem Rufzeichen im LCD, in der Last-Heard-Liste, in der Sendezeile und in `/json/stations`; ein Sprecherwechsel erscheint nach etwa zwei Sekunden (eine kleine Abfrage, `api/onair.php`, läuft alle 1,5 s und stößt das Neuladen an); ein kleineres LCD; der Theme-Umschalter hält die Kopfleiste in einer Zeile
+- **Knotenzahl je Modul ohne Links (4.12.2)**: `<LinkedNodes>` zählt nur noch die Nodes, die auch im Status-File stehen; ein Link des Reflectors zu einem anderen Server (MMDVMClient, DCS-, DExtra-, DPlus- oder YSF-Client, DCS-Peer) zählt nicht mehr auf jedem Modul mit, auf das er gemappt ist
 - **Sauberes Beenden der Transcoder-Verbindung (4.12.1)**: Beim Stoppen von urfd füllt sich das Log nicht mehr mit `POLLNVAL received on module`; ein ungültig gewordener Socket wird verworfen, die Socket-Liste wird den laufenden Codec-Threads nicht mehr unter den Füßen geleert, und ein Fehler oder Verbindungsabbruch ohne Daten wird nicht mehr als Paket weitergereicht
 - **Namen in der Statusdatei (4.12.0)**: `<Name>` pro Station aus der DMR-ID-Datenbank (NXDN als Rückfall), nachgeschlagen auf einer Kopie der Liste, damit ein Neuladen der Datenbank nie die Last-Heard-Sperre aufhält; die Statusdatei wird gleich nach dem Öffnen oder Schließen eines Streams oder dem Hören einer Station geschrieben, nicht nur alle 10 s
 - **Dashboard v2.9.0**: Neugestaltung als Frontplatte eines Funkgeräts: LCD mit der Station auf Sendung, Modul-Tastenfeld, zusammengelegte Modules-Seite, helles und dunkles Design, Schrift lokal, Bootstrap entfernt
