@@ -196,7 +196,6 @@ static nlohmann::json BuildReflectorSnapshot()
             entry["callsign"] = client->GetCallsign().GetCS();
             entry["on_module"] = std::string(1, client->GetReflectorModule());
             entry["protocol"] = client->GetProtocolName();
-            entry["ip"] = client->GetIp().GetAddress();
             if (client->GetConnectTime() > 0)
                 entry["connect_time"] = client->GetConnectTime();
             snapshot["links"].push_back(entry);
