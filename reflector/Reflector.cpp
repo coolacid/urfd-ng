@@ -753,6 +753,10 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 		}
 		ReleaseClients();
 		xmlFile << "\t<LinkedNodes>" << nodeCount << "</LinkedNodes>" << std::endl;
+		// who is transmitting on this module right now, for the dashboard
+		auto stream = GetStream(m);
+		if (stream && stream->IsOpen())
+			xmlFile << "\t<OnAir>" << CUtils::XmlEscape(stream->GetUserCallsign().GetCS()) << "</OnAir>" << std::endl;
 		// check if transcoded
 		auto tcmods = g_Configure.GetString(g_Keys.tc.modules);
 		bool transcoded = (tcmods.find(m) != std::string::npos);
