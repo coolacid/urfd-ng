@@ -58,6 +58,7 @@ export default {
       uptimeSeconds: 0,
       currentTime: 0,
       eventLog: [],
+      linkEventLog: [],
     });
 
     const activePage = computed(() => {
@@ -177,15 +178,31 @@ export default {
       if (typeof payload.current_time !== 'undefined') state.currentTime = Number(payload.current_time);
     }
 
+    function logLinkActivity(type, entry) {
+      const eventType = type === 'join' ? 'join' : 'leave';
+      const callsign = entry.callsign || 'Unknown station';
+      const protocol = entry.protocol || 'unknown';
+      const module = entry.reflector_module || entry.on_module || 'unknown';
+      const message = `${callsign} (${protocol}) ${eventType === 'join' ? 'joined' : 'left'} module ${module}`;
+      state.linkEventLog = [{
+        id: `${eventType}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        type: eventType,
+        message,
+        timestamp: Date.now(),
+      }, ...state.linkEventLog].slice(0, 12);
+    }
+
     function handleClientAdded(entry) {
       const existing = state.links.find((item) => item.callsign === entry.callsign && item.protocol === entry.protocol && item.on_module === entry.reflector_module);
       if (!existing) {
         state.links = [...state.links, { ...entry, connect_time: entry.connect_time || Math.floor(Date.now() / 1000), on_module: entry.reflector_module }];
       }
+      logLinkActivity('join', { ...entry, on_module: entry.reflector_module });
     }
 
     function handleClientRemoved(entry) {
       state.links = state.links.filter((item) => !(item.callsign === entry.callsign && item.protocol === entry.protocol && item.on_module === entry.reflector_module));
+      logLinkActivity('leave', { ...entry, on_module: entry.reflector_module });
     }
 
     function handlePeerAdded(entry) {

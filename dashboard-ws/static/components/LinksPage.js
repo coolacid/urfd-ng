@@ -7,6 +7,9 @@ export default {
     rows() {
       return [...(this.state.links || [])].sort((a, b) => (b.connect_time || 0) - (a.connect_time || 0));
     },
+    activityLog() {
+      return this.state.linkEventLog || [];
+    },
   },
   methods: {
     formatDuration(value) {
@@ -15,6 +18,16 @@ export default {
       if (seconds < 60) return `${seconds}s`;
       if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
       return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+    },
+    formatTime(value) {
+      if (!value) return '—';
+      const date = new Date(Number(value));
+      if (Number.isNaN(date.getTime())) return '—';
+      return new Intl.DateTimeFormat(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).format(date);
     },
   },
   template: `
@@ -50,6 +63,24 @@ export default {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div class="panel activity-panel">
+        <div class="page-header">
+          <div>
+            <p class="eyebrow">Live feed</p>
+            <h2>Link activity</h2>
+          </div>
+        </div>
+
+        <div class="activity-log" v-if="activityLog.length">
+          <div v-for="entry in activityLog" :key="entry.id" class="activity-entry" :class="entry.type">
+            <span class="activity-badge" :class="entry.type">{{ entry.type === 'join' ? 'Joined' : 'Left' }}</span>
+            <span class="activity-message">{{ entry.message }}</span>
+            <time class="activity-time">{{ formatTime(entry.timestamp) }}</time>
+          </div>
+        </div>
+        <div v-else class="empty">No client joins or leaves have been seen yet.</div>
       </div>
     </section>
   `,

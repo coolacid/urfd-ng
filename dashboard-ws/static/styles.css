@@ -314,6 +314,75 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.activity-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.activity-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(148, 163, 184, 0.03);
+}
+
+.activity-entry.join {
+  border-color: rgba(52, 211, 153, 0.28);
+  background: rgba(52, 211, 153, 0.06);
+}
+
+.activity-entry.leave {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.activity-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.activity-badge.join {
+  background: rgba(52, 211, 153, 0.14);
+  color: var(--success);
+}
+
+.activity-badge.leave {
+  background: rgba(248, 113, 113, 0.14);
+  color: var(--danger);
+}
+
+.activity-message {
+  color: var(--text);
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.activity-time {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
