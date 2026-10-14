@@ -283,6 +283,19 @@ export default {
 
     let socket = null;
     let reconnectTimer = null;
+    let uptimeTicker = null;
+
+    function startUptimeTicker() {
+      if (uptimeTicker) {
+        clearInterval(uptimeTicker);
+      }
+
+      uptimeTicker = setInterval(() => {
+        if (state.serverStarted > 0 || state.uptimeSeconds > 0) {
+          state.uptimeSeconds = Number(state.uptimeSeconds) + 1;
+        }
+      }, 1000);
+    }
 
     function connectSocket() {
       state.connectionStatus = 'connecting';
@@ -306,6 +319,7 @@ export default {
       });
     }
 
+    startUptimeTicker();
     connectSocket();
 
     const currentComponent = computed(() => activePage.value);

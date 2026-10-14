@@ -98,12 +98,12 @@ cd dashboard-ws/static
 python3 -m http.server 8000
 ```
 
-When running in static mode, create a local `config.js` next to `index.html` if you need a custom runtime config:
+When running in static mode, create a local `config.js` next to `index.html` if you need a custom runtime config. This is the place to override the WebSocket endpoint when the dashboard is served from a different host or behind a reverse proxy:
 
 ```javascript
 window.__URFD_DASHBOARD_CONFIG__ = {
   __configLoaded: true,
-  wsUrl: 'ws://reflector.example:8080',
+  wsUrl: 'wss://reflector.example.com:8080',
   reflectorListUrl: null,
   quadnetLiveUrl: null,
 };

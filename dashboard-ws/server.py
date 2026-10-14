@@ -26,6 +26,21 @@ settings = Dynaconf(
 
 app = Flask(__name__, static_url_path='', static_folder='static')
 
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'1', 'true', 'yes', 'on'}:
+            return True
+        if normalized in {'0', 'false', 'no', 'off', ''}:
+            return False
+    return bool(value)
+
+
 REFLECTOR_LIST_CACHE = {
     'payload': None,
     'fetched_at': 0,
@@ -39,8 +54,8 @@ def index():
 
 
 def runtime_config():
-    reflector_enabled = bool(settings.get('enable_reflector_list', False))
-    quadnet_enabled = bool(settings.get('enable_quadnet_live', False))
+    reflector_enabled = _as_bool(settings.get('enable_reflector_list', False), False)
+    quadnet_enabled = _as_bool(settings.get('enable_quadnet_live', False), False)
     config = {
         '__configLoaded': True,
         'vueUrl': settings.get('vue_url', PROD_VUE_URL),
@@ -133,7 +148,7 @@ def get_reflector_list_payload():
 
 @app.get('/api/reflector-list')
 def reflector_list_proxy():
-    enabled = bool(settings.get('enable_reflector_list', False))
+    enabled = _as_bool(settings.get('enable_reflector_list', False), False)
     if not enabled:
         return Response('Reflector list proxy is disabled', status=403, mimetype='text/plain')
 
@@ -147,7 +162,7 @@ def reflector_list_proxy():
 
 @app.get('/api/quadnet')
 def quadnet_proxy():
-    enabled = bool(settings.get('enable_quadnet_live', False))
+    enabled = _as_bool(settings.get('enable_quadnet_live', False), False)
     if not enabled:
         return Response('QuadNet proxy is disabled', status=403, mimetype='text/plain')
 
@@ -166,4 +181,4 @@ def quadnet_proxy():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(settings.get('port', 8000)), debug=bool(settings.get('debug', False)))
+    app.run(host='0.0.0.0', port=int(settings.get('port', 8000)), debug=_as_bool(settings.get('debug', False), False))
