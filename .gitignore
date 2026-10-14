@@ -5,4 +5,10 @@ reflector/urfd.*
 urfd
 inicheck
 dbutil
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
 .DS_Store
+dashboard-ws/settings.ini

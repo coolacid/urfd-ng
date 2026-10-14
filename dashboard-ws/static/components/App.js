@@ -1,4 +1,4 @@
-import { getVueRuntimeUrl } from '../lib/config.js';
+import { getDashboardConfig, getVueRuntimeUrl } from '../lib/config.js';
 
 const { computed, reactive } = await import(getVueRuntimeUrl());
 const { connectNotifier } = await import('../lib/notifier.js');
@@ -20,16 +20,6 @@ const [
   import('./ProtocolsPage.js'),
 ]);
 
-const nav = [
-  { key: 'lastheard', label: 'Last heard' },
-  { key: 'modules', label: 'Modules' },
-  { key: 'protocols', label: 'Protocols' },
-  { key: 'links', label: 'Links' },
-  { key: 'peers', label: 'Peers' },
-  { key: 'reflectors', label: 'Reflector list' },
-  { key: 'quadnet', label: 'QuadNet live' },
-];
-
 export default {
   name: 'DashboardApp',
   components: {
@@ -42,6 +32,17 @@ export default {
     FeedPage,
   },
   setup() {
+    const dashboardConfig = getDashboardConfig();
+    const nav = computed(() => [
+      { key: 'lastheard', label: 'Last heard' },
+      { key: 'modules', label: 'Modules' },
+      { key: 'protocols', label: 'Protocols' },
+      { key: 'links', label: 'Links' },
+      { key: 'peers', label: 'Peers' },
+      ...(dashboardConfig.reflectorListUrl ? [{ key: 'reflectors', label: 'Reflector list' }] : []),
+      ...(dashboardConfig.quadnetLiveUrl ? [{ key: 'quadnet', label: 'QuadNet live' }] : []),
+    ]);
+
     const state = reactive({
       page: 'lastheard',
       connectionStatus: 'connecting',

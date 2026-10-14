@@ -1,0 +1,10 @@
+[default]
+enable_reflector_list = false
+enable_quadnet_live = false
+vue_url = https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.prod.js
+ws_url = 
+
+# Example for a production deployment:
+# enable_reflector_list = true
+# enable_quadnet_live = true
+# ws_url = ws://localhost:8080

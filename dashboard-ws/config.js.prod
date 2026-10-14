@@ -1,5 +1,0 @@
-window.__URFD_DASHBOARD_CONFIG__ = {
-  __configLoaded: true,
-  vueUrl: 'https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.prod.js',
-  wsUrl: 'ws://localhost:8080',
-};

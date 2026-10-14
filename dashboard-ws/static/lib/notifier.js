@@ -6,15 +6,7 @@ export function buildSocketUrl() {
 
   if (hasConfig) {
     if (config.wsUrl) return config.wsUrl;
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname || 'localhost';
-    return `${protocol}//${host}:8080`;
   }
-
-  const params = new URLSearchParams(window.location.search);
-  const override = params.get('ws');
-  if (override) return override;
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.hostname || 'localhost';
